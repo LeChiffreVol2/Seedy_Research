@@ -1,0 +1,11 @@
+unstructured[pdf]==0.16.12
+pillow>=10.4.0
+# Keep compatible with unstructured==0.16.12 internals.
+pdfminer.six==20240706
+# Avoid RequestsDependencyWarning from transitive packages.
+chardet<6
+pytesseract>=0.3.13
+python-dotenv>=1.0.1
+openai>=1.40.0
+supabase>=2.5.0
+langchain-text-splitters>=0.2.0

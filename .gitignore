@@ -1,0 +1,40 @@
+.DS_Store
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+.venv/
+.venv310/
+venv/
+
+# Node / Next.js
+node_modules/
+.next/
+*.tsbuildinfo
+.local/
+ops-dashboard/.local/
+ops-dashboard/.vercel/
+supabase/.temp/
+
+# Environment
+.env
+.env.*
+!.env.example
+!.env.local.example
+
+# Local source data and generated previews
+CE Project Database/
+NCCE Project Database/
+pipeline/data/
+
+# Generated artifacts
+pipeline/data/markdown/
+pipeline/data/pdfs/
+eval/*_results.json
+harness/reports/
+tmp/
+.playwright-cli/
+/*.png
+
+eval/feedback_eval_seed.jsonl

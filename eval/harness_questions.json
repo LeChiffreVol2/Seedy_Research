@@ -1,0 +1,137 @@
+[
+  {
+    "id": "CE_SIMPLE_01",
+    "type": "simple_lookup",
+    "collection": "ce_project",
+    "expectedIntent": "simple_lookup",
+    "requiresEvidence": true,
+    "requiresCitation": true,
+    "question": "จาก CE Project สรุปแนวทางลดอุบัติเหตุทางแยกแบบสั้นพร้อมหลักฐาน"
+  },
+  {
+    "id": "CE_COMPARE_01",
+    "type": "compare",
+    "collection": "ce_project",
+    "expectedIntent": "compare",
+    "requiresEvidence": true,
+    "requiresCitation": true,
+    "question": "เปรียบเทียบหลาย paper ใน CE Project ว่าปัจจัยพฤติกรรมผู้ขับขี่กับกายภาพถนนส่งผลต่อความปลอดภัยอย่างไร"
+  },
+  {
+    "id": "CE_SUMMARY_01",
+    "type": "summarize",
+    "collection": "ce_project",
+    "expectedIntent": "summarize",
+    "requiresEvidence": true,
+    "requiresCitation": true,
+    "question": "สรุปภาพรวม research theme ด้าน transport safety ใน CE Project"
+  },
+  {
+    "id": "CE_METHOD_01",
+    "type": "methodology",
+    "collection": "ce_project",
+    "expectedIntent": "methodology",
+    "requiresEvidence": true,
+    "requiresCitation": true,
+    "question": "งาน CE Project ที่เกี่ยวกับความปลอดภัยทางถนนใช้ methodology หรือวิธีวิเคราะห์ข้อมูลอะไรบ้าง"
+  },
+  {
+    "id": "CE_CITE_01",
+    "type": "citation_search",
+    "collection": "ce_project",
+    "expectedIntent": "citation_search",
+    "requiresEvidence": true,
+    "requiresCitation": true,
+    "question": "หา evidence พร้อม citation ว่า CE Project พูดถึงข้อจำกัดของการลดอุบัติเหตุอย่างไร"
+  },
+  {
+    "id": "NCCE_SIMPLE_01",
+    "type": "simple_lookup",
+    "collection": "ncce",
+    "expectedIntent": "simple_lookup",
+    "requiresEvidence": true,
+    "requiresCitation": true,
+    "question": "จาก NCCE ค้นงานด้านโครงสร้างที่เกี่ยวกับคอนกรีตและสรุปหัวข้อสำคัญ"
+  },
+  {
+    "id": "NCCE_COMPARE_01",
+    "type": "compare",
+    "collection": "ncce",
+    "expectedIntent": "compare",
+    "requiresEvidence": true,
+    "requiresCitation": true,
+    "question": "เปรียบเทียบงาน NCCE ด้านคอนกรีตเสริมกำลังกับคอนกรีตสำเร็จรูปว่ามีประเด็นวิจัยต่างกันอย่างไร"
+  },
+  {
+    "id": "NCCE_SUMMARY_01",
+    "type": "summarize",
+    "collection": "ncce",
+    "expectedIntent": "summarize",
+    "requiresEvidence": true,
+    "requiresCitation": true,
+    "question": "สรุปภาพรวมงาน NCCE ด้าน construction management ที่เกี่ยวกับต้นทุน ความล่าช้า หรือความเสี่ยง"
+  },
+  {
+    "id": "NCCE_METHOD_01",
+    "type": "methodology",
+    "collection": "ncce",
+    "expectedIntent": "methodology",
+    "requiresEvidence": true,
+    "requiresCitation": true,
+    "question": "งาน NCCE ด้านวัสดุก่อสร้างหรือคอนกรีตใช้วิธีทดลองหรือวิธีวิเคราะห์แบบใดบ้าง"
+  },
+  {
+    "id": "NCCE_CITE_01",
+    "type": "citation_search",
+    "collection": "ncce",
+    "expectedIntent": "citation_search",
+    "requiresEvidence": true,
+    "requiresCitation": true,
+    "question": "หา evidence พร้อม citation จาก NCCE ที่กล่าวถึงข้อจำกัด ปัญหา หรืออุปสรรคในงานก่อสร้างคอนกรีต"
+  },
+  {
+    "id": "ALL_SIMPLE_01",
+    "type": "simple_lookup",
+    "collection": "",
+    "expectedIntent": "simple_lookup",
+    "requiresEvidence": true,
+    "requiresCitation": true,
+    "question": "ค้นทั้ง CE และ NCCE ว่ามี paper ใดเกี่ยวกับ concrete หรือ structural safety ที่น่าสนใจ"
+  },
+  {
+    "id": "ALL_COMPARE_01",
+    "type": "compare",
+    "collection": "",
+    "expectedIntent": "compare",
+    "requiresEvidence": true,
+    "requiresCitation": true,
+    "question": "เปรียบเทียบ CE Project กับ NCCE ว่าคลังไหนมีหลักฐานเกี่ยวกับ transport safety มากกว่าและต่างกันอย่างไร"
+  },
+  {
+    "id": "ALL_SUMMARY_01",
+    "type": "summarize",
+    "collection": "",
+    "expectedIntent": "summarize",
+    "requiresEvidence": true,
+    "requiresCitation": true,
+    "question": "สรุปภาพรวม research themes สำคัญทั้ง CE Project และ NCCE โดยจัดกลุ่มเป็น transport, structural, construction management"
+  },
+  {
+    "id": "ALL_METHOD_01",
+    "type": "methodology",
+    "collection": "",
+    "expectedIntent": "methodology",
+    "requiresEvidence": true,
+    "requiresCitation": true,
+    "question": "เปรียบเทียบ methodology ที่พบบ่อยในคลังทั้งหมด เช่น survey, simulation, statistical analysis, experiment"
+  },
+  {
+    "id": "ALL_CITE_01",
+    "type": "citation_search",
+    "collection": "",
+    "expectedIntent": "citation_search",
+    "requiresEvidence": true,
+    "requiresCitation": true,
+    "question": "หา evidence พร้อม citation ที่กล่าวถึง limitations หรือข้อจำกัดของงานวิจัยในคลังทั้งหมด"
+  }
+]

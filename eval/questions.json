@@ -1,0 +1,32 @@
+[
+  {
+    "id": "Q1",
+    "type": "simple_lookup",
+    "discipline": "transport",
+    "question": "สรุปแนวทางลดอุบัติเหตุทางแยกจากคลังเอกสาร"
+  },
+  {
+    "id": "Q2",
+    "type": "compare",
+    "discipline": "transport",
+    "question": "เปรียบเทียบหลาย paper ว่าปัจจัยด้านพฤติกรรมผู้ขับขี่กับปัจจัยด้านกายภาพถนนส่งผลต่อความปลอดภัยอย่างไร"
+  },
+  {
+    "id": "Q3",
+    "type": "summarize",
+    "discipline": "transport",
+    "question": "สรุปภาพรวมประเด็นวิจัยด้าน transport safety ในเอกสารทั้งหมด"
+  },
+  {
+    "id": "Q4",
+    "type": "methodology",
+    "discipline": "transport",
+    "question": "paper ที่เกี่ยวกับความปลอดภัยทางถนนใช้ methodology หรือวิธีวิเคราะห์ข้อมูลแบบใดบ้าง"
+  },
+  {
+    "id": "Q5",
+    "type": "citation_search",
+    "discipline": "transport",
+    "question": "หา evidence พร้อม citation ว่าเอกสารพูดถึงข้อจำกัดหรือ limitations ของการลดอุบัติเหตุอย่างไร"
+  }
+]
