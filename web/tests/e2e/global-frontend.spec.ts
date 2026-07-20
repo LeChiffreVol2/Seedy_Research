@@ -166,7 +166,7 @@ test("Terra and Sol lead free users to the Founder Pro decision point", async ({
 
 test("Research Path turns an explicit goal into a four-stage learning sequence", async ({ page }) => {
   const pathPayload = {
-    version: "civilmcp-research-path-v1",
+    version: "civilmcp-research-path-v2",
     goal: "Urban road safety in Thailand",
     level: "applied",
     outcome: "literature_review",

@@ -336,7 +336,7 @@ const PATH_OUTCOME_OPTIONS: ReadonlyArray<GlassMenuOption<PathOutcome>> = [
 ];
 
 type ResearchPath = {
-  version: "civilmcp-research-path-v1";
+  version: "civilmcp-research-path-v2";
   goal: string;
   level: PathLevel;
   outcome: PathOutcome;
@@ -468,7 +468,7 @@ const ACTION_LABELS = {
 const THAI_TEXT_PATTERN = /[\u0E00-\u0E7F]/;
 const TRANSLATION_CACHE_KEY = "civilmcp-paper-translations-v1";
 const PAPER_LANGUAGE_KEY = "civilmcp-paper-language-v1";
-const RESEARCH_PATH_KEY = "civilmcp-research-path-v1";
+const RESEARCH_PATH_KEY = "civilmcp-research-path-v2";
 const TRANSLATION_CACHE_TTL_MS = 7 * 24 * 60 * 60 * 1_000;
 const TRANSLATION_CACHE_MAX_PAPERS = 30;
 const TRANSLATION_BATCH_MAX_SEGMENTS = 48;
@@ -684,7 +684,7 @@ function isResearchCardData(value: unknown): value is ResearchCardData {
 function isResearchPath(value: unknown): value is ResearchPath {
   if (!value || typeof value !== "object") return false;
   const candidate = value as Partial<ResearchPath>;
-  return candidate.version === "civilmcp-research-path-v1" && typeof candidate.goal === "string" && Array.isArray(candidate.stages);
+  return candidate.version === "civilmcp-research-path-v2" && typeof candidate.goal === "string" && Array.isArray(candidate.stages);
 }
 
 function looksLikeFileCode(value: string): boolean {

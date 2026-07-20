@@ -288,7 +288,7 @@ def check_build_week_contract() -> Check:
         ),
         "personalized_research_path": all(
             marker in research_path
-            for marker in ("civilmcp-research-path-v1", "Map the field", "openAlexBridge", "readBoundedJson")
+            for marker in ("civilmcp-research-path-v2", "Map the field", "openAlexBridge", "readBoundedJson")
         ) and all(marker in page for marker in ("PersonalizedResearchPathPanel", 'label: "Research Path"')),
         "deep_research_pro_gate": all(
             marker in chat

@@ -153,7 +153,7 @@ export async function POST(request: NextRequest) {
     });
 
     return Response.json({
-      version: "civilmcp-research-path-v1",
+      version: "civilmcp-research-path-v2",
       goal,
       level,
       outcome,
