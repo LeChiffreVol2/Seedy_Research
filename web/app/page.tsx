@@ -2797,14 +2797,24 @@ function PersonalizedResearchPathPanel({
 
   return (
     <section className="workspacePanel pathWorkspace" aria-label="Personalized research learning path">
-      <header className="pathHeader">
-        <div>
-          <p className="workspaceEyebrow">Research Path</p>
-          <h2>{path ? path.goal : "Build a research path"}</h2>
-          <p>{path ? "A focused sequence of papers and cited questions." : "Choose a topic. CivilMCP builds four stages from relevant Thai studies."}</p>
-        </div>
-        {path ? <button type="button" className="textAction" onClick={onReset}>New path</button> : null}
-      </header>
+      <div className="pathHeroSurface">
+        <header className="pathHeader">
+          <div>
+            <p className="workspaceEyebrow"><Route size={14} aria-hidden /> Research Path</p>
+            <h2>{path ? path.goal : "Turn a topic into a research plan"}</h2>
+            <p>{path ? "Four focused stages, grounded in page-linked Thai evidence." : "Set a goal. CivilMCP organizes relevant studies into a focused four-stage path."}</p>
+          </div>
+          {path ? <button type="button" className="textAction pathResetAction" onClick={onReset}><RefreshCw size={15} aria-hidden /><span>New path</span></button> : null}
+        </header>
+
+        {path ? (
+          <div className="pathProgress" aria-label={`${progress}% of research path complete`}>
+            <span><strong>{completedStages.length}</strong> of {path.stages.length} stages complete</span>
+            <progress value={completedStages.length} max={path.stages.length} />
+            <span>{progress}%</span>
+          </div>
+        ) : null}
+      </div>
 
       {!path ? (
         <form className="pathBuilder" onSubmit={(event) => { event.preventDefault(); onBuild(); }}>
@@ -2843,17 +2853,12 @@ function PersonalizedResearchPathPanel({
             />
           </div>
           <button type="submit" className="primaryAction pathBuildAction" disabled={status === "loading" || goal.trim().length < 8}>
-            {status === "loading" ? "Building path…" : "Build path"}
+            {status === "loading" ? <><RefreshCw className="pathActionSpinner" size={16} aria-hidden /><span>Building path…</span></> : <><Sparkles size={16} aria-hidden /><span>Build research path</span></>}
           </button>
           {error ? <p className="pathError" role="alert">{error}</p> : null}
         </form>
       ) : (
         <>
-          <div className="pathProgress" aria-label={`${progress}% of research path complete`}>
-            <span><strong>{completedStages.length}</strong> of {path.stages.length} stages complete</span>
-            <progress value={completedStages.length} max={path.stages.length} />
-            <span>{progress}%</span>
-          </div>
           <div className="pathStageList">
             {path.stages.map((stage, index) => {
               const complete = completedStages.includes(stage.id);
@@ -2880,7 +2885,8 @@ function PersonalizedResearchPathPanel({
                       ))}
                     </div>
                     <button type="button" className="primaryAction stageStudyAction" onClick={() => onStudyStage(stage.prompt)}>
-                      Study this stage with evidence
+                      <MessageCircle size={15} aria-hidden />
+                      <span>Study with evidence</span>
                     </button>
                   </div>
                 </article>

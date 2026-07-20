@@ -4593,3 +4593,621 @@ body {
     min-width:42px;
   }
 }
+
+/* Unified research surfaces — one lightweight glass layer, calm controls beneath. */
+.workspaceCommandSurface,
+.pathHeroSurface {
+  position:relative;
+  z-index:20;
+  min-width:0;
+  overflow:visible;
+  border:1px solid rgba(255,255,255,.88);
+  border-radius:18px;
+  background:
+    linear-gradient(145deg,rgba(255,255,255,.86),rgba(242,246,252,.66)),
+    rgba(255,255,255,.58);
+  box-shadow:
+    0 18px 46px rgba(31,42,64,.09),
+    inset 0 1px 0 rgba(255,255,255,.98),
+    inset 0 -1px 0 rgba(70,84,112,.06);
+  backdrop-filter:blur(22px) saturate(138%);
+  -webkit-backdrop-filter:blur(22px) saturate(138%);
+}
+
+.workspaceCommandSurface {
+  display:grid;
+  gap:14px;
+  padding:20px;
+}
+
+.researchWorkspaceHeader {
+  width:100%;
+  align-items:flex-end;
+  padding:0;
+  border:0;
+  border-radius:0;
+  background:transparent;
+  box-shadow:none;
+  backdrop-filter:none;
+  -webkit-backdrop-filter:none;
+}
+
+.researchWorkspaceHeader>div:first-child {
+  width:100%;
+  min-width:0;
+}
+
+.researchWorkspaceHeader input {
+  width:100%;
+  max-width:760px;
+  min-width:0;
+  overflow:hidden;
+  padding:1px 0 4px;
+  font-size:clamp(1.2rem,2vw,1.55rem);
+  text-overflow:ellipsis;
+}
+
+.researchWorkspaceHeader p {
+  color:#667182;
+  font-size:.78rem;
+  line-height:1.45;
+}
+
+.workspaceHeaderStatus {
+  min-height:30px;
+  flex:0 0 auto;
+  align-self:flex-end;
+  border:1px solid rgba(121,135,157,.12);
+  border-radius:999px;
+  background:rgba(255,255,255,.44);
+  padding:0 10px;
+  color:#707a88;
+}
+
+.workspaceToolbar {
+  position:relative;
+  z-index:21;
+  min-width:0;
+  overflow:visible;
+  padding:14px 0 0;
+  border:0;
+  border-top:1px solid rgba(104,118,142,.12);
+  border-radius:0;
+  background:transparent;
+  box-shadow:none;
+  backdrop-filter:none;
+  -webkit-backdrop-filter:none;
+}
+
+.workspaceToolbar .glassSelectTrigger,
+.workspaceToolbar>button {
+  min-height:42px;
+  border-radius:11px;
+}
+
+.workspaceToolbar .glassSelectTrigger {
+  min-width:184px;
+}
+
+.workspaceToolbar .glassWrap {
+  border-radius:11px;
+}
+
+.workspaceToolbar>button {
+  border:1px solid rgba(255,255,255,.82);
+  background:linear-gradient(180deg,rgba(255,255,255,.74),rgba(236,241,248,.5));
+  box-shadow:inset 0 1px 0 rgba(255,255,255,.94),0 5px 13px rgba(37,48,73,.055);
+  backdrop-filter:none;
+  -webkit-backdrop-filter:none;
+  transition:border-color .18s ease,background .18s ease,box-shadow .18s ease,transform .18s ease;
+}
+
+.workspaceToolbar>button:hover:not(:disabled) {
+  border-color:rgba(255,255,255,.98);
+  background:rgba(255,255,255,.82);
+  box-shadow:inset 0 1px 0 #fff,0 8px 18px rgba(37,48,73,.08);
+}
+
+.workspaceToolbar .workspaceRunButton {
+  min-width:150px;
+  justify-content:center;
+  margin-left:auto;
+  border-color:rgba(255,255,255,.18);
+  background:linear-gradient(145deg,#2b2f3b,#111318);
+  box-shadow:inset 0 1px 0 rgba(255,255,255,.2),0 10px 22px rgba(17,19,24,.16);
+}
+
+.workspacePaperPicker,
+.workspaceColumnBuilder,
+.workspaceProNotice,
+.prismaWorkspace,
+.workspaceSurface {
+  border-color:rgba(255,255,255,.8);
+  border-radius:14px;
+  background:rgba(255,255,255,.7);
+  box-shadow:0 10px 28px rgba(31,42,64,.055),inset 0 1px 0 rgba(255,255,255,.92);
+}
+
+.prismaWorkspace {
+  gap:16px;
+  padding:18px;
+  backdrop-filter:blur(18px) saturate(125%);
+  -webkit-backdrop-filter:blur(18px) saturate(125%);
+}
+
+.prismaProtocol,
+.prismaStatus,
+.prismaScreening {
+  border-color:rgba(124,139,163,.14);
+  border-radius:12px;
+  background:rgba(248,250,253,.62);
+}
+
+.prismaProtocol textarea,
+.prismaScreeningRow,
+.prismaScreeningRow>input,
+.prismaDecisionGroup button {
+  border-color:rgba(116,132,157,.18);
+  background:rgba(255,255,255,.64);
+}
+
+.pathWorkspace {
+  max-width:980px;
+  gap:14px;
+}
+
+.pathHeroSurface {
+  display:grid;
+  gap:16px;
+  padding:22px 24px;
+}
+
+.pathHeader {
+  align-items:flex-start;
+  padding:0;
+  border:0;
+}
+
+.pathHeader>div {
+  min-width:0;
+}
+
+.pathHeader .workspaceEyebrow {
+  display:inline-flex;
+  align-items:center;
+  gap:7px;
+  color:#555dbb;
+}
+
+.pathHeader h2 {
+  max-width:760px;
+  margin-top:8px;
+  font-size:clamp(1.35rem,2.4vw,1.7rem);
+  line-height:1.16;
+}
+
+.pathHeader>div>p:last-child {
+  max-width:690px;
+  margin-top:9px;
+  color:#667182;
+  font-size:.86rem;
+  line-height:1.5;
+}
+
+.pathResetAction {
+  min-height:38px;
+  display:inline-flex;
+  align-items:center;
+  gap:7px;
+  border:1px solid rgba(255,255,255,.82);
+  border-radius:10px;
+  background:rgba(255,255,255,.54);
+  padding:0 11px;
+  color:#4d55b7;
+  box-shadow:inset 0 1px 0 rgba(255,255,255,.94);
+}
+
+.pathBuilder {
+  gap:18px;
+  padding:22px 24px;
+  border:1px solid rgba(255,255,255,.84);
+  border-radius:18px;
+  background:
+    linear-gradient(145deg,rgba(255,255,255,.78),rgba(245,248,252,.62)),
+    rgba(255,255,255,.54);
+  box-shadow:0 14px 38px rgba(31,42,64,.075),inset 0 1px 0 rgba(255,255,255,.96);
+  backdrop-filter:blur(18px) saturate(128%);
+  -webkit-backdrop-filter:blur(18px) saturate(128%);
+}
+
+.pathBuilder label>span {
+  color:#596273;
+  font-size:.69rem;
+  font-weight:760;
+  letter-spacing:.045em;
+  text-transform:uppercase;
+}
+
+.pathBuilder textarea {
+  min-height:108px;
+  border-color:rgba(110,127,151,.2);
+  border-radius:12px;
+  background:rgba(255,255,255,.58);
+  box-shadow:inset 0 1px 2px rgba(40,53,78,.04),inset 0 1px 0 rgba(255,255,255,.94);
+  padding:14px;
+  font-size:.98rem;
+}
+
+.pathExamples {
+  gap:8px;
+}
+
+.pathExamples button {
+  min-height:36px;
+  border-color:rgba(115,130,154,.16);
+  border-radius:999px;
+  background:rgba(255,255,255,.48);
+  padding:0 12px;
+  color:#5f6877;
+  transition:border-color .18s ease,background .18s ease,color .18s ease,transform .18s ease;
+}
+
+.pathExamples button:hover {
+  border-color:rgba(88,97,194,.28);
+  background:rgba(245,245,255,.78);
+  color:#3e46a5;
+  transform:translateY(-1px);
+}
+
+.pathPreferences {
+  gap:10px;
+}
+
+.pathPreferences .glassSelectTrigger {
+  min-height:52px;
+  border-radius:12px;
+}
+
+.pathPreferences .glassWrap {
+  border-radius:12px;
+}
+
+.pathBuildAction,
+.stageStudyAction {
+  gap:8px;
+  border-radius:10px;
+  background:linear-gradient(145deg,#2b2f3b,#111318);
+  box-shadow:inset 0 1px 0 rgba(255,255,255,.18),0 10px 22px rgba(17,19,24,.14);
+}
+
+.pathBuildAction {
+  min-width:190px;
+  min-height:44px;
+  justify-self:end;
+}
+
+.pathActionSpinner {
+  animation:workspaceSpin .8s linear infinite;
+}
+
+.pathProgress {
+  padding-top:14px;
+  border-top:1px solid rgba(104,118,142,.12);
+}
+
+.pathProgress progress {
+  height:7px;
+  overflow:hidden;
+  appearance:none;
+  border:0;
+  border-radius:999px;
+  background:rgba(80,92,118,.11);
+}
+
+.pathProgress progress::-webkit-progress-bar {
+  border-radius:999px;
+  background:rgba(80,92,118,.11);
+}
+
+.pathProgress progress::-webkit-progress-value {
+  border-radius:999px;
+  background:linear-gradient(90deg,#5962c9,#3d9b82);
+}
+
+.pathProgress progress::-moz-progress-bar {
+  border-radius:999px;
+  background:linear-gradient(90deg,#5962c9,#3d9b82);
+}
+
+.pathStageList {
+  gap:12px;
+}
+
+.pathStage {
+  grid-template-columns:42px minmax(0,1fr);
+  gap:15px;
+  padding:19px;
+  border:1px solid rgba(255,255,255,.82);
+  border-radius:16px;
+  background:rgba(255,255,255,.7);
+  box-shadow:0 10px 30px rgba(31,42,64,.06),inset 0 1px 0 rgba(255,255,255,.94);
+}
+
+.pathStage.complete {
+  border-color:rgba(93,175,143,.34);
+  background:linear-gradient(145deg,rgba(251,255,253,.84),rgba(238,250,245,.66));
+}
+
+.pathStageIndex {
+  width:38px;
+  height:32px;
+  border:1px solid rgba(111,125,149,.12);
+  border-radius:999px;
+  background:rgba(241,244,248,.76);
+}
+
+.pathStageHeading h3 {
+  font-size:1.02rem;
+  letter-spacing:-.01em;
+}
+
+.pathStageHeading p {
+  max-width:640px;
+  font-size:.79rem;
+}
+
+.stageCheck {
+  min-height:36px;
+  border-color:rgba(111,126,149,.16);
+  border-radius:10px;
+  background:rgba(255,255,255,.52);
+}
+
+.pathPaperList {
+  gap:9px;
+}
+
+.pathPaper {
+  min-height:78px;
+  border-color:rgba(112,128,153,.14);
+  border-radius:11px;
+  background:rgba(248,250,253,.64);
+  padding:12px;
+  transition:border-color .18s ease,background .18s ease,transform .18s ease;
+}
+
+.pathPaper:hover {
+  border-color:rgba(91,100,197,.24);
+  background:rgba(255,255,255,.86);
+  transform:translateY(-1px);
+}
+
+.pathPaper span {
+  display:-webkit-box;
+  overflow:hidden;
+  line-height:1.42;
+  -webkit-box-orient:vertical;
+  -webkit-line-clamp:2;
+}
+
+.stageStudyAction {
+  min-height:38px;
+  justify-self:start;
+  padding:0 12px;
+}
+
+.openAlexBridge {
+  padding:20px;
+  border:1px solid rgba(218,221,255,.72);
+  border-radius:16px;
+  background:
+    linear-gradient(145deg,rgba(250,250,255,.82),rgba(239,244,255,.64)),
+    rgba(255,255,255,.58);
+  box-shadow:0 10px 30px rgba(47,53,130,.055),inset 0 1px 0 rgba(255,255,255,.94);
+}
+
+.openAlexWorks a,
+.openAlexSearch {
+  border-bottom-color:rgba(95,104,194,.13);
+}
+
+.workspaceCommandSurface :is(button,input,textarea):focus-visible,
+.pathWorkspace :is(button,textarea,a):focus-visible {
+  outline:2px solid rgba(79,87,217,.72);
+  outline-offset:2px;
+}
+
+@media (max-width:760px) {
+  body {
+    background-attachment:scroll;
+  }
+
+  .workspaceCommandSurface,
+  .pathHeroSurface,
+  .pathBuilder,
+  .prismaWorkspace {
+    backdrop-filter:none;
+    -webkit-backdrop-filter:none;
+  }
+
+  .researchWorkspace .liquidEffect,
+  .pathWorkspace .liquidEffect {
+    display:none!important;
+  }
+
+  .workspaceCommandSurface {
+    gap:12px;
+    padding:16px 14px 14px;
+    border-radius:16px;
+  }
+
+  .researchWorkspaceHeader {
+    align-items:stretch;
+    padding:0;
+  }
+
+  .researchWorkspaceHeader input {
+    font-size:1.16rem;
+    line-height:1.25;
+  }
+
+  .workspaceHeaderStatus {
+    min-width:0;
+    align-self:stretch;
+    justify-content:flex-start;
+    border:0;
+    border-top:1px solid rgba(104,118,142,.11);
+    border-radius:0;
+    background:transparent;
+    padding:10px 0 0;
+  }
+
+  .workspaceToolbar {
+    display:grid;
+    grid-template-columns:repeat(4,minmax(0,1fr));
+    gap:8px;
+    overflow:visible;
+    padding-top:12px;
+  }
+
+  .workspaceToolbar>.glassMenuSelect {
+    grid-column:span 2;
+    min-width:0;
+  }
+
+  .workspaceToolbar .glassSelectTrigger {
+    width:100%;
+    min-width:0;
+    padding:0 9px;
+  }
+
+  .workspaceToolbar .glassSelectDropdown {
+    width:min(276px,calc(100vw - 52px));
+    right:auto;
+    left:0;
+  }
+
+  .workspaceToolbar>.workspaceGlassSelect:nth-of-type(2) .glassSelectDropdown {
+    right:0;
+    left:auto;
+  }
+
+  .workspaceToolbar>button {
+    min-width:0;
+    justify-content:center;
+    padding:0 6px;
+  }
+
+  .workspaceToolbar>button>span {
+    overflow:hidden;
+    font-size:.62rem;
+    text-overflow:ellipsis;
+    white-space:nowrap;
+  }
+
+  .workspaceToolbar>button>strong {
+    display:none;
+  }
+
+  .workspaceToolbar .workspaceRunButton {
+    grid-column:1/-1;
+    order:-3;
+    width:100%;
+    min-width:0;
+    margin:0;
+  }
+
+  .workspacePaperPicker,
+  .workspaceColumnBuilder,
+  .workspaceProNotice,
+  .prismaWorkspace,
+  .workspaceSurface {
+    border-radius:13px;
+  }
+
+  .prismaWorkspace {
+    padding:14px;
+  }
+
+  .pathHeroSurface,
+  .pathBuilder {
+    padding:18px 16px;
+    border-radius:16px;
+  }
+
+  .pathHeader {
+    gap:14px;
+  }
+
+  .pathHeader h2 {
+    margin-top:7px;
+    font-size:1.34rem;
+  }
+
+  .pathResetAction {
+    align-self:flex-start;
+  }
+
+  .pathBuilder textarea {
+    min-height:112px;
+    font-size:.9rem;
+  }
+
+  .pathBuildAction {
+    width:100%;
+    min-width:0;
+    justify-self:stretch;
+  }
+
+  .pathStage {
+    grid-template-columns:1fr;
+    gap:11px;
+    padding:16px;
+    border-radius:15px;
+  }
+
+  .pathStageIndex {
+    width:36px;
+    height:30px;
+  }
+
+  .stageCheck,
+  .stageStudyAction {
+    width:100%;
+    justify-content:center;
+  }
+
+  .openAlexBridge {
+    padding:17px 16px;
+    border-radius:15px;
+  }
+}
+
+@media (max-width:520px) {
+  .workspaceToolbar {
+    grid-template-columns:repeat(2,minmax(0,1fr));
+  }
+
+  .workspaceToolbar>.glassMenuSelect {
+    grid-column:auto;
+  }
+
+  .workspaceToolbar>button>span {
+    font-size:.66rem;
+  }
+}
+
+@media (prefers-reduced-motion:reduce) {
+  .liquidEffect,
+  .liquidPanelEffect {
+    display:none!important;
+  }
+
+  .workspaceCommandSurface,
+  .pathHeroSurface,
+  .pathBuilder,
+  .prismaWorkspace {
+    backdrop-filter:none;
+    -webkit-backdrop-filter:none;
+  }
+}

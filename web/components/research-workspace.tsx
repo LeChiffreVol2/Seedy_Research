@@ -576,61 +576,63 @@ export function ResearchWorkspacePanel({
 
   return (
     <section className="researchWorkspace" aria-label="Research Workspace Pro">
-      <header className="researchWorkspaceHeader">
-        <div>
-          <div className="workspaceTitleLine">
-            <span className="workspaceEyebrow">Workspace</span>
-            <span className="workspaceProBadge">Pro</span>
-            {prismaEnabled ? <span className="workspaceStandardBadge">PRISMA-ScR</span> : null}
+      <div className="workspaceCommandSurface">
+        <header className="researchWorkspaceHeader">
+          <div>
+            <div className="workspaceTitleLine">
+              <span className="workspaceEyebrow">Workspace</span>
+              <span className="workspaceProBadge">Pro</span>
+              {prismaEnabled ? <span className="workspaceStandardBadge">PRISMA-ScR</span> : null}
+            </div>
+            <input aria-label="Workspace title" value={title} maxLength={160} onChange={(event) => setTitle(event.target.value)} />
+            <p>{prismaEnabled ? "Screen papers, extract evidence, and keep a review log." : "Compare evidence across selected papers."}</p>
           </div>
-          <input aria-label="Workspace title" value={title} maxLength={160} onChange={(event) => setTitle(event.target.value)} />
-          <p>{prismaEnabled ? "Screen papers, extract evidence, and keep a review log." : "Compare evidence across selected papers."}</p>
-        </div>
-        <div className="workspaceHeaderStatus" aria-live="polite">
-          {status === "running" || status === "saving" ? <LoaderCircle size={15} className="workspaceSpinner" aria-hidden /> : status === "saved" ? <Check size={15} aria-hidden /> : null}
-          <span>{statusText}</span>
-        </div>
-      </header>
+          <div className="workspaceHeaderStatus" aria-live="polite">
+            {status === "running" || status === "saving" ? <LoaderCircle size={15} className="workspaceSpinner" aria-hidden /> : status === "saved" ? <Check size={15} aria-hidden /> : null}
+            <span>{statusText}</span>
+          </div>
+        </header>
 
-      <div className="workspaceToolbar" aria-label="Research workspace controls">
-        <GlassMenuSelect
-          label="Template"
-          value={template}
-          options={TEMPLATE_MENU_OPTIONS}
-          onChange={applyTemplate}
-          icon={LayoutTemplate}
-          className="workspaceGlassSelect"
-        />
-        <GlassMenuSelect
-          label="Model"
-          value={model}
-          options={MODEL_MENU_OPTIONS}
-          onChange={setModel}
-          icon={Cpu}
-          className="workspaceGlassSelect"
-        />
-        <button type="button" onClick={() => setPickerOpen((value) => !value)} aria-expanded={pickerOpen}>
-          <FolderOpen size={16} aria-hidden />
-          <span>Papers</span>
-          <strong>{rows.length}</strong>
-        </button>
-        <button type="button" onClick={() => setCustomColumnOpen((value) => !value)} disabled={columns.length >= 6} aria-expanded={customColumnOpen}>
-          <Plus size={16} aria-hidden />
-          <span>Add column</span>
-        </button>
-        <button type="button" onClick={() => void saveWorkspace()}>
-          <Save size={16} aria-hidden />
-          <span>Save</span>
-        </button>
-        <button type="button" onClick={prismaEnabled ? exportPrismaReview : exportWorkspace} disabled={!rows.length}>
-          <Download size={16} aria-hidden />
-          <span>{prismaEnabled ? "Export PRISMA" : "Export CSV"}</span>
-        </button>
-        <button className="workspaceRunButton" type="button" onClick={() => void runResearch()} disabled={proEnabled && (!runnableRows.length || !columns.length || status === "running")}>
-          <Sparkles size={16} aria-hidden />
-          <span>{proEnabled ? (prismaEnabled ? "Run included" : "Run selected") : "Run with Pro"}</span>
-          {runnableRows.length ? <strong>{estimatedCredits} cr</strong> : null}
-        </button>
+        <div className="workspaceToolbar" aria-label="Research workspace controls">
+          <GlassMenuSelect
+            label="Template"
+            value={template}
+            options={TEMPLATE_MENU_OPTIONS}
+            onChange={applyTemplate}
+            icon={LayoutTemplate}
+            className="workspaceGlassSelect"
+          />
+          <GlassMenuSelect
+            label="Model"
+            value={model}
+            options={MODEL_MENU_OPTIONS}
+            onChange={setModel}
+            icon={Cpu}
+            className="workspaceGlassSelect"
+          />
+          <button type="button" onClick={() => setPickerOpen((value) => !value)} aria-expanded={pickerOpen}>
+            <FolderOpen size={16} aria-hidden />
+            <span>Papers</span>
+            <strong>{rows.length}</strong>
+          </button>
+          <button type="button" onClick={() => setCustomColumnOpen((value) => !value)} disabled={columns.length >= 6} aria-expanded={customColumnOpen}>
+            <Plus size={16} aria-hidden />
+            <span>Add column</span>
+          </button>
+          <button type="button" onClick={() => void saveWorkspace()}>
+            <Save size={16} aria-hidden />
+            <span>Save</span>
+          </button>
+          <button type="button" onClick={prismaEnabled ? exportPrismaReview : exportWorkspace} disabled={!rows.length}>
+            <Download size={16} aria-hidden />
+            <span>{prismaEnabled ? "Export PRISMA" : "Export CSV"}</span>
+          </button>
+          <button className="workspaceRunButton" type="button" onClick={() => void runResearch()} disabled={proEnabled && (!runnableRows.length || !columns.length || status === "running")}>
+            <Sparkles size={16} aria-hidden />
+            <span>{proEnabled ? (prismaEnabled ? "Run included" : "Run selected") : "Run with Pro"}</span>
+            {runnableRows.length ? <strong>{estimatedCredits} cr</strong> : null}
+          </button>
+        </div>
       </div>
 
       {pickerOpen ? (

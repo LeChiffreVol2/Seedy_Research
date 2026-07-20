@@ -200,9 +200,9 @@ test("Research Path turns an explicit goal into a four-stage learning sequence",
   await page.setViewportSize({ width: 1440, height: 1000 });
   await page.goto("/");
   await page.getByRole("button", { name: "Research Path" }).click();
-  await expect(page.getByRole("heading", { name: "Turn an interest into a research plan" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Turn a topic into a research plan" })).toBeVisible();
   await page.getByLabel("What do you want to understand?").fill("Urban road safety in Thailand");
-  await page.getByRole("button", { name: "Build my research path" }).click();
+  await page.getByRole("button", { name: "Build research path" }).click();
 
   const workspace = page.getByLabel("Personalized research learning path");
   await expect(workspace.getByRole("heading", { name: "Urban road safety in Thailand" })).toBeVisible();
