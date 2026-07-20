@@ -64,6 +64,7 @@ test("desktop feed keeps the approved research hierarchy", async ({ page }) => {
   await expect(page.getByRole("menuitemradio", { name: /Evidence Mission/ })).toContainText("Flagship");
   await expect(page.getByRole("menuitemradio", { name: /Tutor Mission/ })).toBeVisible();
   await expect(page.getByRole("menuitemradio", { name: /Deep Research/ })).toContainText("Pro");
+  await expect(page.getByRole("menuitemradio", { name: /Automated Research/ })).toContainText("Pro");
   await expect(page.getByRole("menuitemradio", { name: /Fast Answer/ })).toBeVisible();
   await page.keyboard.press("Escape");
   await expect(page.getByRole("region", { name: "CivilMCP research feed" })).toBeVisible();
@@ -222,6 +223,20 @@ test("Deep Research is visible but gated to Founder Pro", async ({ page }) => {
   await deepResearch.click();
   await expect(page.getByRole("heading", { name: "Go deeper when the question demands it." })).toBeVisible();
   await expect(page.getByText(/Deep Research is included in Founder Pro/)).toBeVisible();
+});
+
+test("Automated Research is a distinct Founder Pro mode", async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.goto("/");
+  await page.getByRole("button", { name: /Evidence Mission/ }).click();
+  const automatedResearch = page.getByRole("menuitemradio", { name: /Automated Research/ });
+  await expect(automatedResearch).toContainText("Pro");
+  await expect(automatedResearch).toContainText(/bounded research program/i);
+  await automatedResearch.click();
+  await expect(page.getByRole("heading", { name: "Go deeper when the question demands it." })).toBeVisible();
+  await expect(page.getByText(/Automated Research is included in Founder Pro/)).toBeVisible();
+  await expect(page.getByText(/Deep \+ Automated Research/)).toBeVisible();
+  await expectNoPageOverflow(page);
 });
 
 test("model menu supports keyboard navigation and focus return", async ({ page }) => {

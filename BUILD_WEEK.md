@@ -27,7 +27,7 @@ All competition commits are created after July 13 with their real timestamps. No
 | Civil and City release gates coupled | Separate CivilMCP and CityMCP app, harness, CI, and release scopes |
 | Feed-level citations | Public Research Preview positioning, exact-page demo prompts, feedback, and release evidence |
 | Paper-code queries relied on semantic similarity | Bounded exact-paper retrieval followed by full-candidate reranking before the 8-chunk context limit |
-| One-shot cited answers | Bounded Agentic Evidence Missions with inspectable run stages, linked matrices, transfer checks, tutor checkpoints, and Markdown export |
+| One-shot cited answers | Bounded Agentic Evidence Missions plus Founder Pro Deep and Automated Research, with inspectable run stages, linked matrices, transfer checks, tutor checkpoints, audit-ready dossiers, and Markdown export |
 
 ## GPT-5.6 use
 

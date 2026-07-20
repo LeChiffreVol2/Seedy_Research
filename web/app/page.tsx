@@ -55,7 +55,7 @@ import {
 } from "@/lib/chat-models";
 
 type Mode = "baseline" | "mcp";
-type ChatExperience = "answer" | "mission" | "learn" | "research";
+type ChatExperience = "answer" | "mission" | "learn" | "research" | "automated";
 type CollectionFilter = "" | "ce_project" | "ncce";
 type SyncState = "loading" | "saving" | "saved" | "error";
 type OpenDropdown = "experience" | "model" | "collection" | "actions" | "examples" | null;
@@ -112,7 +112,7 @@ type MissionVerdict = "supported" | "mixed" | "conflicting" | "insufficient";
 type CivilMissionArtifact = {
   version: "civilmcp-evidence-brief-v1";
   question: string;
-  experience: "mission" | "learn" | "research";
+  experience: "mission" | "learn" | "research" | "automated";
   title: string;
   executiveSummary: string;
   verdict: { status: MissionVerdict; rationale: string };
@@ -144,6 +144,17 @@ type CivilMissionArtifact = {
     toolCallLimit: number;
     stepLimit: number;
     stages: Array<{ name: string; detail: string; status: "complete" | "limited" }>;
+  };
+  automation?: {
+    objective: string;
+    subquestions: string[];
+    tasks: Array<{
+      name: string;
+      objective: string;
+      status: "complete" | "limited";
+      evidenceIds: string[];
+    }>;
+    deliverables: string[];
   };
 };
 
@@ -378,6 +389,12 @@ const EXPERIENCE_OPTIONS: Array<MenuOption<ChatExperience>> = [
     description: "A rigorous multi-paper brief with methods, conflicts, gaps, and next validation",
     badge: "Pro",
   },
+  {
+    value: "automated",
+    label: "Automated Research",
+    description: "Plan and execute a bounded research program, then publish an audit-ready dossier",
+    badge: "Pro",
+  },
   { value: "answer", label: "Fast Answer", description: "Stream the standard cited research brief" },
 ];
 
@@ -546,6 +563,24 @@ function evidenceBriefMarkdown(annotation: CivilMissionAnnotation, evidenceItems
     "",
     `**Research question:** ${artifact.question}`,
     "",
+    ...(artifact.automation
+      ? [
+          "## Automated research program",
+          "",
+          artifact.automation.objective,
+          "",
+          "### Questions investigated",
+          ...artifact.automation.subquestions.map((item, index) => `${index + 1}. ${item}`),
+          "",
+          "### Execution log",
+          ...artifact.automation.tasks.map(
+            (task) => `- **${task.name} — ${task.status}:** ${task.objective}${task.evidenceIds.length ? ` ${task.evidenceIds.map((id) => `[${id}]`).join(" ")}` : ""}`,
+          ),
+          "",
+          `**Dossier includes:** ${artifact.automation.deliverables.join(" · ")}`,
+          "",
+        ]
+      : []),
     "## Executive summary",
     "",
     artifact.executiveSummary,
@@ -1243,11 +1278,19 @@ function AgenticMissionCard({
   const artifact = annotation.artifact;
   const verdictLabel = missionVerdictLabel(artifact.verdict.status);
   const isDeepResearch = artifact.experience === "research";
+  const isAutomatedResearch = artifact.experience === "automated";
+  const artifactLabel = isAutomatedResearch
+    ? "Automated Research Dossier"
+    : isDeepResearch
+      ? "Deep Research Brief"
+      : "Agentic Evidence Mission";
   return (
-    <section className="missionArtifact" aria-label={isDeepResearch ? "Deep Research Brief" : "Agentic Evidence Mission"}>
+    <section className="missionArtifact" aria-label={artifactLabel}>
       <div className="missionHeader">
         <div>
-          <span className="missionEyebrow">{isDeepResearch ? "Pro · Deep Research" : "Linked Evidence Brief"}</span>
+          <span className="missionEyebrow">
+            {isAutomatedResearch ? "Pro · Automated Research" : isDeepResearch ? "Pro · Deep Research" : "Linked Evidence Brief"}
+          </span>
           <h3>{artifact.title}</h3>
         </div>
         <span className={`missionVerdict ${artifact.verdict.status}`}>{verdictLabel}</span>
@@ -1259,6 +1302,44 @@ function AgenticMissionCard({
         <span><strong>{artifact.trust.pageCoveragePercent}%</strong> exact-page coverage</span>
         <span><strong>{artifact.agentRun.toolCalls}/{artifact.agentRun.toolCallLimit}</strong> bounded tool calls</span>
       </div>
+
+      {isAutomatedResearch && artifact.automation ? (
+        <section className="missionSection automationProgram" aria-label="Automated research program">
+          <div className="missionSectionHeading">
+            <div>
+              <span>Research program</span>
+              <p>{artifact.automation.objective}</p>
+            </div>
+          </div>
+          <div className="automationProgramLayout">
+            <div>
+              <strong>Questions investigated</strong>
+              <ol>
+                {artifact.automation.subquestions.map((question) => <li key={question}>{question}</li>)}
+              </ol>
+            </div>
+            <div>
+              <strong>Execution</strong>
+              <ol className="automationTasks">
+                {artifact.automation.tasks.map((task) => (
+                  <li key={task.name} className={task.status}>
+                    <span>{task.name}</span>
+                    <p>{task.objective}</p>
+                    <small>
+                      {task.status === "complete" ? "Complete" : "Limited"}
+                      {task.evidenceIds.length ? ` · ${task.evidenceIds.map((id) => `[${id}]`).join(" ")}` : ""}
+                    </small>
+                  </li>
+                ))}
+              </ol>
+            </div>
+          </div>
+          <div className="automationDeliverables">
+            <strong>Dossier includes</strong>
+            <span>{artifact.automation.deliverables.join(" · ")}</span>
+          </div>
+        </section>
+      ) : null}
 
       <section className="missionSection">
         <div className="missionSectionHeading">
@@ -1347,7 +1428,7 @@ function AgenticMissionCard({
       <div className="missionActions">
         <button type="button" className="cardAction" onClick={onExport}>
           <Download size={16} strokeWidth={2.2} aria-hidden />
-          <span>Export Evidence Brief</span>
+          <span>{isAutomatedResearch ? "Export Research Dossier" : "Export Evidence Brief"}</span>
         </button>
         <span>Saved with this chat and share link</span>
       </div>
@@ -3057,7 +3138,7 @@ function AccountPanel({
             </span>
             <div>
               <p className="workspaceEyebrow">{founderPro ? "Founder Pro" : "Research Preview"}</p>
-              <h3>{founderPro ? "Deep Research is unlocked." : "Go deeper when the question demands it."}</h3>
+              <h3>{founderPro ? "Pro research is unlocked." : "Go deeper when the question demands it."}</h3>
             </div>
           </div>
           <p className="planPrice"><strong>฿{billing.priceThb}</strong><span>/ month</span></p>
@@ -3072,7 +3153,7 @@ function AccountPanel({
           <div className="authFeatureList">
             <div className="authFeatureRow">
               <Crown size={17} strokeWidth={2.2} aria-hidden />
-              <span><strong>Deep Research + Terra + Sol</strong><small>Methods, contradictions, research gaps, and next validation in one cited brief.</small></span>
+              <span><strong>Deep + Automated Research</strong><small>Run rigorous briefs or a bounded end-to-end research program with an audit-ready dossier.</small></span>
             </div>
             <div className="authFeatureRow">
               <FileText size={17} strokeWidth={2.2} aria-hidden />
@@ -4360,7 +4441,7 @@ export default function Home() {
 
   const exportEvidenceBrief = (annotation: CivilMissionAnnotation | null = latestMissionAnnotation) => {
     if (!annotation) {
-      setStatusText("Run an Evidence Mission before exporting a linked brief.");
+      setStatusText("Run an evidence or research mode before exporting its linked artifact.");
       return;
     }
     const sourceMessage = messages.find((message) => getCivilMissionAnnotation(message)?.traceId === annotation.traceId);
@@ -4369,10 +4450,11 @@ export default function Home() {
     const url = URL.createObjectURL(blob);
     const anchor = document.createElement("a");
     anchor.href = url;
-    anchor.download = `civilmcp-evidence-brief-${Date.now()}.md`;
+    const automated = annotation.artifact.experience === "automated";
+    anchor.download = `civilmcp-${automated ? "research-dossier" : "evidence-brief"}-${Date.now()}.md`;
     anchor.click();
     URL.revokeObjectURL(url);
-    setStatusText("Evidence Brief exported as Markdown");
+    setStatusText(`${automated ? "Research Dossier" : "Evidence Brief"} exported as Markdown`);
   };
 
   const createShareLink = async (copyToClipboard: boolean) => {
@@ -4490,8 +4572,11 @@ export default function Home() {
   };
 
   const selectExperience = (experience: ChatExperience) => {
-    if (experience === "research" && !(billing.plan === "founder_pro" && billing.premiumModels)) {
-      setStatusText("Deep Research is included in Founder Pro. Sign in or upgrade to continue.");
+    if ((experience === "research" || experience === "automated") && !(billing.plan === "founder_pro" && billing.premiumModels)) {
+      const proGateMessage = experience === "automated"
+        ? "Automated Research is included in Founder Pro. Sign in or upgrade to continue."
+        : "Deep Research is included in Founder Pro. Sign in or upgrade to continue.";
+      setStatusText(proGateMessage);
       setAppView("settings");
       return;
     }

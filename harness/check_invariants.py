@@ -268,7 +268,7 @@ def check_build_week_contract() -> Check:
         "agentic_evidence_mission": all(
             marker in chat
             for marker in (
-                'type ChatExperience = "answer" | "mission" | "learn" | "research"',
+                'type ChatExperience = "answer" | "mission" | "learn" | "research" | "automated"',
                 "generateMissionArtifact",
                 "finalizeMissionArtifact",
                 'type: "civilmcp_mission"',
@@ -292,6 +292,18 @@ def check_build_week_contract() -> Check:
             marker in chat
             for marker in ('experience === "research"', "getBillingState(userId)", 'billingState.plan !== "founder_pro"')
         ) and all(marker in page for marker in ('label: "Deep Research"', "Deep Research is included in Founder Pro")),
+        "automated_research_pro_gate": all(
+            marker in chat
+            for marker in (
+                'experience === "research" || experience === "automated"',
+                "fallbackAutomationProgram",
+                "finalizeAutomationProgram",
+                'experience === "automated"',
+            )
+        ) and all(
+            marker in page
+            for marker in ('label: "Automated Research"', "Automated Research is included in Founder Pro", "automationProgram")
+        ),
     }
     missing = [name for name, present in required.items() if not present]
     if missing:

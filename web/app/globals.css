@@ -3121,6 +3121,82 @@ button {
   font-size: 0.7rem;
 }
 
+.automationProgram {
+  padding: 12px 0;
+  border-top: 1px solid rgba(87, 113, 138, 0.14);
+  border-bottom: 1px solid rgba(87, 113, 138, 0.14);
+}
+
+.automationProgramLayout {
+  display: grid;
+  grid-template-columns: minmax(0, 0.8fr) minmax(0, 1.2fr);
+  gap: 18px;
+}
+
+.automationProgramLayout > div > strong,
+.automationDeliverables strong {
+  color: #183b56;
+  font-size: 0.74rem;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.automationProgramLayout ol {
+  margin: 8px 0 0;
+  padding-left: 18px;
+  color: var(--text-sub);
+  font-size: 0.75rem;
+  line-height: 1.5;
+}
+
+.automationProgramLayout li + li {
+  margin-top: 6px;
+}
+
+.automationTasks {
+  padding: 0 !important;
+  list-style: none;
+}
+
+.automationTasks li {
+  display: grid;
+  grid-template-columns: 82px minmax(0, 1fr) auto;
+  gap: 8px;
+  align-items: baseline;
+  padding: 7px 0;
+  border-bottom: 1px solid rgba(87, 113, 138, 0.12);
+}
+
+.automationTasks li span {
+  color: #183b56;
+  font-weight: 850;
+}
+
+.automationTasks p,
+.automationTasks small {
+  margin: 0;
+  color: var(--text-sub);
+  font-size: 0.7rem;
+  line-height: 1.4;
+}
+
+.automationTasks small {
+  color: #067451;
+  font-weight: 800;
+}
+
+.automationTasks li.limited small {
+  color: #844414;
+}
+
+.automationDeliverables {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 12px;
+  color: var(--text-sub);
+  font-size: 0.72rem;
+}
+
 @media (max-width: 860px) {
   .missionMatrixRow,
   .missionMatrixRow dl {
@@ -3134,6 +3210,18 @@ button {
 
   .agentRunTrace ol {
     grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .automationProgramLayout {
+    grid-template-columns: 1fr;
+  }
+
+  .automationTasks li {
+    grid-template-columns: 78px minmax(0, 1fr);
+  }
+
+  .automationTasks small {
+    grid-column: 2;
   }
 }
 

@@ -77,7 +77,7 @@ const OPENAI_ANSWER_MIN_TOKENS = 2400;
 
 type Intent = "simple_lookup" | "compare" | "summarize" | "methodology" | "citation_search";
 type CollectionFilter = "" | "ce_project" | "ncce";
-type ChatExperience = "answer" | "mission" | "learn" | "research";
+type ChatExperience = "answer" | "mission" | "learn" | "research" | "automated";
 type ChatBody = {
   messages: UIMessage[];
   mode?: "baseline" | "mcp";
@@ -293,6 +293,17 @@ const MissionArtifactSchema = z.object({
       .min(2)
       .max(4),
   }),
+  automation: z.object({
+    objective: z.string().min(1).max(420),
+    subquestions: z.array(z.string().min(1).max(260)).min(2).max(5),
+    tasks: z.array(z.object({
+      name: z.string().min(1).max(80),
+      objective: z.string().min(1).max(280),
+      status: z.enum(["complete", "limited"]),
+      evidenceIds: z.array(z.string().regex(/^E\d+$/)).max(4),
+    })).min(3).max(5),
+    deliverables: z.array(z.string().min(1).max(160)).min(3).max(6),
+  }).optional(),
 });
 
 type MissionArtifactCore = z.infer<typeof MissionArtifactSchema>;
@@ -505,8 +516,8 @@ function validateChatBody(body: ChatBody): string | null {
   if (body.sessionId && !isValidSessionId(body.sessionId)) {
     return "sessionId must be a UUID.";
   }
-  if (body.experience && !["answer", "mission", "learn", "research"].includes(body.experience)) {
-    return "experience must be answer, mission, learn, or research.";
+  if (body.experience && !["answer", "mission", "learn", "research", "automated"].includes(body.experience)) {
+    return "experience must be answer, mission, learn, research, or automated.";
   }
   return null;
 }
@@ -1962,6 +1973,93 @@ function fallbackMissionCore(question: string, builtContext: BuiltContext): Miss
   };
 }
 
+function fallbackAutomationProgram(
+  question: string,
+  builtContext: BuiltContext,
+): NonNullable<MissionArtifactCore["automation"]> {
+  const evidence = builtContext.evidenceItems;
+  const evidenceIds = evidence.map((item) => item.evidenceId);
+  const sourceCount = new Set(evidence.map((item) => item.source)).size;
+  const exactPageIds = evidence
+    .filter((item) => item.pageStart != null && item.pageEnd != null)
+    .map((item) => item.evidenceId);
+  return {
+    objective: `Execute a bounded, auditable research program for: ${cleanEvidenceText(question, 260)}`,
+    subquestions: [
+      "What does the strongest available evidence directly support?",
+      "How do methods, samples, and engineering contexts differ across the selected papers?",
+      "Where do findings agree, conflict, or remain insufficient?",
+      "What is the smallest defensible next study or validation?",
+    ],
+    tasks: [
+      {
+        name: "Scope",
+        objective: `Translate the question into a ${builtContext.plan?.intent ?? "research"} evidence plan.`,
+        status: "complete",
+        evidenceIds: [],
+      },
+      {
+        name: "Gather",
+        objective: "Retrieve and rank the most relevant page-linked evidence packets.",
+        status: evidenceIds.length ? "complete" : "limited",
+        evidenceIds: evidenceIds.slice(0, 4),
+      },
+      {
+        name: "Compare",
+        objective: "Compare methods, findings, limitations, and context across distinct sources.",
+        status: sourceCount >= 2 ? "complete" : "limited",
+        evidenceIds: evidenceIds.slice(0, 4),
+      },
+      {
+        name: "Verify",
+        objective: "Confirm that every retained evidence packet resolves to an exact source page.",
+        status: evidence.length > 0 && exactPageIds.length === evidence.length ? "complete" : "limited",
+        evidenceIds: exactPageIds.slice(0, 4),
+      },
+      {
+        name: "Publish",
+        objective: "Publish a conservative dossier that separates evidence, inference, gaps, and next validation.",
+        status: evidenceIds.length ? "complete" : "limited",
+        evidenceIds: evidenceIds.slice(0, 4),
+      },
+    ],
+    deliverables: ["Executive synthesis", "Evidence matrix", "Method comparison", "Research gaps", "Recommended next study"],
+  };
+}
+
+function finalizeAutomationProgram(
+  core: MissionArtifactCore,
+  question: string,
+  builtContext: BuiltContext,
+  validEvidenceIds: Set<string>,
+): NonNullable<MissionArtifactCore["automation"]> {
+  const fallback = fallbackAutomationProgram(question, builtContext);
+  const automation = core.automation ?? fallback;
+  const subquestions = automation.subquestions
+    .map((item) => sanitizeMissionText(item, validEvidenceIds))
+    .filter(Boolean)
+    .slice(0, 5);
+  const tasks = automation.tasks
+    .map((task) => ({
+      name: sanitizeMissionText(task.name, validEvidenceIds),
+      objective: sanitizeMissionText(task.objective, validEvidenceIds),
+      status: task.status,
+      evidenceIds: uniqueValidEvidenceIds(task.evidenceIds, validEvidenceIds),
+    }))
+    .filter((task) => task.name && task.objective)
+    .slice(0, 5);
+  const deliverables = automation.deliverables
+    .map((item) => sanitizeMissionText(item, validEvidenceIds))
+    .filter(Boolean)
+    .slice(0, 6);
+  return {
+    objective: sanitizeMissionText(automation.objective, validEvidenceIds) || fallback.objective,
+    subquestions: subquestions.length >= 2 ? subquestions : fallback.subquestions,
+    tasks: tasks.length >= 3 ? tasks : fallback.tasks,
+    deliverables: deliverables.length >= 3 ? deliverables : fallback.deliverables,
+  };
+}
+
 function finalizeMissionArtifact(
   core: MissionArtifactCore,
   question: string,
@@ -2062,6 +2160,9 @@ function finalizeMissionArtifact(
         { name: "Publish", detail: "Saved as a linked Evidence Brief", status: "complete" },
       ],
     },
+    automation: experience === "automated"
+      ? finalizeAutomationProgram(core, question, builtContext, validEvidenceIds)
+      : undefined,
   };
 }
 
@@ -2096,6 +2197,8 @@ async function generateMissionArtifact(
           ? "Make checkpoints Socratic: help the learner inspect evidence before revealing a broad conclusion."
           : experience === "research"
             ? "Act as a senior research analyst. Compare methods and validity, surface contradictions, state research gaps, and propose the smallest defensible next validation. Be conservative and auditable."
+            : experience === "automated"
+              ? "Execute an end-to-end bounded research program. Decompose the goal into 2-5 subquestions, document 3-5 completed or limited tasks, compare methods and validity, surface contradictions and gaps, and publish an audit-ready dossier. Populate automation and never imply background work beyond this run."
             : "Make the brief decision-useful while keeping every conclusion auditable.",
       ].join("\n"),
       prompt: [
@@ -2139,7 +2242,11 @@ function buildMissionMarkdown(artifact: MissionArtifact): string {
     ? artifact.verdict.rationale
     : `${artifact.verdict.rationale} [${firstEvidenceId}]`;
   return [
-    artifact.experience === "research" ? "## Deep Research Brief" : "## Agentic Evidence Mission",
+    artifact.experience === "automated"
+      ? "## Automated Research Dossier"
+      : artifact.experience === "research"
+        ? "## Deep Research Brief"
+        : "## Agentic Evidence Mission",
     summary,
     "",
     `**Evidence verdict — ${missionVerdictLabel(artifact.verdict.status)}:** ${rationale}`,
@@ -2619,10 +2726,11 @@ export async function POST(request: NextRequest) {
     );
   }
 
-  if (experience === "research") {
+  if (experience === "research" || experience === "automated") {
+    const proExperience = experience === "automated" ? "Automated Research" : "Deep Research";
     if (!identity.isAuthenticated) {
       return finalizeResponse(Response.json(
-        { error: "Deep Research is included in Founder Pro. Sign in and upgrade to continue.", code: "pro_required" },
+        { error: `${proExperience} is included in Founder Pro. Sign in and upgrade to continue.`, code: "pro_required" },
         { status: 402, headers: rateLimitHeaders(rate) },
       ));
     }
@@ -2630,13 +2738,13 @@ export async function POST(request: NextRequest) {
       const billingState = await getBillingState(userId);
       if (billingState.plan !== "founder_pro" || !billingState.premiumModels) {
         return finalizeResponse(Response.json(
-          { error: "Deep Research is included in Founder Pro. Upgrade to continue.", code: "pro_required" },
+          { error: `${proExperience} is included in Founder Pro. Upgrade to continue.`, code: "pro_required" },
           { status: 402, headers: rateLimitHeaders(rate) },
         ));
       }
     } catch (error) {
-      console.error("civilmcp_deep_research_entitlement_failed", error instanceof Error ? error.message : String(error));
-      return finalizeResponse(Response.json({ error: "Deep Research access is temporarily unavailable." }, { status: 503, headers: rateLimitHeaders(rate) }));
+      console.error("civilmcp_pro_research_entitlement_failed", error instanceof Error ? error.message : String(error));
+      return finalizeResponse(Response.json({ error: `${proExperience} access is temporarily unavailable.` }, { status: 503, headers: rateLimitHeaders(rate) }));
     }
   }
 

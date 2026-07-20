@@ -32,7 +32,7 @@ With MCP on, the default run is a bounded, fully-agentic Evidence Mission:
 
 The brief is stored in the existing chat history/share transcript and exports as portable Markdown. `Tutor Mission` emphasizes guided checkpoints; `Fast Answer` preserves the existing streaming brief. Agent activity is inspectable, but private reasoning and raw tool payloads are never exposed. See [docs/AGENTIC_EVIDENCE_MISSIONS.md](docs/AGENTIC_EVIDENCE_MISSIONS.md).
 
-Explore remains the feed-first discovery surface: search, filter, inspect a paper, open its evidence, and continue into chat. `Research Path` is a separate learning workspace that turns a goal into four bounded stages using CivilMCP papers, saves progress in the browser, and can bridge to global metadata through OpenAlex. `Deep Research` is the Founder Pro workflow for conservative multi-paper comparison, contradictions, research gaps, and a smallest-defensible next validation.
+Explore remains the feed-first discovery surface: search, filter, inspect a paper, open its evidence, and continue into chat. `Research Path` is a separate learning workspace that turns a goal into four bounded stages using CivilMCP papers, saves progress in the browser, and can bridge to global metadata through OpenAlex. `Deep Research` is the Founder Pro workflow for a rigorous one-question brief. `Automated Research` is a separate Founder Pro mode that decomposes a goal, executes a bounded research program, and publishes an audit-ready dossier with an execution log, method comparison, gaps, and recommended next study.
 
 ## Model behavior
 
@@ -47,7 +47,7 @@ Explore remains the feed-first discovery surface: search, filter, inspect a pape
 - Free account: Luna, synced history, and 25 weighted answer credits per month.
 - Founder Pro: ฿199/month, 150 credits, and Terra/Sol access. Luna uses 1 credit, Terra 3, and Sol 5; credits do not roll over.
 
-Deep Research requires Founder Pro and consumes the normal credit weight of the selected answer model; it does not introduce a separate unlimited agent quota.
+Deep and Automated Research require Founder Pro and consume the normal credit weight of the selected answer model; neither introduces an unlimited or background agent quota.
 
 Supabase Auth remains the identity source. Google OAuth and email magic links are the primary sign-in paths, with password sign-in available as a fallback. Billing uses Stripe-hosted Checkout and Customer Portal; entitlement and credit checks are always enforced on the server.
 

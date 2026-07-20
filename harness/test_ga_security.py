@@ -151,7 +151,7 @@ class GASecurityContracts(unittest.TestCase):
     def test_agentic_evidence_mission_is_bounded_and_citation_allowlisted(self) -> None:
         chat = source("web/app/api/chat/route.ts")
         page = source("web/app/page.tsx")
-        self.assertIn('type ChatExperience = "answer" | "mission" | "learn" | "research"', chat)
+        self.assertIn('type ChatExperience = "answer" | "mission" | "learn" | "research" | "automated"', chat)
         self.assertIn("uniqueValidEvidenceIds", chat)
         self.assertIn('core.verdict.status === "conflicting" && sourceCount < 2', chat)
         self.assertIn('noEvidence ? "insufficient"', chat)
@@ -166,12 +166,18 @@ class GASecurityContracts(unittest.TestCase):
         chat = source("web/app/api/chat/route.ts")
         path = source("web/app/api/research-path/route.ts")
         self.assertIn('experience === "research"', chat)
+        self.assertIn('experience === "research" || experience === "automated"', chat)
+        self.assertIn("fallbackAutomationProgram", chat)
+        self.assertIn("finalizeAutomationProgram", chat)
+        self.assertIn('experience === "automated"', chat)
         self.assertIn("getBillingState(userId)", chat)
         self.assertIn('billingState.plan !== "founder_pro"', chat)
         self.assertIn("readBoundedJson<PathRequest>(request, 8_192)", path)
         self.assertIn("goal.length < 8", path)
         self.assertIn("AbortSignal.timeout(8_000)", path)
         self.assertIn("process.env.OPENALEX_API_KEY", path)
+        self.assertIn('label: "Automated Research"', source("web/app/page.tsx"))
+        self.assertIn("Automated Research is included in Founder Pro", source("web/app/page.tsx"))
 
 
 if __name__ == "__main__":
