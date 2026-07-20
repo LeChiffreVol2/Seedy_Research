@@ -39,6 +39,7 @@ import {
   SlidersHorizontal,
   Sparkles,
   RefreshCw,
+  Route,
   Trash2,
   X,
 } from "lucide-react";
@@ -54,12 +55,12 @@ import {
 } from "@/lib/chat-models";
 
 type Mode = "baseline" | "mcp";
-type ChatExperience = "answer" | "mission" | "learn";
+type ChatExperience = "answer" | "mission" | "learn" | "research";
 type CollectionFilter = "" | "ce_project" | "ncce";
 type SyncState = "loading" | "saving" | "saved" | "error";
 type OpenDropdown = "experience" | "model" | "collection" | "actions" | "examples" | null;
 type FeedFilter = "hot" | "recent" | "evidence" | "saved" | "ncce" | "ce_project";
-type MobileNavItem = "explore" | "chat" | "history" | "shared" | "settings";
+type MobileNavItem = "explore" | "path" | "chat" | "history" | "shared" | "settings";
 type FeedStatus = "loading" | "ready" | "error";
 type SessionsStatus = "idle" | "loading" | "ready" | "error";
 type AuthMode = "signin" | "signup" | "magic-link" | "forgot-password" | "recovery";
@@ -111,7 +112,7 @@ type MissionVerdict = "supported" | "mixed" | "conflicting" | "insufficient";
 type CivilMissionArtifact = {
   version: "civilmcp-evidence-brief-v1";
   question: string;
-  experience: "mission" | "learn";
+  experience: "mission" | "learn" | "research";
   title: string;
   executiveSummary: string;
   verdict: { status: MissionVerdict; rationale: string };
@@ -304,6 +305,47 @@ type PaperTranslationResponse = {
   translatedAt: string;
 };
 
+type PathLevel = "foundation" | "applied" | "research";
+type PathOutcome = "literature_review" | "study_plan" | "decision_brief";
+
+type ResearchPath = {
+  version: "civilmcp-research-path-v1";
+  goal: string;
+  level: PathLevel;
+  outcome: PathOutcome;
+  sourceCodes: string[];
+  generatedAt: string;
+  stages: Array<{
+    id: string;
+    title: string;
+    objective: string;
+    prompt: string;
+    papers: Array<{
+      id: string;
+      source: string;
+      paperCode?: string | null;
+      collection: CollectionFilter;
+      title: string;
+      summary: string;
+      discipline?: string | null;
+      pageLabel: string;
+      evidenceCount: number;
+    }>;
+  }>;
+  openAlex: {
+    status: "connected" | "link_only" | "unavailable";
+    searchUrl: string;
+    works: Array<{
+      id: string;
+      title: string;
+      year?: number | null;
+      citedByCount: number;
+      topic?: string | null;
+      url: string;
+    }>;
+  };
+};
+
 type NavItem = {
   id: MobileNavItem;
   label: string;
@@ -330,6 +372,12 @@ const EXPERIENCE_OPTIONS: Array<MenuOption<ChatExperience>> = [
     label: "Tutor Mission",
     description: "Investigate the evidence, then learn through Socratic checkpoints",
   },
+  {
+    value: "research",
+    label: "Deep Research",
+    description: "A rigorous multi-paper brief with methods, conflicts, gaps, and next validation",
+    badge: "Pro",
+  },
   { value: "answer", label: "Fast Answer", description: "Stream the standard cited research brief" },
 ];
 
@@ -350,6 +398,7 @@ const FILTER_OPTIONS: Array<{ id: FeedFilter; label: string; icon: LucideIcon }>
 
 const MAIN_NAV_ITEMS: NavItem[] = [
   { id: "explore", label: "Explore", icon: Compass },
+  { id: "path", label: "Research Path", icon: Route },
   { id: "chat", label: "Chat", icon: MessageCircle },
   { id: "history", label: "History", icon: History },
   { id: "shared", label: "Shared", icon: Share2 },
@@ -366,6 +415,7 @@ const ACTION_LABELS = {
 const THAI_TEXT_PATTERN = /[\u0E00-\u0E7F]/;
 const TRANSLATION_CACHE_KEY = "civilmcp-paper-translations-v1";
 const PAPER_LANGUAGE_KEY = "civilmcp-paper-language-v1";
+const RESEARCH_PATH_KEY = "civilmcp-research-path-v1";
 const TRANSLATION_CACHE_TTL_MS = 7 * 24 * 60 * 60 * 1_000;
 const TRANSLATION_CACHE_MAX_PAPERS = 30;
 const TRANSLATION_BATCH_MAX_SEGMENTS = 48;
@@ -558,6 +608,12 @@ function cardKey(card: ResearchCardData): string {
 function isResearchCardData(value: unknown): value is ResearchCardData {
   const card = value as Partial<ResearchCardData>;
   return Boolean(card && typeof card === "object" && typeof card.id === "string" && typeof card.title === "string" && typeof card.source === "string");
+}
+
+function isResearchPath(value: unknown): value is ResearchPath {
+  if (!value || typeof value !== "object") return false;
+  const candidate = value as Partial<ResearchPath>;
+  return candidate.version === "civilmcp-research-path-v1" && typeof candidate.goal === "string" && Array.isArray(candidate.stages);
 }
 
 function looksLikeFileCode(value: string): boolean {
@@ -897,27 +953,6 @@ function GlassSelect<T extends string>({
   );
 }
 
-function ModeToggle({ useMcp, setUseMcp }: { useMcp: boolean; setUseMcp: (updater: (prev: boolean) => boolean) => void }) {
-  return (
-    <div className="modeGroup" aria-label="MCP mode">
-      <span className="modeLabel">MCP</span>
-      <span className="modeSegmentWrap">
-        <ClientLiquidLayer cornerRadius={999} displacementScale={26} />
-        <button
-          type="button"
-          className={`modeSegment ${useMcp ? "on" : "off"}`}
-          onClick={() => setUseMcp((prev) => !prev)}
-          aria-pressed={useMcp}
-        >
-          <span className="modeKnob" aria-hidden />
-          <span>On</span>
-          <span>Off</span>
-        </button>
-      </span>
-    </div>
-  );
-}
-
 function PaperLanguageToggle({
   language,
   isTranslating,
@@ -1118,6 +1153,7 @@ function PromptMenu({
         onClick={() => (open ? keyboard.closeMenu(false) : keyboard.openMenu())}
       >
         <Sparkles className="controlIcon" aria-hidden />
+        <span>Examples</span>
       </GlassButton>
       {open ? (
         <GlassDropdown onDismiss={() => keyboard.closeMenu()}>
@@ -1206,11 +1242,12 @@ function AgenticMissionCard({
 }) {
   const artifact = annotation.artifact;
   const verdictLabel = missionVerdictLabel(artifact.verdict.status);
+  const isDeepResearch = artifact.experience === "research";
   return (
-    <section className="missionArtifact" aria-label="Agentic Evidence Mission">
+    <section className="missionArtifact" aria-label={isDeepResearch ? "Deep Research Brief" : "Agentic Evidence Mission"}>
       <div className="missionHeader">
         <div>
-          <span className="missionEyebrow">Linked Evidence Brief</span>
+          <span className="missionEyebrow">{isDeepResearch ? "Pro · Deep Research" : "Linked Evidence Brief"}</span>
           <h3>{artifact.title}</h3>
         </div>
         <span className={`missionVerdict ${artifact.verdict.status}`}>{verdictLabel}</span>
@@ -1625,7 +1662,6 @@ function SearchComposer({
   onSubmit,
   onKeyDown,
   useMcp,
-  setUseMcp,
   experience,
   setExperience,
   selectedModel,
@@ -1649,7 +1685,6 @@ function SearchComposer({
   onSubmit: (event: FormEvent<HTMLFormElement>) => void;
   onKeyDown: (event: KeyboardEvent<HTMLTextAreaElement>) => void;
   useMcp: boolean;
-  setUseMcp: (updater: (prev: boolean) => boolean) => void;
   experience: ChatExperience;
   setExperience: (value: ChatExperience) => void;
   selectedModel: ChatModel;
@@ -1678,7 +1713,7 @@ function SearchComposer({
         value={draft}
         onChange={(event) => setDraft(event.target.value)}
         onKeyDown={onKeyDown}
-        placeholder="Ask about civil engineering research"
+        placeholder={activeNav === "explore" ? "Search papers or ask an evidence question" : "Ask a research question"}
         aria-label="Ask or search civil engineering papers"
         aria-describedby="composer-intent"
         rows={3}
@@ -1688,7 +1723,6 @@ function SearchComposer({
       </p>
       <div className="composerToolbar">
         <PromptMenu openDropdown={openDropdown} setOpenDropdown={setOpenDropdown} setDraft={setDraft} />
-        <ModeToggle useMcp={useMcp} setUseMcp={setUseMcp} />
         {useMcp ? (
           <GlassSelect
             id="experience"
@@ -2401,7 +2435,7 @@ function ChatWorkspace({
         <div>
           <p className="workspaceEyebrow">Chat workspace</p>
           <h2>{title || "Untitled chat"}</h2>
-          <p>Each conversation keeps its own model, collection, MCP mode, and cited evidence.</p>
+          <p>Each conversation keeps its own model, collection, research mode, and cited evidence.</p>
         </div>
         <button type="button" className="cardAction primary" onClick={onNewChat} disabled={isLoading}>
           <Plus size={17} strokeWidth={2.2} aria-hidden />
@@ -2600,6 +2634,160 @@ function SharedPanel({
   );
 }
 
+function PersonalizedResearchPathPanel({
+  goal,
+  setGoal,
+  level,
+  setLevel,
+  outcome,
+  setOutcome,
+  path,
+  status,
+  error,
+  completedStages,
+  onBuild,
+  onReset,
+  onToggleStage,
+  onStudyStage,
+  onOpenPaper,
+}: {
+  goal: string;
+  setGoal: (value: string) => void;
+  level: PathLevel;
+  setLevel: (value: PathLevel) => void;
+  outcome: PathOutcome;
+  setOutcome: (value: PathOutcome) => void;
+  path: ResearchPath | null;
+  status: SessionsStatus;
+  error: string;
+  completedStages: string[];
+  onBuild: () => void;
+  onReset: () => void;
+  onToggleStage: (stageId: string) => void;
+  onStudyStage: (prompt: string) => void;
+  onOpenPaper: (source: string) => void;
+}) {
+  const progress = path?.stages.length
+    ? Math.round((completedStages.length / path.stages.length) * 100)
+    : 0;
+
+  return (
+    <section className="workspacePanel pathWorkspace" aria-label="Personalized research learning path">
+      <header className="pathHeader">
+        <div>
+          <p className="workspaceEyebrow">Research Path</p>
+          <h2>{path ? path.goal : "Turn an interest into a research plan"}</h2>
+          <p>{path ? "A focused sequence through CivilMCP evidence, shaped to your level and outcome." : "Tell CivilMCP what you want to understand. It will select a small set of Thai studies and organize the work into four evidence-based stages."}</p>
+        </div>
+        {path ? <button type="button" className="textAction" onClick={onReset}>Build a new path</button> : null}
+      </header>
+
+      {!path ? (
+        <form className="pathBuilder" onSubmit={(event) => { event.preventDefault(); onBuild(); }}>
+          <label className="pathGoalField">
+            <span>What do you want to understand?</span>
+            <textarea
+              value={goal}
+              onChange={(event) => setGoal(event.target.value)}
+              placeholder="e.g. How can Thai cities reduce serious truck crashes?"
+              rows={3}
+              maxLength={280}
+              required
+            />
+          </label>
+          <div className="pathExamples" aria-label="Research path examples">
+            {["Construction delay risk", "Flood-resilient infrastructure", "Urban road safety"].map((example) => (
+              <button key={example} type="button" onClick={() => setGoal(example)}>{example}</button>
+            ))}
+          </div>
+          <div className="pathPreferences">
+            <label>
+              <span>Starting point</span>
+              <select value={level} onChange={(event) => setLevel(event.target.value as PathLevel)}>
+                <option value="foundation">New to the topic</option>
+                <option value="applied">Working knowledge</option>
+                <option value="research">Research-ready</option>
+              </select>
+            </label>
+            <label>
+              <span>Target outcome</span>
+              <select value={outcome} onChange={(event) => setOutcome(event.target.value as PathOutcome)}>
+                <option value="literature_review">Literature review</option>
+                <option value="study_plan">Study plan</option>
+                <option value="decision_brief">Decision brief</option>
+              </select>
+            </label>
+          </div>
+          <button type="submit" className="primaryAction pathBuildAction" disabled={status === "loading" || goal.trim().length < 8}>
+            {status === "loading" ? "Building your path…" : "Build my research path"}
+          </button>
+          {error ? <p className="pathError" role="alert">{error}</p> : null}
+        </form>
+      ) : (
+        <>
+          <div className="pathProgress" aria-label={`${progress}% of research path complete`}>
+            <span><strong>{completedStages.length}</strong> of {path.stages.length} stages complete</span>
+            <progress value={completedStages.length} max={path.stages.length} />
+            <span>{progress}%</span>
+          </div>
+          <div className="pathStageList">
+            {path.stages.map((stage, index) => {
+              const complete = completedStages.includes(stage.id);
+              return (
+                <article key={stage.id} className={`pathStage ${complete ? "complete" : ""}`}>
+                  <div className="pathStageIndex" aria-hidden>{String(index + 1).padStart(2, "0")}</div>
+                  <div className="pathStageBody">
+                    <div className="pathStageHeading">
+                      <div>
+                        <h3>{stage.title}</h3>
+                        <p>{stage.objective}</p>
+                      </div>
+                      <button type="button" className="stageCheck" aria-pressed={complete} onClick={() => onToggleStage(stage.id)}>
+                        <Check size={16} aria-hidden />
+                        <span>{complete ? "Completed" : "Mark complete"}</span>
+                      </button>
+                    </div>
+                    <div className="pathPaperList">
+                      {stage.papers.map((paper) => (
+                        <button key={paper.id} type="button" className="pathPaper" onClick={() => onOpenPaper(paper.source)}>
+                          <span>{paper.title}</span>
+                          <small>{[paper.paperCode, paper.pageLabel, `${paper.evidenceCount} evidence`].filter(Boolean).join(" · ")}</small>
+                        </button>
+                      ))}
+                    </div>
+                    <button type="button" className="primaryAction stageStudyAction" onClick={() => onStudyStage(stage.prompt)}>
+                      Study this stage with evidence
+                    </button>
+                  </div>
+                </article>
+              );
+            })}
+          </div>
+          <aside className="openAlexBridge" aria-label="Global research discovery with OpenAlex">
+            <div>
+              <p className="workspaceEyebrow">Global bridge · OpenAlex</p>
+              <h3>Check the Thai evidence against the wider research graph</h3>
+              <p>OpenAlex adds global works, authors, institutions, topics, and citation relationships without weakening CivilMCP&apos;s exact-page evidence boundary.</p>
+            </div>
+            {path.openAlex.works.length ? (
+              <div className="openAlexWorks">
+                {path.openAlex.works.map((work) => (
+                  <a key={work.id || work.url} href={work.url} target="_blank" rel="noreferrer">
+                    <span>{work.title}</span>
+                    <small>{[work.year, work.topic, `${work.citedByCount.toLocaleString("en-US")} citations`].filter(Boolean).join(" · ")}</small>
+                  </a>
+                ))}
+              </div>
+            ) : (
+              <a className="openAlexSearch" href={path.openAlex.searchUrl} target="_blank" rel="noreferrer">Search this topic in OpenAlex</a>
+            )}
+          </aside>
+        </>
+      )}
+    </section>
+  );
+}
+
 function AccountPanel({
   user,
   authenticated,
@@ -2666,7 +2854,7 @@ function AccountPanel({
     : isSignup
       ? "Create your CivilMCP account"
       : isMagic
-        ? "Sign in with an email link"
+        ? "Sign in to save your research"
         : isForgot || isRecovery
           ? "Reset your password"
           : "Sign in to CivilMCP";
@@ -2675,7 +2863,7 @@ function AccountPanel({
     : isSignup
       ? "Create one account for saved chats, cited answers, and shared research sessions."
       : isMagic
-        ? "We will send a secure, one-time sign-in link to your email."
+        ? "Sync research paths, cited chats, and saved papers across devices."
         : isForgot
           ? "Enter your account email and we will send a secure recovery link."
           : isRecovery
@@ -2747,7 +2935,6 @@ function AccountPanel({
           ) : (
             <>
               <button type="button" className="googleAuthAction" onClick={onGoogle} disabled={isBusy}>
-                <ShieldCheck size={18} strokeWidth={2.2} aria-hidden />
                 <span>Continue with Google</span>
               </button>
               <div className="authDivider"><span>or continue with email</span></div>
@@ -2870,11 +3057,11 @@ function AccountPanel({
             </span>
             <div>
               <p className="workspaceEyebrow">{founderPro ? "Founder Pro" : "Research Preview"}</p>
-              <h3>{founderPro ? "Deeper synthesis is unlocked." : "Unlock Terra and Sol."}</h3>
+              <h3>{founderPro ? "Deep Research is unlocked." : "Go deeper when the question demands it."}</h3>
             </div>
           </div>
           <p className="planPrice"><strong>฿{billing.priceThb}</strong><span>/ month</span></p>
-          <p className="authBenefitIntro">150 weighted answer credits. Luna uses 1, Terra 3, and Sol 5. Credits reset monthly with no rollover.</p>
+          <p className="authBenefitIntro">150 weighted answer credits for rigorous multi-paper work. Luna uses 1, Terra 3, and Sol 5.</p>
           {signedIn && billing.creditsRemaining != null && billing.creditsIncluded != null ? (
             <div className="creditMeter" aria-label={`${billing.creditsRemaining} of ${billing.creditsIncluded} answer credits remaining`}>
               <div><strong>{billing.creditsRemaining}</strong><span>of {billing.creditsIncluded} credits left</span></div>
@@ -2885,7 +3072,7 @@ function AccountPanel({
           <div className="authFeatureList">
             <div className="authFeatureRow">
               <Crown size={17} strokeWidth={2.2} aria-hidden />
-              <span><strong>GPT-5.6 Terra + Sol</strong><small>Choose more depth only when the research question needs it.</small></span>
+              <span><strong>Deep Research + Terra + Sol</strong><small>Methods, contradictions, research gaps, and next validation in one cited brief.</small></span>
             </div>
             <div className="authFeatureRow">
               <FileText size={17} strokeWidth={2.2} aria-hidden />
@@ -2978,6 +3165,14 @@ export default function Home() {
   const [activeMobileNav, setActiveMobileNav] = useState<MobileNavItem>("explore");
   const [currentSessionId, setCurrentSessionId] = useState("");
   const [currentSessionTitle, setCurrentSessionTitle] = useState("Untitled chat");
+  const [pathGoal, setPathGoal] = useState("");
+  const [pathLevel, setPathLevel] = useState<PathLevel>("applied");
+  const [pathOutcome, setPathOutcome] = useState<PathOutcome>("literature_review");
+  const [researchPath, setResearchPath] = useState<ResearchPath | null>(null);
+  const [researchPathStatus, setResearchPathStatus] = useState<SessionsStatus>("idle");
+  const [researchPathError, setResearchPathError] = useState("");
+  const [completedPathStages, setCompletedPathStages] = useState<string[]>([]);
+  const [researchPathReady, setResearchPathReady] = useState(false);
   const [userProfile, setUserProfile] = useState<ChatUserProfile | null>(null);
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [chatSessions, setChatSessions] = useState<ChatSessionSummary[]>([]);
@@ -3097,6 +3292,41 @@ export default function Home() {
       setStatusText("Saved papers could not be updated in this browser.");
     }
   }, [bookmarkedCards, bookmarksReady]);
+
+  useEffect(() => {
+    try {
+      const parsed = JSON.parse(window.localStorage.getItem(RESEARCH_PATH_KEY) ?? "null") as {
+        path?: unknown;
+        completedStages?: unknown;
+      } | null;
+      if (isResearchPath(parsed?.path)) {
+        setResearchPath(parsed.path);
+        setPathGoal(parsed.path.goal);
+        setPathLevel(parsed.path.level);
+        setPathOutcome(parsed.path.outcome);
+        setCompletedPathStages(Array.isArray(parsed?.completedStages) ? parsed.completedStages.filter((value): value is string => typeof value === "string") : []);
+        setResearchPathStatus("ready");
+      }
+    } catch {
+      setResearchPath(null);
+      setCompletedPathStages([]);
+    } finally {
+      setResearchPathReady(true);
+    }
+  }, []);
+
+  useEffect(() => {
+    if (!researchPathReady) return;
+    try {
+      if (researchPath) {
+        window.localStorage.setItem(RESEARCH_PATH_KEY, JSON.stringify({ path: researchPath, completedStages: completedPathStages }));
+      } else {
+        window.localStorage.removeItem(RESEARCH_PATH_KEY);
+      }
+    } catch {
+      setResearchPathError("This browser could not save your path locally.");
+    }
+  }, [completedPathStages, researchPath, researchPathReady]);
 
   useEffect(() => {
     let nextLanguage: PaperLanguage = "en";
@@ -4222,11 +4452,59 @@ export default function Home() {
     setStatusText("");
   };
 
+  const buildResearchPath = async () => {
+    const goal = pathGoal.trim();
+    if (goal.length < 8 || researchPathStatus === "loading") return;
+    setResearchPathStatus("loading");
+    setResearchPathError("");
+    try {
+      const path = await fetchJson<ResearchPath>("/api/research-path", {
+        method: "POST",
+        body: JSON.stringify({ goal, level: pathLevel, outcome: pathOutcome, collection: selectedCollection }),
+      });
+      if (!isResearchPath(path)) throw new Error("CivilMCP returned an invalid research path.");
+      setResearchPath(path);
+      setCompletedPathStages([]);
+      setResearchPathStatus("ready");
+    } catch (error) {
+      setResearchPathStatus("error");
+      setResearchPathError(error instanceof Error ? error.message : "Could not build this research path.");
+    }
+  };
+
+  const resetResearchPath = () => {
+    setResearchPath(null);
+    setCompletedPathStages([]);
+    setResearchPathError("");
+    setResearchPathStatus("idle");
+  };
+
+  const togglePathStage = (stageId: string) => {
+    setCompletedPathStages((current) => current.includes(stageId) ? current.filter((id) => id !== stageId) : [...current, stageId]);
+  };
+
+  const studyPathStage = (prompt: string) => {
+    setUseMcp(true);
+    setSelectedExperience("learn");
+    void submitPrompt(prompt, undefined, "mcp", "learn");
+  };
+
+  const selectExperience = (experience: ChatExperience) => {
+    if (experience === "research" && !(billing.plan === "founder_pro" && billing.premiumModels)) {
+      setStatusText("Deep Research is included in Founder Pro. Sign in or upgrade to continue.");
+      setAppView("settings");
+      return;
+    }
+    setSelectedExperience(experience);
+  };
+
   const navigateApp = (item: MobileNavItem) => {
     setAppView(item);
     if (item === "explore") {
       setStatusText("");
     } else if (item === "chat") {
+      setStatusText("");
+    } else if (item === "path") {
       setStatusText("");
     } else if (item === "history") {
       void refreshChatSessions(true);
@@ -4261,19 +4539,19 @@ export default function Home() {
           <section className="searchStage">
             <h1>
               {activeMobileNav === "explore"
-                ? `Explore ${feedTotal ? feedTotal.toLocaleString("en-US") : "941"} Thai civil engineering papers—structured into ${(feedTotalChunks || 48_370).toLocaleString("en-US")} page-linked evidence chunks.`
-                : "Ask CivilMCP with cited evidence"}
+                ? "Thai civil engineering, grounded in evidence."
+                : "Research with cited evidence"}
             </h1>
             {activeMobileNav === "explore" ? (
-              <div className="corpusProof" aria-label="CivilMCP corpus coverage">
-                <span><strong>{(feedTotal || 941).toLocaleString("en-US")}</strong> papers</span>
-                <span><strong>{(feedTotalSections || 8_148).toLocaleString("en-US")}</strong> active sections</span>
-                <span><strong>{(feedTotalChunks || 48_370).toLocaleString("en-US")}</strong> page-linked chunks</span>
-                <span>Thai + English</span>
-                <span>Exact page citations</span>
-                <span>Agentic Evidence Missions</span>
-                <span className="modelProof">Powered by GPT-5.6 Luna</span>
-              </div>
+              <>
+                <p className="searchLead">Search {(feedTotal || 941).toLocaleString("en-US")} Thai papers and verify every answer against the original pages.</p>
+                <div className="corpusProof" aria-label="CivilMCP corpus coverage">
+                  <span><strong>{(feedTotal || 941).toLocaleString("en-US")}</strong> papers</span>
+                  <span><strong>{(feedTotalChunks || 48_370).toLocaleString("en-US")}</strong> evidence chunks</span>
+                  <span>Exact-page citations</span>
+                </div>
+                <p className="corpusContext">Thai + English · Agentic evidence missions · GPT-5.6 Luna</p>
+              </>
             ) : null}
             <SearchComposer
               draft={draft}
@@ -4282,9 +4560,8 @@ export default function Home() {
               onSubmit={onSubmit}
               onKeyDown={onComposerKeyDown}
               useMcp={useMcp}
-              setUseMcp={setUseMcp}
               experience={selectedExperience}
-              setExperience={setSelectedExperience}
+              setExperience={selectExperience}
               selectedModel={selectedModel}
               modelOptions={modelOptions}
               selectedCollection={selectedCollection}
@@ -4331,7 +4608,25 @@ export default function Home() {
           </p>
         ) : null}
 
-        {activeMobileNav === "history" ? (
+        {activeMobileNav === "path" ? (
+          <PersonalizedResearchPathPanel
+            goal={pathGoal}
+            setGoal={setPathGoal}
+            level={pathLevel}
+            setLevel={setPathLevel}
+            outcome={pathOutcome}
+            setOutcome={setPathOutcome}
+            path={researchPath}
+            status={researchPathStatus}
+            error={researchPathError}
+            completedStages={completedPathStages}
+            onBuild={() => void buildResearchPath()}
+            onReset={resetResearchPath}
+            onToggleStage={togglePathStage}
+            onStudyStage={studyPathStage}
+            onOpenPaper={(source) => void openPaperDetailBySource(source)}
+          />
+        ) : activeMobileNav === "history" ? (
           <ChatHistoryPanel
             sessions={chatSessions}
             status={chatSessionsStatus}

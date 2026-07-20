@@ -2,7 +2,7 @@
 
 ## System Shape
 CivilMCP has three production surfaces:
-- `web/`: Next.js 15 app with research feed, chat UI, bounded Agentic Context Engine orchestration in `/api/chat`.
+- `web/`: Next.js 15 app with research feed, chat UI, bounded Agentic Context Engine orchestration in `/api/chat`, and deterministic learning-path assembly in `/api/research-path`.
 - `mcp-server/`: Python FastAPI MCP-style retrieval service exposing `/health`, `/metrics`, `/tools/list`, `/tools/call`, and MCP ASGI transport.
 - `pipeline/` + `supabase/`: PDF extraction, markdown/preview generation, v2 section/chunk embedding, and Supabase pgvector readiness checks.
 
@@ -20,9 +20,15 @@ user question
 
 ## Agentic Evidence Mission
 
-`experience=mission|learn` reuses the same bounded retrieval loop and produces a `civilmcp_mission` message annotation. The artifact contains an evidence verdict, linked matrix rows, transfer checks, learning checkpoints, trust metrics, and an inspectable stage summary. Evidence IDs are allow-listed against retrieved packets before publication; invalid model-proposed IDs are removed and weak/failed structured output falls back to a conservative deterministic brief.
+`experience=mission|learn|research` reuses the same bounded retrieval loop and produces a `civilmcp_mission` message annotation. The artifact contains an evidence verdict, linked matrix rows, transfer checks, learning checkpoints, trust metrics, and an inspectable stage summary. `research` adds a conservative multi-paper analyst prompt and is server-gated to Founder Pro before credit reservation. Evidence IDs are allow-listed against retrieved packets before publication; invalid model-proposed IDs are removed and weak/failed structured output falls back to a conservative deterministic brief.
 
 The artifact is transcript data, so the existing history and share paths persist it without a new table. The browser can export it as Markdown. `experience=answer` keeps the existing streaming response path. No private chain of thought, raw MCP payload, API key, or similarity score is exposed.
+
+## Research Path and OpenAlex
+
+`/api/research-path` accepts a bounded goal, level, outcome, and optional collection. It selects at most eight existing CivilMCP feed cards and organizes them into four deterministic stages; it does not create a new agent loop or store a new server-side record. Browser progress is local-first and each stage can continue into Tutor Mission with an evidence-bounded prompt.
+
+When a server-only `OPENALEX_API_KEY` is configured, the route adds up to four global work records from OpenAlex with an eight-second timeout. OpenAlex is treated as a discovery/metadata bridge, never as page-level evidence for CivilMCP answers. Missing or unavailable OpenAlex access degrades to a normal public search link.
 
 ## Retrieval Substrate
 - Embeddings: `text-embedding-3-small` with `EMBEDDING_DIMENSIONS=768`.
@@ -38,7 +44,7 @@ The artifact is transcript data, so the existing history and share paths persist
 - CityMCP application code, harnesses, CI, release, and operations docs live under `citymcp/` and are excluded from CivilMCP competition scoring.
 
 ## Boundary Rules
-- Browser never receives service-role Supabase key, OpenAI key, DeepSeek key, or MCP server key.
+- Browser never receives service-role Supabase key, OpenAI key, DeepSeek key, OpenAlex key, or MCP server key.
 - Web app orchestrates chat/model behavior; MCP server remains retrieval-only.
 - Pipeline/indexing jobs do not run on Vercel request paths.
 - Harness scripts may call live services but must skip with `warn` when required endpoints or keys are absent.

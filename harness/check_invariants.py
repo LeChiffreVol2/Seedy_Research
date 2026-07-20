@@ -235,6 +235,7 @@ def check_build_week_contract() -> Check:
     chat = (ROOT / "web" / "app" / "api" / "chat" / "route.ts").read_text(encoding="utf-8", errors="replace")
     translation = (ROOT / "web" / "app" / "api" / "paper-translation" / "route.ts").read_text(encoding="utf-8", errors="replace")
     page = (ROOT / "web" / "app" / "page.tsx").read_text(encoding="utf-8", errors="replace")
+    research_path = (ROOT / "web" / "app" / "api" / "research-path" / "route.ts").read_text(encoding="utf-8", errors="replace")
     feed = (ROOT / "web" / "lib" / "research-feed.ts").read_text(encoding="utf-8", errors="replace")
     ci = (ROOT / ".github" / "workflows" / "ci.yml").read_text(encoding="utf-8", errors="replace")
     release = (ROOT / ".github" / "workflows" / "preview-release.yml").read_text(encoding="utf-8", errors="replace")
@@ -249,7 +250,7 @@ def check_build_week_contract() -> Check:
         "luna_translation": '"gpt-5.6-luna"' in translation,
         "guest_hour_quota": "CHAT_GUEST_REQUESTS_PER_HOUR, 1, 500, 30" in chat,
         "corpus_facets": all(marker in feed for marker in ("totalSections", "totalChunks")),
-        "verified_corpus_fallback": all(marker in page for marker in ("8_148", "48_370", "active sections", "page-linked chunks")),
+        "verified_corpus_fallback": all(marker in page for marker in ("941", "48_370", "Exact-page citations")),
         "explicit_paper_routing": all(marker in chat for marker in ("explicitPaperSources", "fetch_civil_paper", "exactPaperMatches")),
         "city_directory": (ROOT / "citymcp" / "ops-dashboard").exists(),
         "city_ci": (ROOT / ".github" / "workflows" / "citymcp-ci.yml").exists(),
@@ -267,7 +268,7 @@ def check_build_week_contract() -> Check:
         "agentic_evidence_mission": all(
             marker in chat
             for marker in (
-                'type ChatExperience = "answer" | "mission" | "learn"',
+                'type ChatExperience = "answer" | "mission" | "learn" | "research"',
                 "generateMissionArtifact",
                 "finalizeMissionArtifact",
                 'type: "civilmcp_mission"',
@@ -283,6 +284,14 @@ def check_build_week_contract() -> Check:
                 "openPaperDetailBySource",
             )
         ),
+        "personalized_research_path": all(
+            marker in research_path
+            for marker in ("civilmcp-research-path-v1", "Map the field", "openAlexBridge", "readBoundedJson")
+        ) and all(marker in page for marker in ("PersonalizedResearchPathPanel", 'label: "Research Path"')),
+        "deep_research_pro_gate": all(
+            marker in chat
+            for marker in ('experience === "research"', "getBillingState(userId)", 'billingState.plan !== "founder_pro"')
+        ) and all(marker in page for marker in ('label: "Deep Research"', "Deep Research is included in Founder Pro")),
     }
     missing = [name for name, present in required.items() if not present]
     if missing:

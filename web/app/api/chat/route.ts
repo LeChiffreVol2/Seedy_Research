@@ -15,7 +15,7 @@ import { z } from "zod";
 import { applyChatIdentityCookies, chatIdentityErrorResponse, resolveChatIdentity } from "@/lib/chat-auth";
 import { assertGuestCookieConfigured } from "@/lib/chat-cookies";
 import { consumeChatQuota, ensureChatUser, getChatSessionForOwner, isValidSessionId, saveChatTrace } from "@/lib/chat-store";
-import { refundAnswerCredits, reserveAnswerCredits } from "@/lib/billing";
+import { getBillingState, refundAnswerCredits, reserveAnswerCredits } from "@/lib/billing";
 import {
   DEFAULT_CHAT_MODEL,
   isDeepSeekChatModel,
@@ -77,7 +77,7 @@ const OPENAI_ANSWER_MIN_TOKENS = 2400;
 
 type Intent = "simple_lookup" | "compare" | "summarize" | "methodology" | "citation_search";
 type CollectionFilter = "" | "ce_project" | "ncce";
-type ChatExperience = "answer" | "mission" | "learn";
+type ChatExperience = "answer" | "mission" | "learn" | "research";
 type ChatBody = {
   messages: UIMessage[];
   mode?: "baseline" | "mcp";
@@ -505,8 +505,8 @@ function validateChatBody(body: ChatBody): string | null {
   if (body.sessionId && !isValidSessionId(body.sessionId)) {
     return "sessionId must be a UUID.";
   }
-  if (body.experience && !["answer", "mission", "learn"].includes(body.experience)) {
-    return "experience must be answer, mission, or learn.";
+  if (body.experience && !["answer", "mission", "learn", "research"].includes(body.experience)) {
+    return "experience must be answer, mission, learn, or research.";
   }
   return null;
 }
@@ -2094,7 +2094,9 @@ async function generateMissionArtifact(
         "World bridge means: identify what may transfer, what is Thai-context-specific, and what must be validated elsewhere. Do not invent international evidence.",
         experience === "learn"
           ? "Make checkpoints Socratic: help the learner inspect evidence before revealing a broad conclusion."
-          : "Make the brief decision-useful while keeping every conclusion auditable.",
+          : experience === "research"
+            ? "Act as a senior research analyst. Compare methods and validity, surface contradictions, state research gaps, and propose the smallest defensible next validation. Be conservative and auditable."
+            : "Make the brief decision-useful while keeping every conclusion auditable.",
       ].join("\n"),
       prompt: [
         `Research question: ${question}`,
@@ -2137,7 +2139,7 @@ function buildMissionMarkdown(artifact: MissionArtifact): string {
     ? artifact.verdict.rationale
     : `${artifact.verdict.rationale} [${firstEvidenceId}]`;
   return [
-    "## Agentic Evidence Mission",
+    artifact.experience === "research" ? "## Deep Research Brief" : "## Agentic Evidence Mission",
     summary,
     "",
     `**Evidence verdict — ${missionVerdictLabel(artifact.verdict.status)}:** ${rationale}`,
@@ -2615,6 +2617,27 @@ export async function POST(request: NextRequest) {
     return finalizeResponse(
       Response.json({ error: "Chat persistence service is temporarily unavailable." }, { status: 503, headers: rateLimitHeaders(rate) }),
     );
+  }
+
+  if (experience === "research") {
+    if (!identity.isAuthenticated) {
+      return finalizeResponse(Response.json(
+        { error: "Deep Research is included in Founder Pro. Sign in and upgrade to continue.", code: "pro_required" },
+        { status: 402, headers: rateLimitHeaders(rate) },
+      ));
+    }
+    try {
+      const billingState = await getBillingState(userId);
+      if (billingState.plan !== "founder_pro" || !billingState.premiumModels) {
+        return finalizeResponse(Response.json(
+          { error: "Deep Research is included in Founder Pro. Upgrade to continue.", code: "pro_required" },
+          { status: 402, headers: rateLimitHeaders(rate) },
+        ));
+      }
+    } catch (error) {
+      console.error("civilmcp_deep_research_entitlement_failed", error instanceof Error ? error.message : String(error));
+      return finalizeResponse(Response.json({ error: "Deep Research access is temporarily unavailable." }, { status: 503, headers: rateLimitHeaders(rate) }));
+    }
   }
 
   let creditReservation: Awaited<ReturnType<typeof reserveAnswerCredits>>;

@@ -53,15 +53,17 @@ async function expectNoInteractiveOverlap(page: Page) {
 test("desktop feed keeps the approved research hierarchy", async ({ page }) => {
   await page.setViewportSize({ width: 1440, height: 1000 });
   await page.goto("/");
-  await expect(page.getByRole("heading", { name: /Explore .* Thai civil engineering papers/ })).toBeVisible();
-  await expect(page.getByLabel("CivilMCP corpus coverage")).toContainText("sections");
-  await expect(page.getByLabel("CivilMCP corpus coverage")).toContainText("Powered by GPT-5.6 Luna");
-  await expect(page.getByLabel("CivilMCP corpus coverage")).toContainText("Agentic Evidence Missions");
+  await expect(page.getByRole("heading", { name: "Thai civil engineering, grounded in evidence." })).toBeVisible();
+  await expect(page.getByLabel("CivilMCP corpus coverage")).toContainText("papers");
+  await expect(page.getByLabel("CivilMCP corpus coverage")).toContainText("evidence chunks");
+  await expect(page.getByLabel("CivilMCP corpus coverage")).toContainText("Exact-page citations");
+  await expect(page.getByText(/Agentic evidence missions · GPT-5.6 Luna/)).toBeVisible();
   const runControl = page.getByRole("button", { name: /Evidence Mission/ });
   await expect(runControl).toContainText("Evidence Mission");
   await runControl.click();
   await expect(page.getByRole("menuitemradio", { name: /Evidence Mission/ })).toContainText("Flagship");
   await expect(page.getByRole("menuitemradio", { name: /Tutor Mission/ })).toBeVisible();
+  await expect(page.getByRole("menuitemradio", { name: /Deep Research/ })).toContainText("Pro");
   await expect(page.getByRole("menuitemradio", { name: /Fast Answer/ })).toBeVisible();
   await page.keyboard.press("Escape");
   await expect(page.getByRole("region", { name: "CivilMCP research feed" })).toBeVisible();
@@ -85,7 +87,7 @@ test("intermediate responsive widths stay collision-free", async ({ page }) => {
   ]) {
     await page.setViewportSize(viewport);
     await page.goto("/");
-    await expect(page.getByRole("heading", { name: /Explore .* Thai civil engineering papers/ })).toBeVisible();
+    await expect(page.getByRole("heading", { name: "Thai civil engineering, grounded in evidence." })).toBeVisible();
     await expectNoPageOverflow(page);
     await expectNoInteractiveOverlap(page);
   }
@@ -127,7 +129,7 @@ test("navigation resets rail scroll and account does not render the composer", a
 
   await expect.poll(() => page.locator(".mainRail").evaluate((element) => element.scrollTop)).toBe(0);
   await expect(page.locator(".searchComposer")).toHaveCount(0);
-  await expect(page.getByRole("heading", { name: "Sign in with an email link" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Sign in to save your research" })).toBeVisible();
   await expect(page.getByRole("button", { name: "Continue with Google" })).toBeVisible();
   await expect(page.getByRole("button", { name: "Send sign-in link" })).toBeVisible();
   await expect(page.getByText("฿199")).toBeVisible();
@@ -155,10 +157,71 @@ test("Terra and Sol lead free users to the Founder Pro decision point", async ({
   await expect(terra).toContainText("PRO");
   await expect(sol).toContainText("PRO");
   await terra.click();
-  await expect(page.getByRole("heading", { name: "Unlock Terra and Sol." })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Go deeper when the question demands it." })).toBeVisible();
   await expect(page.getByRole("button", { name: "Sign in to upgrade" })).toBeVisible();
   await expect(page.getByText("Luna and exact-page evidence remain available")).toBeVisible();
   await expectNoPageOverflow(page);
+});
+
+test("Research Path turns an explicit goal into a four-stage learning sequence", async ({ page }) => {
+  const pathPayload = {
+    version: "civilmcp-research-path-v1",
+    goal: "Urban road safety in Thailand",
+    level: "applied",
+    outcome: "literature_review",
+    sourceCodes: ["NCCE29_TRL40", "NCCE25_TRL42"],
+    generatedAt: new Date().toISOString(),
+    stages: ["Map the field", "Inspect the methods", "Compare the evidence", "Build your position"].map((title, index) => ({
+      id: `stage-${index + 1}`,
+      title,
+      objective: `Objective ${index + 1} for an applied literature review.`,
+      prompt: `Study stage ${index + 1} with exact-page evidence.`,
+      papers: [{
+        id: `paper-${index + 1}`,
+        source: `NCCE29_TRL4${index}.md`,
+        paperCode: `TRL4${index}`,
+        collection: "ncce",
+        title: `Thai road safety paper ${index + 1}`,
+        summary: "Mocked research path paper.",
+        discipline: "transport",
+        pageLabel: "p.1-8",
+        evidenceCount: 40 + index,
+      }],
+    })),
+    openAlex: {
+      status: "connected",
+      searchUrl: "https://openalex.org/works?search=road%20safety",
+      works: [{ id: "W1", title: "Global road safety research", year: 2026, citedByCount: 42, topic: "Road safety", url: "https://openalex.org/W1" }],
+    },
+  };
+  await page.route("**/api/research-path", (route) => route.fulfill({ json: pathPayload }));
+
+  await page.setViewportSize({ width: 1440, height: 1000 });
+  await page.goto("/");
+  await page.getByRole("button", { name: "Research Path" }).click();
+  await expect(page.getByRole("heading", { name: "Turn an interest into a research plan" })).toBeVisible();
+  await page.getByLabel("What do you want to understand?").fill("Urban road safety in Thailand");
+  await page.getByRole("button", { name: "Build my research path" }).click();
+
+  const workspace = page.getByLabel("Personalized research learning path");
+  await expect(workspace.getByRole("heading", { name: "Urban road safety in Thailand" })).toBeVisible();
+  await expect(workspace.locator(".pathStage")).toHaveCount(4);
+  await expect(workspace.getByText("Global road safety research")).toBeVisible();
+  await workspace.getByRole("button", { name: "Mark complete" }).first().click();
+  await expect(workspace).toContainText("1 of 4 stages complete");
+  await expectNoPageOverflow(page);
+  await expectNoInteractiveOverlap(page);
+});
+
+test("Deep Research is visible but gated to Founder Pro", async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.goto("/");
+  await page.getByRole("button", { name: /Evidence Mission/ }).click();
+  const deepResearch = page.getByRole("menuitemradio", { name: /Deep Research/ });
+  await expect(deepResearch).toContainText("Pro");
+  await deepResearch.click();
+  await expect(page.getByRole("heading", { name: "Go deeper when the question demands it." })).toBeVisible();
+  await expect(page.getByText(/Deep Research is included in Founder Pro/)).toBeVisible();
 });
 
 test("model menu supports keyboard navigation and focus return", async ({ page }) => {
@@ -304,7 +367,62 @@ test("Evidence Mission renders a linked brief and exports Markdown", async ({ pa
 
 test("paper language mode translates globally, persists, and follows the paper drawer", async ({ page }) => {
   let translationRequests = 0;
+  const card = {
+    id: "paper-language-test",
+    source: "NCCE29_TRL40.md",
+    collection: "ncce",
+    paperCode: "TRL40",
+    discipline: "transport",
+    title: "หลักฐานความปลอดภัยทางถนนในประเทศไทย",
+    date: "30 May 2026",
+    sourceLabel: "NCCE",
+    summary: "หลักฐานจากงานวิจัยที่เชื่อมโยงกับหน้าต้นฉบับ",
+    tags: ["Transport", "NCCE"],
+    filters: ["hot", "evidence", "ncce"],
+    evidenceCount: 12,
+    pages: 8,
+    pageLabel: "p.1-8",
+    preview: "traffic",
+    prompt: "Summarize this paper with exact-page evidence.",
+    indexedAt: new Date().toISOString(),
+  };
   await page.addInitScript(() => window.localStorage.setItem("civilmcp-paper-language-v1", "en"));
+  await page.route("**/api/session", (route) => route.fulfill({ json: { sessionId: "00000000-0000-4000-8000-000000000002" } }));
+  await page.route("**/api/history**", (route) => route.fulfill({
+    json: {
+      sessionId: "00000000-0000-4000-8000-000000000002",
+      title: "Untitled chat",
+      mode: "mcp",
+      model: "gpt-5.6-luna",
+      collection: "",
+      messages: [],
+      user: { userId: "guest-test", displayName: "Guest researcher", isGuest: true },
+      authenticated: false,
+    },
+  }));
+  await page.route("**/api/chat-sessions**", (route) => route.fulfill({ json: { sessions: [], authenticated: false } }));
+  await page.route("**/api/billing**", (route) => route.fulfill({ json: { plan: "guest", status: "active", premiumModels: false, billingConfigured: false, priceThb: 199 } }));
+  await page.route("**/api/research-feed**", (route) =>
+    route.fulfill({
+      json: {
+        cards: [card],
+        facets: { total: 941, totalSections: 8148, totalChunks: 48370, filters: { hot: 941, recent: 64, evidence: 939, ncce: 874, ce_project: 67 } },
+        nextCursor: null,
+        generatedAt: new Date().toISOString(),
+      },
+    }),
+  );
+  await page.route(/\/api\/papers\//, (route) =>
+    route.fulfill({
+      json: {
+        document: card,
+        sections: [{ id: "section-1", sectionIndex: 0, title: "Introduction", pageStart: 1, pageEnd: 2, snippet: "Thai road safety context." }],
+        evidence: [{ id: "evidence-1", sectionIndex: 0, chunkIndex: 0, sectionTitle: "Introduction", pageStart: 1, pageEnd: 1, snippet: "Exact-page road safety evidence." }],
+        counts: { sections: 1, chunks: 1 },
+        generatedAt: new Date().toISOString(),
+      },
+    }),
+  );
   await page.route("**/api/paper-translation", async (route) => {
     translationRequests += 1;
     const body = route.request().postDataJSON() as { segments: Array<{ id: string; text: string }> };
@@ -342,9 +460,9 @@ test("paper language mode translates globally, persists, and follows the paper d
   await page.reload();
   await expect(page.getByRole("button", { name: "Translate papers to English" })).toHaveAttribute("aria-pressed", "true");
 
-  const evidenceButtons = page.locator(".researchCard").getByRole("button", { name: /Evidence/ });
-  await expect.poll(() => evidenceButtons.count()).toBeGreaterThan(0);
-  await evidenceButtons.first().click();
+  const evidenceButton = page.locator(".researchCard").getByRole("button", { name: /^Evidence \d+$/ }).first();
+  await expect(evidenceButton).toBeVisible({ timeout: 15_000 });
+  await evidenceButton.click();
   const dialog = page.getByRole("dialog", { name: "Paper detail" });
   await expect(dialog.getByRole("group", { name: "Paper language" })).toBeVisible();
   await expect(dialog.getByRole("button", { name: "Translate papers to English" })).toHaveAttribute("aria-pressed", "true");

@@ -32,6 +32,8 @@ With MCP on, the default run is a bounded, fully-agentic Evidence Mission:
 
 The brief is stored in the existing chat history/share transcript and exports as portable Markdown. `Tutor Mission` emphasizes guided checkpoints; `Fast Answer` preserves the existing streaming brief. Agent activity is inspectable, but private reasoning and raw tool payloads are never exposed. See [docs/AGENTIC_EVIDENCE_MISSIONS.md](docs/AGENTIC_EVIDENCE_MISSIONS.md).
 
+Explore remains the feed-first discovery surface: search, filter, inspect a paper, open its evidence, and continue into chat. `Research Path` is a separate learning workspace that turns a goal into four bounded stages using CivilMCP papers, saves progress in the browser, and can bridge to global metadata through OpenAlex. `Deep Research` is the Founder Pro workflow for conservative multi-paper comparison, contradictions, research gaps, and a smallest-defensible next validation.
+
 ## Model behavior
 
 - `gpt-5.6-luna` is the default for answers, retrieval planning, memory compaction, and paper translation.
@@ -44,6 +46,8 @@ The brief is stored in the existing chat history/share transcript and exports as
 - Guest preview: Luna with the public judge/demo rate limit; no login required.
 - Free account: Luna, synced history, and 25 weighted answer credits per month.
 - Founder Pro: ฿199/month, 150 credits, and Terra/Sol access. Luna uses 1 credit, Terra 3, and Sol 5; credits do not roll over.
+
+Deep Research requires Founder Pro and consumes the normal credit weight of the selected answer model; it does not introduce a separate unlimited agent quota.
 
 Supabase Auth remains the identity source. Google OAuth and email magic links are the primary sign-in paths, with password sign-in available as a fallback. Billing uses Stripe-hosted Checkout and Customer Portal; entitlement and credit checks are always enforced on the server.
 
@@ -89,7 +93,7 @@ Required server-only environment variables:
 - `MCP_SERVER_API_KEY`
 - `GUEST_SESSION_HMAC_KEY`
 
-`DEEPSEEK_API_KEY` is required only when a DeepSeek answer model is selected. Never expose provider, service-role, or MCP keys through `NEXT_PUBLIC_*` variables.
+`DEEPSEEK_API_KEY` is required only when a DeepSeek answer model is selected. `OPENALEX_API_KEY` is optional and server-only; without it, Research Path keeps a safe link-only bridge to OpenAlex search. Never expose provider, service-role, or MCP keys through `NEXT_PUBLIC_*` variables.
 
 Founder Pro additionally requires `STRIPE_SECRET_KEY`, `STRIPE_WEBHOOK_SECRET`, and `STRIPE_FOUNDER_PRO_PRICE_ID`. Without them, the free Research Preview remains fully available and the upgrade control shows “opening soon”. Configure Google as a Supabase Auth provider and allow `/auth/callback` on the deployed application origin.
 
