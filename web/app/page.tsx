@@ -38,6 +38,7 @@ import {
   ShieldCheck,
   SlidersHorizontal,
   Sparkles,
+  TableProperties,
   RefreshCw,
   Route,
   Trash2,
@@ -53,6 +54,7 @@ import {
   isChatModel,
   type ChatModel,
 } from "@/lib/chat-models";
+import { ResearchWorkspacePanel, type ResearchWorkspacePaper } from "@/components/research-workspace";
 
 type Mode = "baseline" | "mcp";
 type ChatExperience = "answer" | "mission" | "learn" | "research" | "automated";
@@ -60,7 +62,7 @@ type CollectionFilter = "" | "ce_project" | "ncce";
 type SyncState = "loading" | "saving" | "saved" | "error";
 type OpenDropdown = "experience" | "model" | "collection" | "actions" | "examples" | null;
 type FeedFilter = "hot" | "recent" | "evidence" | "saved" | "ncce" | "ce_project";
-type MobileNavItem = "explore" | "path" | "chat" | "history" | "shared" | "settings";
+type MobileNavItem = "explore" | "workspace" | "path" | "chat" | "history" | "shared" | "settings";
 type FeedStatus = "loading" | "ready" | "error";
 type SessionsStatus = "idle" | "loading" | "ready" | "error";
 type AuthMode = "signin" | "signup" | "magic-link" | "forgot-password" | "recovery";
@@ -389,12 +391,6 @@ const EXPERIENCE_OPTIONS: Array<MenuOption<ChatExperience>> = [
     description: "A rigorous multi-paper brief with methods, conflicts, gaps, and next validation",
     badge: "Pro",
   },
-  {
-    value: "automated",
-    label: "Automated Research",
-    description: "Plan and execute a bounded research program, then publish an audit-ready dossier",
-    badge: "Pro",
-  },
   { value: "answer", label: "Fast Answer", description: "Stream the standard cited research brief" },
 ];
 
@@ -415,12 +411,15 @@ const FILTER_OPTIONS: Array<{ id: FeedFilter; label: string; icon: LucideIcon }>
 
 const MAIN_NAV_ITEMS: NavItem[] = [
   { id: "explore", label: "Explore", icon: Compass },
+  { id: "workspace", label: "Workspace Pro", icon: TableProperties },
   { id: "path", label: "Research Path", icon: Route },
   { id: "chat", label: "Chat", icon: MessageCircle },
   { id: "history", label: "History", icon: History },
   { id: "shared", label: "Shared", icon: Share2 },
   { id: "settings", label: "Settings", icon: Settings },
 ];
+
+const MOBILE_NAV_ITEMS = MAIN_NAV_ITEMS.filter((item) => item.id !== "shared");
 
 const ACTION_LABELS = {
   share: "Copy share link",
@@ -1713,7 +1712,7 @@ function MobileBottomNav({
 }) {
   return (
     <nav className="mobileBottomNav" aria-label="Mobile navigation">
-      {MAIN_NAV_ITEMS.map((item) => {
+      {MOBILE_NAV_ITEMS.map((item) => {
         const isAccountItem = item.id === "settings";
         const Icon = isAccountItem ? (authenticated ? ShieldCheck : LockKeyhole) : item.icon;
         const label = isAccountItem ? (authenticated ? "Account" : "Sign in") : item.label;
@@ -3153,7 +3152,7 @@ function AccountPanel({
           <div className="authFeatureList">
             <div className="authFeatureRow">
               <Crown size={17} strokeWidth={2.2} aria-hidden />
-              <span><strong>Deep + Automated Research</strong><small>Run rigorous briefs or a bounded end-to-end research program with an audit-ready dossier.</small></span>
+              <span><strong>Research Workspace + Deep Research</strong><small>Run cited batch extraction across many papers or produce a rigorous multi-paper brief.</small></span>
             </div>
             <div className="authFeatureRow">
               <FileText size={17} strokeWidth={2.2} aria-hidden />
@@ -3669,7 +3668,7 @@ export default function Home() {
   }, [activeMobileNav, draft]);
 
   useEffect(() => {
-    if (!isReady || activeMobileNav !== "explore") return;
+    if (!isReady || (activeMobileNav !== "explore" && activeMobileNav !== "workspace")) return;
     if (activeFeedFilter === "saved") {
       setFeedStatus("ready");
       setFeedError("");
@@ -4591,6 +4590,8 @@ export default function Home() {
       setStatusText("");
     } else if (item === "path") {
       setStatusText("");
+    } else if (item === "workspace") {
+      setStatusText("");
     } else if (item === "history") {
       void refreshChatSessions(true);
       setStatusText("");
@@ -4693,7 +4694,27 @@ export default function Home() {
           </p>
         ) : null}
 
-        {activeMobileNav === "path" ? (
+        {activeMobileNav === "workspace" ? (
+          <ResearchWorkspacePanel
+            papers={feedCards.map((card): ResearchWorkspacePaper => ({
+              id: card.id,
+              source: card.source,
+              title: card.title,
+              paperCode: card.paperCode,
+              collection: card.collection,
+              discipline: card.discipline,
+              pageLabel: card.pageLabel,
+              evidenceCount: card.evidenceCount,
+            }))}
+            authenticated={isAuthenticated}
+            proEnabled={billing.plan === "founder_pro" && billing.premiumModels}
+            onUpgrade={(message) => {
+              setStatusText(message);
+              setAppView("settings");
+            }}
+            onOpenPaper={(source) => void openPaperDetailBySource(source)}
+          />
+        ) : activeMobileNav === "path" ? (
           <PersonalizedResearchPathPanel
             goal={pathGoal}
             setGoal={setPathGoal}

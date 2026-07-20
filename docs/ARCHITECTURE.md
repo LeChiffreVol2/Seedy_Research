@@ -2,7 +2,7 @@
 
 ## System Shape
 CivilMCP has three production surfaces:
-- `web/`: Next.js 15 app with research feed, chat UI, bounded Agentic Context Engine orchestration in `/api/chat`, and deterministic learning-path assembly in `/api/research-path`.
+- `web/`: Next.js 15 app with research feed, chat UI, bounded Agentic Context Engine orchestration in `/api/chat`, deterministic learning-path assembly in `/api/research-path`, and a bounded batch matrix in `/api/research-workspaces`.
 - `mcp-server/`: Python FastAPI MCP-style retrieval service exposing `/health`, `/metrics`, `/tools/list`, `/tools/call`, and MCP ASGI transport.
 - `pipeline/` + `supabase/`: PDF extraction, markdown/preview generation, v2 section/chunk embedding, and Supabase pgvector readiness checks.
 
@@ -22,7 +22,13 @@ user question
 
 `experience=mission|learn|research|automated` reuses the same bounded retrieval loop and produces a `civilmcp_mission` message annotation. The artifact contains an evidence verdict, linked matrix rows, transfer checks, learning checkpoints, trust metrics, and an inspectable stage summary. `research` adds a conservative multi-paper analyst prompt. `automated` additionally decomposes the goal into subquestions, records a bounded execution program, and publishes an audit-ready dossier. Both Pro modes are server-gated before credit reservation. Evidence IDs are allow-listed against retrieved packets before publication; invalid model-proposed IDs are removed and weak/failed structured output falls back to a conservative deterministic brief and automation plan.
 
-The artifact is transcript data, so the existing history and share paths persist it without a new table. The browser can export it as Markdown. `experience=answer` keeps the existing streaming response path. No private chain of thought, raw MCP payload, API key, or similarity score is exposed.
+The artifact is transcript data, so the existing history and share paths persist it without a new table. The browser can export it as Markdown. `experience=answer` keeps the existing streaming response path. The legacy `automated` transcript shape remains readable for compatibility, but new automated batch work starts from Research Workspace Pro instead of the Chat experience picker. No private chain of thought, raw MCP payload, API key, or similarity score is exposed.
+
+## Research Workspace Pro
+
+`/api/research-workspaces` is the Founder Pro batch-research boundary. It accepts at most six selected CivilMCP papers and six AI columns, loads at most six page-linked packets per paper, and generates a typed matrix with GPT-5.6 Luna, Terra, or Sol. Evidence IDs use per-paper allow lists (`P1E1`, `P1E2`, and so on); the server removes any ID that belongs to another row or was not supplied. Unsupported cells are marked for review instead of receiving fabricated citations.
+
+Entitlement, distributed run quota, and weighted credit reservation are server-enforced. Credits are reserved once per selected paper and refunded if the batch fails. Local browser state provides the free preview. Founder Pro workspaces serialize into the existing `civil_paper_workspaces.notes` field, and every database read, write, and delete is scoped to the authenticated owner. CSV export includes the generated value, exact-page source list, and human-review state for each AI column.
 
 ## Research Path and OpenAlex
 

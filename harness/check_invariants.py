@@ -236,6 +236,8 @@ def check_build_week_contract() -> Check:
     translation = (ROOT / "web" / "app" / "api" / "paper-translation" / "route.ts").read_text(encoding="utf-8", errors="replace")
     page = (ROOT / "web" / "app" / "page.tsx").read_text(encoding="utf-8", errors="replace")
     research_path = (ROOT / "web" / "app" / "api" / "research-path" / "route.ts").read_text(encoding="utf-8", errors="replace")
+    research_workspace = (ROOT / "web" / "app" / "api" / "research-workspaces" / "route.ts").read_text(encoding="utf-8", errors="replace")
+    research_workspace_ui = (ROOT / "web" / "components" / "research-workspace.tsx").read_text(encoding="utf-8", errors="replace")
     feed = (ROOT / "web" / "lib" / "research-feed.ts").read_text(encoding="utf-8", errors="replace")
     ci = (ROOT / ".github" / "workflows" / "ci.yml").read_text(encoding="utf-8", errors="replace")
     release = (ROOT / ".github" / "workflows" / "preview-release.yml").read_text(encoding="utf-8", errors="replace")
@@ -292,18 +294,28 @@ def check_build_week_contract() -> Check:
             marker in chat
             for marker in ('experience === "research"', "getBillingState(userId)", 'billingState.plan !== "founder_pro"')
         ) and all(marker in page for marker in ('label: "Deep Research"', "Deep Research is included in Founder Pro")),
-        "automated_research_pro_gate": all(
-            marker in chat
+        "automated_research_workspace": all(
+            marker in research_workspace
             for marker in (
-                'experience === "research" || experience === "automated"',
-                "fallbackAutomationProgram",
-                "finalizeAutomationProgram",
-                'experience === "automated"',
+                'rows: z.array(workspaceRowSchema).min(1).max(6)',
+                'columns: z.array(workspaceColumnSchema).min(1).max(6)',
+                'billing.plan !== "founder_pro"',
+                "reserveAnswerCredits",
+                "refundAnswerCredits",
+                '`P${paperIndex + 1}E${evidenceIndex + 1}`',
+                "id.startsWith(prefix)",
+                'scope: "research_workspace_run"',
             )
         ) and all(
-            marker in page
-            for marker in ('label: "Automated Research"', "Automated Research is included in Founder Pro", "automationProgram")
-        ),
+            marker in research_workspace_ui
+            for marker in (
+                'aria-label="Research Workspace Pro"',
+                "Run selected",
+                "Exact-page evidence",
+                "Export CSV",
+                "Verified",
+            )
+        ) and all(marker in page for marker in ('label: "Workspace Pro"', "ResearchWorkspacePanel")),
     }
     missing = [name for name, present in required.items() if not present]
     if missing:

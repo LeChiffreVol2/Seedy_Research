@@ -32,7 +32,9 @@ With MCP on, the default run is a bounded, fully-agentic Evidence Mission:
 
 The brief is stored in the existing chat history/share transcript and exports as portable Markdown. `Tutor Mission` emphasizes guided checkpoints; `Fast Answer` preserves the existing streaming brief. Agent activity is inspectable, but private reasoning and raw tool payloads are never exposed. See [docs/AGENTIC_EVIDENCE_MISSIONS.md](docs/AGENTIC_EVIDENCE_MISSIONS.md).
 
-Explore remains the feed-first discovery surface: search, filter, inspect a paper, open its evidence, and continue into chat. `Research Path` is a separate learning workspace that turns a goal into four bounded stages using CivilMCP papers, saves progress in the browser, and can bridge to global metadata through OpenAlex. `Deep Research` is the Founder Pro workflow for a rigorous one-question brief. `Automated Research` is a separate Founder Pro mode that decomposes a goal, executes a bounded research program, and publishes an audit-ready dossier with an execution log, method comparison, gaps, and recommended next study.
+Explore remains the feed-first discovery surface: search, filter, inspect a paper, open its evidence, and continue into chat. `Research Path` is a separate learning workspace that turns a goal into four bounded stages using CivilMCP papers, saves progress in the browser, and can bridge to global metadata through OpenAlex. `Deep Research` is the Founder Pro workflow for a rigorous one-question brief.
+
+`Research Workspace Pro` is a separate, spreadsheet-style automated-research surface rather than a chat mode. Papers are rows and bounded AI instructions are columns. A run can process up to six selected papers across six columns, attaches allow-listed exact-page evidence to every supported cell, exposes confidence and human-review states, and exports a source-bearing CSV. The browser keeps a local draft; Founder Pro adds account sync and batch execution. Luna, Terra, and Sol consume 1, 3, or 5 credits per selected paper respectively.
 
 ## Model behavior
 
@@ -47,7 +49,7 @@ Explore remains the feed-first discovery surface: search, filter, inspect a pape
 - Free account: Luna, synced history, and 25 weighted answer credits per month.
 - Founder Pro: ฿199/month, 150 credits, and Terra/Sol access. Luna uses 1 credit, Terra 3, and Sol 5; credits do not roll over.
 
-Deep and Automated Research require Founder Pro and consume the normal credit weight of the selected answer model; neither introduces an unlimited or background agent quota.
+Deep Research and Research Workspace batch execution require Founder Pro. Workspace runs charge the selected model weight once per selected paper and remain capped at six papers by six columns per request; there is no unlimited or unattended background-agent quota.
 
 Supabase Auth remains the identity source. Google OAuth and email magic links are the primary sign-in paths, with password sign-in available as a fallback. Billing uses Stripe-hosted Checkout and Customer Portal; entitlement and credit checks are always enforced on the server.
 
@@ -63,7 +65,7 @@ question
   -> cited answer + artifact + trace/feedback metadata
 ```
 
-- `web/`: Next.js research feed, chat, paper detail, translation, history, and feedback.
+- `web/`: Next.js research feed, chat, Research Workspace Pro, paper detail, translation, history, and feedback.
 - `mcp-server/`: FastAPI MCP-style retrieval service.
 - `pipeline/`: PDF extraction, metadata normalization, chunking, and indexing.
 - `supabase/`: shared schema and additive migration ledger.

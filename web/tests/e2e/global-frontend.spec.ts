@@ -64,8 +64,8 @@ test("desktop feed keeps the approved research hierarchy", async ({ page }) => {
   await expect(page.getByRole("menuitemradio", { name: /Evidence Mission/ })).toContainText("Flagship");
   await expect(page.getByRole("menuitemradio", { name: /Tutor Mission/ })).toBeVisible();
   await expect(page.getByRole("menuitemradio", { name: /Deep Research/ })).toContainText("Pro");
-  await expect(page.getByRole("menuitemradio", { name: /Automated Research/ })).toContainText("Pro");
   await expect(page.getByRole("menuitemradio", { name: /Fast Answer/ })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Workspace Pro" })).toBeVisible();
   await page.keyboard.press("Escape");
   await expect(page.getByRole("region", { name: "CivilMCP research feed" })).toBeVisible();
   await expect.poll(() => page.locator(".researchCard").count()).toBeGreaterThan(0);
@@ -225,17 +225,135 @@ test("Deep Research is visible but gated to Founder Pro", async ({ page }) => {
   await expect(page.getByText(/Deep Research is included in Founder Pro/)).toBeVisible();
 });
 
-test("Automated Research is a distinct Founder Pro mode", async ({ page }) => {
+test("Research Workspace is a separate Founder Pro surface", async ({ page }) => {
   await page.setViewportSize({ width: 390, height: 844 });
   await page.goto("/");
-  await page.getByRole("button", { name: /Evidence Mission/ }).click();
-  const automatedResearch = page.getByRole("menuitemradio", { name: /Automated Research/ });
-  await expect(automatedResearch).toContainText("Pro");
-  await expect(automatedResearch).toContainText(/bounded research program/i);
-  await automatedResearch.click();
+  await page.getByRole("button", { name: "Workspace Pro" }).click();
+  const workspace = page.getByLabel("Research Workspace Pro");
+  await expect(workspace).toBeVisible();
+  await expect(workspace.getByText("Run evidence-linked AI columns across selected CivilMCP papers.")).toBeVisible();
+  await expect(workspace.getByRole("button", { name: /Unlock batch run/ })).toBeVisible();
+  await workspace.getByRole("button", { name: /Unlock batch run/ }).click();
   await expect(page.getByRole("heading", { name: "Go deeper when the question demands it." })).toBeVisible();
-  await expect(page.getByText(/Automated Research is included in Founder Pro/)).toBeVisible();
-  await expect(page.getByText(/Deep \+ Automated Research/)).toBeVisible();
+  await expect(page.getByText(/Research Workspace is included in Founder Pro/)).toBeVisible();
+  await expect(page.getByText(/Research Workspace \+ Deep Research/)).toBeVisible();
+  await expectNoPageOverflow(page);
+});
+
+test("Founder Pro can batch-run, inspect, review, and export workspace cells", async ({ page }) => {
+  const sessionId = "00000000-0000-4000-8000-000000000099";
+  const user = { userId: "user-workspace", displayName: "Workspace Researcher", email: "researcher@example.com", isGuest: false };
+  const cards = [1, 2].map((index) => ({
+    id: `paper-${index}`,
+    source: `NCCE29_TRL4${index}.md`,
+    sourcePdf: `NCCE29_TRL4${index}.pdf`,
+    collection: "ncce",
+    paperCode: `NCCE29_TRL4${index}`,
+    discipline: "transportation",
+    title: `Thai road safety evidence ${index}`,
+    date: "2026",
+    sourceLabel: "NCCE29",
+    summary: "Mocked civil engineering evidence for a workspace batch.",
+    tags: ["Transportation"],
+    filters: ["hot", "evidence", "ncce"],
+    evidenceCount: 32 + index,
+    pages: 9,
+    pageLabel: "p.1-9",
+    preview: "traffic",
+    prompt: "Compare road safety evidence.",
+  }));
+
+  await page.route("**/api/session", (route) => route.fulfill({ json: { sessionId } }));
+  await page.route("**/api/history", (route) => route.fulfill({ json: {
+    sessionId,
+    title: "Untitled chat",
+    mode: "mcp",
+    model: "gpt-5.6-luna",
+    collection: "",
+    messages: [],
+    user,
+    authenticated: true,
+  } }));
+  await page.route("**/api/chat-sessions", (route) => route.fulfill({ json: { sessions: [], user, authenticated: true } }));
+  await page.route("**/api/billing", (route) => route.fulfill({ json: {
+    plan: "founder_pro",
+    status: "active",
+    creditsIncluded: 150,
+    creditsUsed: 0,
+    creditsRemaining: 150,
+    resetAt: "2026-08-21T00:00:00.000Z",
+    premiumModels: true,
+    billingConfigured: true,
+    priceThb: 199,
+    hasStripeCustomer: true,
+  } }));
+  await page.route("**/api/research-feed**", (route) => route.fulfill({ json: {
+    cards,
+    facets: { total: 941, totalSections: 9412, totalChunks: 49965, filters: { hot: 2 } },
+    nextCursor: null,
+    generatedAt: "2026-07-21T00:00:00.000Z",
+  } }));
+  await page.route("**/api/research-workspaces**", async (route) => {
+    if (route.request().method() === "GET") {
+      await route.fulfill({ json: { workspaces: [] } });
+      return;
+    }
+    const request = route.request().postDataJSON() as {
+      action: string;
+      workspaceId: string;
+      runId?: string;
+      model?: string;
+      rows?: Array<{ source: string }>;
+      columns?: Array<{ id: string }>;
+      state?: unknown;
+    };
+    if (request.action === "save") {
+      await route.fulfill({ json: { workspace: { workspaceId: request.workspaceId, state: request.state } } });
+      return;
+    }
+    await route.fulfill({ json: {
+      version: "civilmcp-research-workspace-run-v1",
+      workspaceId: request.workspaceId,
+      runId: request.runId,
+      model: request.model,
+      chargedCredits: request.rows?.length ?? 0,
+      generatedAt: "2026-07-21T00:01:00.000Z",
+      rows: (request.rows ?? []).map((row, paperIndex) => ({
+        source: row.source,
+        cells: (request.columns ?? []).map((column) => ({
+          columnId: column.id,
+          value: `${column.id} finding for paper ${paperIndex + 1}`,
+          confidence: "high",
+          status: "ready",
+          evidence: [{
+            id: `P${paperIndex + 1}E1`,
+            source: row.source,
+            pageStart: 3,
+            pageEnd: 3,
+            sectionTitle: "Methodology",
+            snippet: "Mocked exact-page evidence supporting the generated cell.",
+          }],
+        })),
+      })),
+    } });
+  });
+
+  await page.setViewportSize({ width: 1440, height: 1000 });
+  await page.goto("/");
+  await page.getByRole("button", { name: "Workspace Pro" }).click();
+  const workspace = page.getByLabel("Research Workspace Pro");
+  await expect(workspace.locator("tbody tr")).toHaveCount(2);
+  await workspace.getByRole("button", { name: /Run selected/ }).click();
+  await expect(workspace.getByText(/Run complete · 2 credits used/)).toBeVisible();
+  await workspace.getByRole("button", { name: /Method for Thai road safety evidence 1/ }).click();
+  const inspector = page.getByLabel("Cell evidence inspector");
+  await expect(inspector).toContainText("method finding for paper 1");
+  await expect(inspector).toContainText("p.3");
+  await inspector.getByRole("button", { name: /Verified/ }).click();
+  await expect(inspector.getByText("Review · verified")).toBeVisible();
+  const download = page.waitForEvent("download");
+  await workspace.getByRole("button", { name: "Export CSV" }).click();
+  await expect((await download).suggestedFilename()).toMatch(/^civilmcp-research-workspace-\d+\.csv$/);
   await expectNoPageOverflow(page);
 });
 

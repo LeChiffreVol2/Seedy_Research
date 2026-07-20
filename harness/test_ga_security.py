@@ -176,8 +176,27 @@ class GASecurityContracts(unittest.TestCase):
         self.assertIn("goal.length < 8", path)
         self.assertIn("AbortSignal.timeout(8_000)", path)
         self.assertIn("process.env.OPENALEX_API_KEY", path)
-        self.assertIn('label: "Automated Research"', source("web/app/page.tsx"))
-        self.assertIn("Automated Research is included in Founder Pro", source("web/app/page.tsx"))
+
+    def test_research_workspace_is_pro_gated_bounded_and_citation_allowlisted(self) -> None:
+        workspace = source("web/app/api/research-workspaces/route.ts")
+        workspace_store = source("web/lib/research-workspaces.ts")
+        workspace_ui = source("web/components/research-workspace.tsx")
+        page = source("web/app/page.tsx")
+        self.assertIn('rows: z.array(workspaceRowSchema).min(1).max(6)', workspace)
+        self.assertIn('columns: z.array(workspaceColumnSchema).min(1).max(6)', workspace)
+        self.assertIn('billing.plan !== "founder_pro"', workspace)
+        self.assertIn('scope: "research_workspace_run"', workspace)
+        self.assertIn("await reserveAnswerCredits({", workspace)
+        self.assertIn("refundAnswerCredits", workspace)
+        self.assertIn('id.startsWith(prefix)', workspace)
+        self.assertIn('evidenceIds: z.array(z.string().regex(/^P\\d+E\\d+$/)).max(4)', workspace)
+        self.assertIn('notes.length > 550_000', workspace_store)
+        self.assertIn('existing.owner_id !== input.ownerId', workspace_store)
+        self.assertIn('.eq("workspace_id", workspaceId).eq("owner_id", input.ownerId)', workspace_store)
+        self.assertIn('.eq("owner_id", ownerId)', workspace_store)
+        self.assertIn('aria-label="Research Workspace Pro"', workspace_ui)
+        self.assertIn('label: "Workspace Pro"', page)
+        self.assertNotIn('label: "Automated Research"', page)
 
 
 if __name__ == "__main__":

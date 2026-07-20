@@ -27,7 +27,7 @@ All competition commits are created after July 13 with their real timestamps. No
 | Civil and City release gates coupled | Separate CivilMCP and CityMCP app, harness, CI, and release scopes |
 | Feed-level citations | Public Research Preview positioning, exact-page demo prompts, feedback, and release evidence |
 | Paper-code queries relied on semantic similarity | Bounded exact-paper retrieval followed by full-candidate reranking before the 8-chunk context limit |
-| One-shot cited answers | Bounded Agentic Evidence Missions plus Founder Pro Deep and Automated Research, with inspectable run stages, linked matrices, transfer checks, tutor checkpoints, audit-ready dossiers, and Markdown export |
+| One-shot cited answers | Bounded Agentic Evidence Missions, Founder Pro Deep Research, and a separate spreadsheet-style Research Workspace Pro with batch AI columns, cell-level exact-page evidence, human review, sync, and CSV export |
 
 ## GPT-5.6 use
 
@@ -53,6 +53,10 @@ Two product references informed the extension without adding their code or frame
 - [OpenWiki](https://github.com/langchain-ai/openwiki) inspired the durable, linked Evidence Brief: the artifact lives with history/share and exports as Markdown instead of disappearing as a one-shot answer.
 
 The existing AI SDK, MCP retrieval layer, Supabase transcript, and visual system remain in place.
+
+## Automated research workspace
+
+Research Workspace Pro is intentionally separate from Chat. It applies a spreadsheet mental model to the unique CivilMCP corpus: papers are rows; Method, Sample, Finding, Limitation, Gap, or custom research instructions are columns. Each request is capped at six papers by six columns and each supported cell carries allow-listed evidence from its own paper. Users can inspect the source page, mark a cell Verified or Needs review, retry one cell, save the workspace, and export a source-bearing CSV. This is the scalable automated-research workflow; Deep Research remains the focused one-question workflow.
 
 ## Dataset contribution
 

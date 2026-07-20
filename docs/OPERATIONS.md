@@ -68,6 +68,8 @@ Server-only keys must remain in Vercel/server env only: `OPENAI_API_KEY`, `DEEPS
 5. Set `NEXT_PUBLIC_APP_URL=https://civil-mcp-web.vercel.app` and the three server-only Stripe variables in Vercel.
 6. Use a Vercel Pro (or higher) project before accepting payment; Hobby is for non-commercial use.
 
+Research Workspace batch runs share the Founder Pro entitlement and credit ledger. A run reserves the selected model weight once per selected paper, caps each request at six papers by six columns, and uses the separate `research_workspace_run` quota. Check `/api/research-workspaces` for `402`, `429`, or `503` responses when diagnosing access, quota, or provider failures; failed runs restore every reservation made for that run.
+
 Rollback billing without affecting the free preview by removing the Stripe variables. Existing subscriptions must still be canceled or refunded through Stripe; removing variables only disables new checkout and portal sessions. Never edit credit balances manually—use the signed subscription webhook and credit ledger.
 
 ## Backbone Hardening Notes
