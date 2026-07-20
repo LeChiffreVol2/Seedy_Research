@@ -1,0 +1,43 @@
+name: CityMCP CI
+
+on:
+  pull_request:
+    paths:
+      - "citymcp/**"
+      - "supabase/migrations/*smart_city*.sql"
+      - ".github/workflows/citymcp-*.yml"
+  push:
+    branches: [main]
+    paths:
+      - "citymcp/**"
+      - "supabase/migrations/*smart_city*.sql"
+      - ".github/workflows/citymcp-*.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  readiness:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.10"
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: npm
+          cache-dependency-path: citymcp/ops-dashboard/package-lock.json
+      - name: CityMCP Python and architecture gates
+        run: |
+          python -m py_compile citymcp/harness/*.py
+          python citymcp/harness/check_ops_invariants.py --strict
+      - name: CityMCP tests and build
+        working-directory: citymcp/ops-dashboard
+        env:
+          OPS_DASHBOARD_AUTH_DISABLED: "true"
+        run: npm ci && npm test && npm run typecheck && npm run build

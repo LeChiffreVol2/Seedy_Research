@@ -13,8 +13,8 @@ node_modules/
 .next/
 *.tsbuildinfo
 .local/
-ops-dashboard/.local/
-ops-dashboard/.vercel/
+citymcp/ops-dashboard/.local/
+citymcp/ops-dashboard/.vercel/
 supabase/.temp/
 
 # Environment
@@ -33,8 +33,12 @@ pipeline/data/markdown/
 pipeline/data/pdfs/
 eval/*_results.json
 harness/reports/
+citymcp/harness/reports/
 tmp/
 .playwright-cli/
+web/playwright-report/
+web/test-results/
 /*.png
+/*.zip
 
 eval/feedback_eval_seed.jsonl
