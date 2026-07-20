@@ -103,11 +103,14 @@ export async function POST(request: NextRequest) {
   if (goal.length < 8) return Response.json({ error: "Describe a research goal in at least 8 characters." }, { status: 422 });
 
   try {
-    const matched = await listResearchFeed({ filter: "evidence", collection, q: goal, limit: 8 });
-    const fallback = matched.cards.length >= 8
-      ? []
-      : (await listResearchFeed({ filter: "evidence", collection, limit: 8 })).cards;
-    const cards = uniqueCards([...matched.cards, ...fallback]);
+    const matched = await listResearchFeed({ filter: "evidence", collection, q: goal, limit: 12 });
+    const cards = uniqueCards(matched.cards);
+    if (cards.length < 4) {
+      return Response.json(
+        { error: "CivilMCP found too few strong matches. Make the topic more specific or try a related engineering term." },
+        { status: 422, headers: { "Cache-Control": "no-store" } },
+      );
+    }
     const sourceCodes = cards.map((card) => card.paperCode || card.source.replace(/\.md$/i, ""));
     const openAlex = await openAlexBridge(goal);
 
@@ -122,8 +125,10 @@ export async function POST(request: NextRequest) {
       decision_brief: "End with a decision-ready brief that separates evidence from inference.",
     }[outcome];
 
+    const stagePapers = Array.from({ length: STAGE_TITLES.length }, () => [] as ResearchFeedCard[]);
+    cards.forEach((card, index) => stagePapers[index % STAGE_TITLES.length].push(card));
     const stages = STAGE_TITLES.map((title, index) => {
-      const papers = cards.slice(index * 2, index * 2 + 2);
+      const papers = stagePapers[index].slice(0, 2);
       const codes = papers.map((paper) => paper.paperCode || paper.source.replace(/\.md$/i, ""));
       const objectives = [
         `Define the field around ${goal} and identify the main Thai research themes.`,

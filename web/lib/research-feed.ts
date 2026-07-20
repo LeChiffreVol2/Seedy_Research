@@ -143,6 +143,10 @@ const SECTION_SELECT = "id, document_id, source, collection, paper_code, page_st
 const CHUNK_SELECT = "id, document_id, section_id, source, collection, paper_code, page_start, page_end, section_index, section_title, chunk_index, content";
 const MAX_DOCS_FOR_FEED = 1200;
 const MAX_QUERY_MATCHES = 500;
+const QUERY_STOP_WORDS = new Set([
+  "a", "an", "and", "are", "as", "at", "be", "by", "for", "from", "how", "in", "into", "is", "of", "on", "or", "the", "to", "what", "with",
+  "การ", "ของ", "จาก", "ด้วย", "ที่", "และ", "ใน", "เป็น", "เพื่อ", "อย่างไร",
+]);
 
 let supabaseAdminSingleton: ReturnType<typeof createClient> | null = null;
 
@@ -731,37 +735,140 @@ async function fetchChunksForDocuments(documentIds: string[], perDocument = 3): 
   return grouped;
 }
 
-async function matchingDocumentIds(q: string, collection: CollectionFilter): Promise<Set<string>> {
-  const ids = new Set<string>();
-  if (!q) return ids;
+type SearchMatchRow = {
+  id?: string;
+  document_id?: string;
+  section_title?: string | null;
+  source?: string | null;
+  source_pdf?: string | null;
+  paper_code?: string | null;
+  discipline?: string | null;
+};
+
+type SearchContext = {
+  phrase: string;
+  baseTerms: string[];
+  expandedTerms: string[];
+  disciplines: string[];
+};
+
+function searchContext(q: string): SearchContext {
+  const phrase = q.toLocaleLowerCase("en").replace(/[^\p{L}\p{N}\s-]/gu, " ").replace(/\s+/g, " ").trim();
+  const baseTerms = [...new Set((phrase.match(/[\p{L}\p{N}]+/gu) ?? [])
+    .filter((term) => term.length >= 2 && !QUERY_STOP_WORDS.has(term)))]
+    .slice(0, 7);
+  const expansions: string[] = [];
+  const disciplines: string[] = [];
+
+  const addConcept = (terms: string[], discipline?: string) => {
+    expansions.push(...terms);
+    if (discipline) disciplines.push(discipline);
+  };
+
+  if (/road|traffic|transport|mobility|crash|accident|collision|truck|vehicle|ถนน|จราจร|ขนส่ง|อุบัติเหตุ|รถ/.test(phrase)) {
+    addConcept(["road", "traffic", "transport", "accident", "crash", "ถนน", "จราจร", "ขนส่ง", "อุบัติเหตุ"], "transport");
+  }
+  if (/flood|drainage|water|hydraulic|resilien|น้ำท่วม|ระบายน้ำ|อุทก|ชลศาสตร์/.test(phrase)) {
+    addConcept(["flood", "drainage", "water", "hydraulic", "น้ำท่วม", "ระบายน้ำ", "อุทก"], "water_resources");
+  }
+  if (/construction|project|delay|schedule|cost|ก่อสร้าง|โครงการ|ล่าช้า|ระยะเวลา|ต้นทุน/.test(phrase)) {
+    addConcept(["construction", "project", "delay", "schedule", "cost", "ก่อสร้าง", "โครงการ", "ล่าช้า", "ต้นทุน"], "construction_mgmt");
+  }
+  if (/concrete|cement|material|คอนกรีต|ซีเมนต์|วัสดุ/.test(phrase)) {
+    addConcept(["concrete", "cement", "material", "คอนกรีต", "ซีเมนต์", "วัสดุ"], "structural");
+  }
+
+  const baseSet = new Set(baseTerms);
+  return {
+    phrase,
+    baseTerms,
+    expandedTerms: [...new Set(expansions)].filter((term) => !baseSet.has(term)).slice(0, 12),
+    disciplines: [...new Set(disciplines)],
+  };
+}
+
+function searchOrFilter(columns: string[], terms: string[]): string {
+  return terms.flatMap((term) => columns.map((column) => `${column}.ilike.%${term}%`)).join(",");
+}
+
+function fieldMatchScore(row: SearchMatchRow, context: SearchContext): number {
+  const title = (row.section_title ?? "").toLocaleLowerCase("en");
+  const identity = `${row.source ?? ""} ${row.source_pdf ?? ""} ${row.paper_code ?? ""}`.toLocaleLowerCase("en");
+  const discipline = (row.discipline ?? "").toLocaleLowerCase("en");
+  let score = context.phrase && title.includes(context.phrase) ? 12 : 0;
+  score += context.baseTerms.filter((term) => title.includes(term)).length * 4;
+  score += context.expandedTerms.filter((term) => title.includes(term)).length * 1.5;
+  score += context.baseTerms.filter((term) => identity.includes(term)).length * 4;
+  if (context.disciplines.some((candidate) => discipline.includes(candidate))) score += 6;
+  return score;
+}
+
+async function matchingDocumentScores(q: string, collection: CollectionFilter): Promise<Map<string, number>> {
+  const context = searchContext(q);
+  if (!context.baseTerms.length) return new Map();
 
   const supabase = getSupabaseAdmin() as any;
-  const pattern = `%${q}%`;
-  const sectionQueries = ["section_title", "content", "source", "paper_code"].map((column) => {
+  const sectionColumns = ["section_title", "content", "source", "paper_code"];
+  const documentColumns = ["source", "source_pdf", "paper_code", "discipline"];
+  const emptyResult = Promise.resolve({ data: [], error: null });
+  const searchSections = (terms: string[]) => {
+    if (!terms.length) return emptyResult;
     let query = supabase
       .from("civil_sections_v2")
-      .select("document_id")
-      .ilike(column, pattern)
+      .select("document_id,section_title,source,paper_code,discipline")
+      .or(searchOrFilter(sectionColumns, terms))
       .eq("is_stale", false)
       .limit(MAX_QUERY_MATCHES);
     if (collection) query = query.eq("collection", collection);
     return query;
-  });
-  const docQueries = ["source", "source_pdf", "paper_code", "discipline"].map((column) => {
-    let query = supabase.from("civil_documents_v2").select("id").ilike(column, pattern).limit(MAX_QUERY_MATCHES);
+  };
+  const searchDocuments = (terms: string[]) => {
+    if (!terms.length) return emptyResult;
+    let query = supabase
+      .from("civil_documents_v2")
+      .select("id,source,source_pdf,paper_code,discipline")
+      .or(searchOrFilter(documentColumns, terms))
+      .limit(MAX_QUERY_MATCHES);
     if (collection) query = query.eq("collection", collection);
     return query;
-  });
+  };
 
-  const results = await Promise.all([...sectionQueries, ...docQueries]);
+  const [baseSections, baseDocuments, expandedSections, expandedDocuments] = await Promise.all([
+    searchSections(context.baseTerms),
+    searchDocuments(context.baseTerms),
+    searchSections(context.expandedTerms),
+    searchDocuments(context.expandedTerms),
+  ]);
+  const results = [baseSections, baseDocuments, expandedSections, expandedDocuments];
   for (const result of results) {
     if (result.error) throw new Error(`Failed to search feed: ${result.error.message}`);
-    for (const row of result.data ?? []) {
-      const id = (row as { document_id?: string; id?: string }).document_id ?? (row as { id?: string }).id;
-      if (id) ids.add(id);
-    }
   }
-  return ids;
+
+  const aggregates = new Map<string, { baseHits: number; expandedHits: number; fieldScore: number }>();
+  const addRows = (rows: SearchMatchRow[], base: boolean) => {
+    for (const row of rows) {
+      const id = row.document_id ?? row.id;
+      if (!id) continue;
+      const current = aggregates.get(id) ?? { baseHits: 0, expandedHits: 0, fieldScore: 0 };
+      if (base) current.baseHits += 1;
+      else current.expandedHits += 1;
+      current.fieldScore = Math.max(current.fieldScore, fieldMatchScore(row, context));
+      aggregates.set(id, current);
+    }
+  };
+  addRows((baseSections.data ?? []) as SearchMatchRow[], true);
+  addRows((baseDocuments.data ?? []) as SearchMatchRow[], true);
+  addRows((expandedSections.data ?? []) as SearchMatchRow[], false);
+  addRows((expandedDocuments.data ?? []) as SearchMatchRow[], false);
+
+  return new Map(
+    [...aggregates.entries()]
+      .filter(([, match]) => match.baseHits > 0)
+      .map(([id, match]) => [
+        id,
+        match.fieldScore + Math.min(match.baseHits, 10) * 0.9 + Math.min(match.expandedHits, 6) * 0.25,
+      ]),
+  );
 }
 
 function facetsFromDocuments(docs: DocumentRow[]): ResearchFeedResponse["facets"] {
@@ -800,13 +907,19 @@ export async function listResearchFeed(params: ListFeedParams): Promise<Research
   const offset = decodeCursor(params.cursor);
 
   let docs = await fetchDocuments(collection);
+  let relevanceScores: Map<string, number> | null = null;
   if (q) {
-    const matches = await matchingDocumentIds(q, collection);
-    docs = docs.filter((doc) => matches.has(doc.id));
+    relevanceScores = await matchingDocumentScores(q, collection);
+    docs = docs.filter((doc) => relevanceScores?.has(doc.id));
   }
 
   const facets = facetsFromDocuments(docs);
-  const sorted = sortDocuments(docs, filter);
+  const fallbackOrder = new Map(sortDocuments(docs, filter).map((doc, index) => [doc.id, index]));
+  const sorted = relevanceScores
+    ? [...docs].sort((a, b) =>
+      (relevanceScores?.get(b.id) ?? 0) - (relevanceScores?.get(a.id) ?? 0)
+      || (fallbackOrder.get(a.id) ?? 0) - (fallbackOrder.get(b.id) ?? 0))
+    : sortDocuments(docs, filter);
   const page = sorted.slice(offset, offset + limit);
   const pageDocumentIds = page.map((doc) => doc.id);
   const [sectionsByDoc, chunksByDoc] = await Promise.all([

@@ -34,7 +34,7 @@ The `PRISMA scoping review` template reuses this boundary instead of adding a re
 
 ## Research Path and OpenAlex
 
-`/api/research-path` accepts a bounded goal, level, outcome, and optional collection. It selects at most eight existing CivilMCP feed cards and organizes them into four deterministic stages; it does not create a new agent loop or store a new server-side record. Browser progress is local-first and each stage can continue into Tutor Mission with an evidence-bounded prompt.
+`/api/research-path` accepts a bounded goal, level, outcome, and optional collection. It tokenizes the goal, expands a small bilingual civil-engineering vocabulary, and ranks matching feed cards by title/source hits, discipline alignment, and section evidence. Only documents with a direct goal-token match are eligible; the route returns a recoverable specificity error instead of filling a sparse result with generic papers. It selects at most eight existing CivilMCP feed cards and distributes them across four deterministic stages; it does not create a new agent loop or store a new server-side record. Browser progress is local-first and each stage can continue into Tutor Mission with an evidence-bounded prompt.
 
 When a server-only `OPENALEX_API_KEY` is configured, the route adds up to four global work records from OpenAlex with an eight-second timeout. OpenAlex is treated as a discovery/metadata bridge, never as page-level evidence for CivilMCP answers. Missing or unavailable OpenAlex access degrades to a normal public search link.
 
