@@ -30,6 +30,8 @@ The artifact is transcript data, so the existing history and share paths persist
 
 Entitlement, distributed run quota, and weighted credit reservation are server-enforced. Credits are reserved once per selected paper and refunded if the batch fails. Local browser state provides the free preview. Founder Pro workspaces serialize into the existing `civil_paper_workspaces.notes` field, and every database read, write, and delete is scoped to the authenticated owner. CSV export includes the generated value, exact-page source list, and human-review state for each AI column.
 
+The `PRISMA scoping review` template reuses this boundary instead of adding a review service or database schema. Its local/synced workspace state adds a bounded protocol, per-paper human screening decisions and exclusion reasons, live candidate/screened/excluded/included counts, PRISMA readiness checks, and a Markdown review-log export. Only papers marked included are eligible for the batch evidence extraction. The product labels the workflow `PRISMA-ScR guided` and explicitly limits the claim to the selected CivilMCP candidate set; comprehensive multi-database systematic-review claims remain out of scope until external search, deduplication, and independent reviewer reconciliation exist.
+
 ## Research Path and OpenAlex
 
 `/api/research-path` accepts a bounded goal, level, outcome, and optional collection. It selects at most eight existing CivilMCP feed cards and organizes them into four deterministic stages; it does not create a new agent loop or store a new server-side record. Browser progress is local-first and each stage can continue into Tutor Mission with an evidence-bounded prompt.

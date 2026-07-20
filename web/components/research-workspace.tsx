@@ -1,7 +1,10 @@
 "use client";
 
 import {
+  BookOpenCheck,
   Check,
+  Circle,
+  ClipboardCheck,
   Cpu,
   Download,
   FileSearch,
@@ -69,10 +72,24 @@ type WorkspaceState = {
   rows: WorkspaceRow[];
   columns: WorkspaceColumn[];
   selectedSources: string[];
+  reviewProtocol: ReviewProtocol;
+  screening: Record<string, ScreeningEntry>;
   updatedAt: string;
 };
 
-type WorkspaceTemplate = "literature_matrix" | "methods_audit" | "evidence_gap";
+type WorkspaceTemplate = "literature_matrix" | "methods_audit" | "evidence_gap" | "prisma_scoping";
+type ScreeningDecision = "pending" | "included" | "maybe" | "excluded";
+
+type ReviewProtocol = {
+  question: string;
+  inclusion: string;
+  exclusion: string;
+};
+
+type ScreeningEntry = {
+  decision: ScreeningDecision;
+  reason: string;
+};
 
 type RunResponse = {
   version: "civilmcp-research-workspace-run-v1";
@@ -95,6 +112,11 @@ type RunResponse = {
 
 const STORAGE_KEY = "civilmcp-research-workspace-v1";
 const MODEL_OPTIONS = CHAT_MODELS.filter((model) => ["gpt-5.6-luna", "gpt-5.6-terra", "gpt-5.6-sol"].includes(model.id));
+const DEFAULT_REVIEW_PROTOCOL: ReviewProtocol = {
+  question: "What does the selected Thai civil engineering evidence show, where does it disagree, and what remains uncertain?",
+  inclusion: "Civil engineering studies relevant to the review question with page-linked evidence in CivilMCP.",
+  exclusion: "Out of scope, duplicate, or insufficient evidence to answer the review question.",
+};
 
 const TEMPLATE_COLUMNS: Record<WorkspaceTemplate, WorkspaceColumn[]> = {
   literature_matrix: [
@@ -117,16 +139,30 @@ const TEMPLATE_COLUMNS: Record<WorkspaceTemplate, WorkspaceColumn[]> = {
     { id: "gap", label: "Evidence gap", prompt: "Identify what evidence remains missing before the claim can guide engineering decisions." },
     { id: "next_study", label: "Next study", prompt: "Propose the smallest study or validation that would close the identified gap." },
   ],
+  prisma_scoping: [
+    { id: "study_design", label: "Study design", prompt: "Identify the study design and data source using only supplied evidence." },
+    { id: "context", label: "Context", prompt: "Extract the study area, population, asset, material, or operational context." },
+    { id: "method", label: "Method", prompt: "Summarize the analytical, experimental, survey, or modelling method." },
+    { id: "finding", label: "Key finding", prompt: "State the strongest directly supported finding without adding inference." },
+    { id: "limitation", label: "Limitation", prompt: "Identify stated limitations or explain that the supplied evidence is insufficient." },
+    { id: "gap", label: "Evidence gap", prompt: "Name the smallest defensible unanswered question revealed by this study." },
+  ],
 };
 
 const TEMPLATE_LABELS: Record<WorkspaceTemplate, string> = {
   literature_matrix: "Literature matrix",
   methods_audit: "Methods audit",
   evidence_gap: "Evidence gap map",
+  prisma_scoping: "PRISMA scoping review",
 };
 
 const TEMPLATE_MENU_OPTIONS: ReadonlyArray<GlassMenuOption<WorkspaceTemplate>> = Object.entries(TEMPLATE_LABELS).map(
-  ([value, label]) => ({ value: value as WorkspaceTemplate, label }),
+  ([value, label]) => ({
+    value: value as WorkspaceTemplate,
+    label,
+    description: value === "prisma_scoping" ? "Protocol, screening, flow, and extraction" : undefined,
+    badge: value === "prisma_scoping" ? "PRISMA-ScR" : undefined,
+  }),
 );
 
 const MODEL_MENU_OPTIONS: ReadonlyArray<GlassMenuOption<ChatModel>> = MODEL_OPTIONS.map((option) => ({
@@ -161,6 +197,15 @@ function pageLabel(evidence: WorkspaceEvidence): string {
 
 function csvValue(value: string): string {
   return `"${value.replaceAll('"', '""')}"`;
+}
+
+function downloadText(filename: string, content: string, type: string) {
+  const url = URL.createObjectURL(new Blob([content], { type }));
+  const anchor = document.createElement("a");
+  anchor.href = url;
+  anchor.download = filename;
+  anchor.click();
+  URL.revokeObjectURL(url);
 }
 
 async function fetchWorkspaceJson<T>(url: string, init?: RequestInit): Promise<T> {
@@ -198,6 +243,8 @@ export function ResearchWorkspacePanel({
   const [rows, setRows] = useState<WorkspaceRow[]>([]);
   const [columns, setColumns] = useState<WorkspaceColumn[]>(defaultColumns);
   const [selectedSources, setSelectedSources] = useState<string[]>([]);
+  const [reviewProtocol, setReviewProtocol] = useState<ReviewProtocol>(DEFAULT_REVIEW_PROTOCOL);
+  const [screening, setScreening] = useState<Record<string, ScreeningEntry>>({});
   const [ready, setReady] = useState(false);
   const [restoredLocally, setRestoredLocally] = useState(false);
   const [pickerOpen, setPickerOpen] = useState(false);
@@ -213,12 +260,14 @@ export function ResearchWorkspacePanel({
       const parsed = JSON.parse(window.localStorage.getItem(STORAGE_KEY) ?? "null") as unknown;
       if (isWorkspaceState(parsed)) {
         setWorkspaceId(parsed.workspaceId);
-        setTitle(parsed.title);
+        setTitle(parsed.template === "prisma_scoping" && parsed.title === "Thai civil engineering matrix" ? "Thai civil engineering scoping review" : parsed.title);
         setTemplate(parsed.template);
         setModel(parsed.model);
         setRows(parsed.rows);
         setColumns(parsed.columns);
         setSelectedSources(parsed.selectedSources);
+        setReviewProtocol(parsed.reviewProtocol ?? DEFAULT_REVIEW_PROTOCOL);
+        setScreening(parsed.screening ?? {});
         setRestoredLocally(true);
       } else {
         setWorkspaceId(`workspace-${crypto.randomUUID()}`);
@@ -248,6 +297,8 @@ export function ResearchWorkspacePanel({
       rows,
       columns,
       selectedSources,
+      reviewProtocol,
+      screening,
       updatedAt: new Date().toISOString(),
     };
     try {
@@ -256,7 +307,7 @@ export function ResearchWorkspacePanel({
     } catch {
       setStatusText("Local save unavailable");
     }
-  }, [columns, model, ready, rows, selectedSources, status, template, title, workspaceId]);
+  }, [columns, model, ready, reviewProtocol, rows, screening, selectedSources, status, template, title, workspaceId]);
 
   useEffect(() => {
     if (!ready || restoredLocally || !authenticated) return;
@@ -266,12 +317,14 @@ export function ResearchWorkspacePanel({
         const saved = payload.workspaces.map((item) => item.state).find(isWorkspaceState);
         if (!saved || cancelled) return;
         setWorkspaceId(saved.workspaceId);
-        setTitle(saved.title);
+        setTitle(saved.template === "prisma_scoping" && saved.title === "Thai civil engineering matrix" ? "Thai civil engineering scoping review" : saved.title);
         setTemplate(saved.template);
         setModel(saved.model);
         setRows(saved.rows);
         setColumns(saved.columns);
         setSelectedSources(saved.selectedSources);
+        setReviewProtocol(saved.reviewProtocol ?? DEFAULT_REVIEW_PROTOCOL);
+        setScreening(saved.screening ?? {});
         setStatusText("Loaded synced workspace");
       })
       .catch(() => undefined);
@@ -279,17 +332,37 @@ export function ResearchWorkspacePanel({
   }, [authenticated, ready, restoredLocally]);
 
   const selectedRows = useMemo(() => rows.filter((row) => selectedSources.includes(row.source)), [rows, selectedSources]);
+  const prismaEnabled = template === "prisma_scoping";
+  const runnableRows = useMemo(
+    () => prismaEnabled ? selectedRows.filter((row) => screening[row.source]?.decision === "included") : selectedRows,
+    [prismaEnabled, screening, selectedRows],
+  );
+  const prismaFlow = useMemo(() => {
+    const entries = rows.map((row) => screening[row.source] ?? { decision: "pending" as const, reason: "" });
+    const included = entries.filter((entry) => entry.decision === "included").length;
+    const excluded = entries.filter((entry) => entry.decision === "excluded").length;
+    const maybe = entries.filter((entry) => entry.decision === "maybe").length;
+    return { identified: rows.length, screened: included + excluded + maybe, included, excluded, maybe, pending: rows.length - included - excluded - maybe };
+  }, [rows, screening]);
+  const protocolReady = Object.values(reviewProtocol).every((value) => value.trim().length >= 8);
+  const screeningReady = rows.length > 0
+    && prismaFlow.pending === 0
+    && prismaFlow.maybe === 0
+    && rows.every((row) => screening[row.source]?.decision !== "excluded" || Boolean(screening[row.source]?.reason.trim()));
   const activeRow = activeCell ? rows.find((row) => row.source === activeCell.source) : null;
   const activeColumn = activeCell ? columns.find((column) => column.id === activeCell.columnId) : null;
   const activeCellValue = activeRow && activeColumn ? activeRow.cells.find((cell) => cell.columnId === activeColumn.id) : null;
   const selectedModel = CHAT_MODELS.find((item) => item.id === model) ?? CHAT_MODELS[0];
-  const estimatedCredits = selectedRows.length * (selectedModel?.credits ?? 1);
+  const estimatedCredits = runnableRows.length * (selectedModel?.credits ?? 1);
 
   const applyTemplate = (nextTemplate: WorkspaceTemplate) => {
     const nextColumns = TEMPLATE_COLUMNS[nextTemplate];
     setTemplate(nextTemplate);
     setColumns(nextColumns);
     setRows((current) => current.map((row) => ({ ...row, cells: nextColumns.map((column) => blankCell(column.id)) })));
+    if (nextTemplate === "prisma_scoping" && title === "Thai civil engineering matrix") {
+      setTitle("Thai civil engineering scoping review");
+    }
     setActiveCell(null);
     setStatus("idle");
     setStatusText(`${TEMPLATE_LABELS[nextTemplate]} ready`);
@@ -329,7 +402,17 @@ export function ResearchWorkspacePanel({
     }));
   };
 
-  const runResearch = async (runRows = selectedRows, runColumns = columns) => {
+  const updateScreening = (source: string, decision: ScreeningDecision, reason?: string) => {
+    setScreening((current) => ({
+      ...current,
+      [source]: {
+        decision,
+        reason: reason ?? (decision === "excluded" ? current[source]?.reason ?? "" : ""),
+      },
+    }));
+  };
+
+  const runResearch = async (runRows = runnableRows, runColumns = columns) => {
     if (!proEnabled) {
       onUpgrade("Research Workspace is included in Founder Pro. Sign in or upgrade to run batch research.");
       return;
@@ -396,6 +479,8 @@ export function ResearchWorkspacePanel({
       rows,
       columns,
       selectedSources,
+      reviewProtocol,
+      screening,
       updatedAt: new Date().toISOString(),
     };
     try {
@@ -419,7 +504,12 @@ export function ResearchWorkspacePanel({
   };
 
   const exportWorkspace = () => {
-    const headers = ["Paper", "Source", ...columns.flatMap((column) => [column.label, `${column.label} sources`, `${column.label} review`])];
+    const headers = [
+      "Paper",
+      "Source",
+      ...(prismaEnabled ? ["Screening decision", "Exclusion reason"] : []),
+      ...columns.flatMap((column) => [column.label, `${column.label} sources`, `${column.label} review`]),
+    ];
     const lines = [headers.map(csvValue).join(",")];
     for (const row of rows) {
       const values = columns.flatMap((column) => {
@@ -427,16 +517,47 @@ export function ResearchWorkspacePanel({
         const sources = cell?.evidence.map((item) => `${item.source} ${pageLabel(item)}`).join("; ") ?? "";
         return [cell?.value ?? "", sources, cell?.review ?? "unreviewed"];
       });
-      lines.push([row.title, row.source, ...values].map(csvValue).join(","));
+      const screeningValues = prismaEnabled ? [screening[row.source]?.decision ?? "pending", screening[row.source]?.reason ?? ""] : [];
+      lines.push([row.title, row.source, ...screeningValues, ...values].map(csvValue).join(","));
     }
-    const blob = new Blob([lines.join("\n")], { type: "text/csv;charset=utf-8" });
-    const url = URL.createObjectURL(blob);
-    const anchor = document.createElement("a");
-    anchor.href = url;
-    anchor.download = `civilmcp-research-workspace-${Date.now()}.csv`;
-    anchor.click();
-    URL.revokeObjectURL(url);
+    downloadText(`civilmcp-research-workspace-${Date.now()}.csv`, lines.join("\n"), "text/csv;charset=utf-8");
     setStatusText("Workspace exported with source columns");
+  };
+
+  const exportPrismaReview = () => {
+    const lines = [
+      `# ${title}`,
+      "",
+      "> PRISMA-guided scoping review of a bounded CivilMCP candidate set. Human verification is required; this export does not imply PRISMA endorsement or certification.",
+      "",
+      "## Protocol",
+      `- Review question: ${reviewProtocol.question.trim()}`,
+      `- Inclusion criteria: ${reviewProtocol.inclusion.trim()}`,
+      `- Exclusion criteria: ${reviewProtocol.exclusion.trim()}`,
+      "- Source: CivilMCP page-linked corpus",
+      `- Exported: ${new Date().toISOString()}`,
+      "",
+      "## Flow",
+      `- Candidate records: ${prismaFlow.identified}`,
+      "- Duplicates removed: 0 (candidate sources are unique within CivilMCP)",
+      `- Screened: ${prismaFlow.screened}`,
+      `- Excluded: ${prismaFlow.excluded}`,
+      `- Included for extraction: ${prismaFlow.included}`,
+      `- Awaiting decision: ${prismaFlow.pending + prismaFlow.maybe}`,
+      "",
+      "## Screening log",
+      ...rows.map((row) => {
+        const entry = screening[row.source] ?? { decision: "pending", reason: "" };
+        return `- **${row.title}** — ${entry.decision}${entry.reason ? `: ${entry.reason}` : ""} (${row.source})`;
+      }),
+      "",
+      "## Checklist readiness",
+      `- Protocol captured: ${protocolReady ? "yes" : "no"}`,
+      `- Screening complete with exclusion reasons: ${screeningReady ? "yes" : "no"}`,
+      `- Included studies extracted: ${runnableRows.length > 0 && runnableRows.every((row) => row.cells.some((cell) => cell.status === "ready" || cell.status === "needs_review")) ? "yes" : "no"}`,
+    ];
+    downloadText(`civilmcp-prisma-scoping-review-${Date.now()}.md`, lines.join("\n"), "text/markdown;charset=utf-8");
+    setStatusText("PRISMA review log exported");
   };
 
   return (
@@ -446,9 +567,10 @@ export function ResearchWorkspacePanel({
           <div className="workspaceTitleLine">
             <span className="workspaceEyebrow">Research Workspace</span>
             <span className="workspaceProBadge">Founder Pro</span>
+            {prismaEnabled ? <span className="workspaceStandardBadge">PRISMA-ScR guided</span> : null}
           </div>
           <input aria-label="Workspace title" value={title} maxLength={160} onChange={(event) => setTitle(event.target.value)} />
-          <p>Run evidence-linked AI columns across selected CivilMCP papers.</p>
+          <p>{prismaEnabled ? "Define a protocol, screen candidate papers, then extract page-linked evidence." : "Run evidence-linked AI columns across selected CivilMCP papers."}</p>
         </div>
         <div className="workspaceHeaderStatus" aria-live="polite">
           {status === "running" || status === "saving" ? <LoaderCircle size={15} className="workspaceSpinner" aria-hidden /> : status === "saved" ? <Check size={15} aria-hidden /> : null}
@@ -486,14 +608,14 @@ export function ResearchWorkspacePanel({
           <Save size={16} aria-hidden />
           <span>Save</span>
         </button>
-        <button type="button" onClick={exportWorkspace} disabled={!rows.length}>
+        <button type="button" onClick={prismaEnabled ? exportPrismaReview : exportWorkspace} disabled={!rows.length}>
           <Download size={16} aria-hidden />
-          <span>Export CSV</span>
+          <span>{prismaEnabled ? "Export PRISMA" : "Export CSV"}</span>
         </button>
-        <button className="workspaceRunButton" type="button" onClick={() => void runResearch()} disabled={proEnabled && (!selectedRows.length || !columns.length || status === "running")}>
+        <button className="workspaceRunButton" type="button" onClick={() => void runResearch()} disabled={proEnabled && (!runnableRows.length || !columns.length || status === "running")}>
           <Sparkles size={16} aria-hidden />
-          <span>{proEnabled ? "Run selected" : "Unlock batch run"}</span>
-          {selectedRows.length ? <strong>{estimatedCredits} cr</strong> : null}
+          <span>{proEnabled ? (prismaEnabled ? "Run included" : "Run selected") : "Unlock batch run"}</span>
+          {runnableRows.length ? <strong>{estimatedCredits} cr</strong> : null}
         </button>
       </div>
 
@@ -520,6 +642,82 @@ export function ResearchWorkspacePanel({
           <label><span>Column name</span><input value={customColumnLabel} maxLength={80} onChange={(event) => setCustomColumnLabel(event.target.value)} placeholder="e.g. Safety factor" /></label>
           <label><span>Agent instruction</span><input value={customColumnPrompt} maxLength={500} onChange={(event) => setCustomColumnPrompt(event.target.value)} placeholder="Extract the reported safety factor and its test condition." /></label>
           <button type="button" onClick={addCustomColumn} disabled={!customColumnLabel.trim() || customColumnPrompt.trim().length < 8}>Add column</button>
+        </section>
+      ) : null}
+
+      {prismaEnabled ? (
+        <section className="prismaWorkspace" aria-label="PRISMA-guided scoping review">
+          <header className="prismaWorkspaceHeader">
+            <div>
+              <span><BookOpenCheck size={16} aria-hidden /> Bounded review protocol</span>
+              <strong>Human-governed screening, evidence-linked extraction</strong>
+            </div>
+            <small>PRISMA-ScR guided · CivilMCP candidate set</small>
+          </header>
+
+          <div className="prismaOverview">
+            <div className="prismaProtocol">
+              <label>
+                <span>Review question</span>
+                <textarea value={reviewProtocol.question} maxLength={600} rows={2} onChange={(event) => setReviewProtocol((current) => ({ ...current, question: event.target.value }))} />
+              </label>
+              <div>
+                <label>
+                  <span>Include when</span>
+                  <textarea value={reviewProtocol.inclusion} maxLength={600} rows={3} onChange={(event) => setReviewProtocol((current) => ({ ...current, inclusion: event.target.value }))} />
+                </label>
+                <label>
+                  <span>Exclude when</span>
+                  <textarea value={reviewProtocol.exclusion} maxLength={600} rows={3} onChange={(event) => setReviewProtocol((current) => ({ ...current, exclusion: event.target.value }))} />
+                </label>
+              </div>
+            </div>
+
+            <div className="prismaStatus" aria-label="PRISMA flow status">
+              <div className="prismaFlow">
+                <span aria-label={`Candidate records ${prismaFlow.identified}`}><strong>{prismaFlow.identified}</strong>Candidate records</span>
+                <span aria-label={`Screened ${prismaFlow.screened}`}><strong>{prismaFlow.screened}</strong>Screened</span>
+                <span aria-label={`Excluded ${prismaFlow.excluded}`}><strong>{prismaFlow.excluded}</strong>Excluded</span>
+                <span aria-label={`Included ${prismaFlow.included}`}><strong>{prismaFlow.included}</strong>Included</span>
+              </div>
+              <div className="prismaChecklist">
+                <span className={protocolReady ? "complete" : ""}>{protocolReady ? <Check size={14} aria-hidden /> : <Circle size={14} aria-hidden />}Protocol captured</span>
+                <span className={screeningReady ? "complete" : ""}>{screeningReady ? <Check size={14} aria-hidden /> : <Circle size={14} aria-hidden />}Screening log complete</span>
+                <span className={prismaFlow.included > 0 ? "complete" : ""}>{prismaFlow.included > 0 ? <Check size={14} aria-hidden /> : <Circle size={14} aria-hidden />}Included set ready</span>
+              </div>
+              <p>Search source: CivilMCP selected candidate records. Add external databases before claiming a comprehensive global systematic review.</p>
+            </div>
+          </div>
+
+          <div className="prismaScreening">
+            <div className="prismaScreeningHeading">
+              <span><ClipboardCheck size={16} aria-hidden /> Screening decisions</span>
+              <small>{prismaFlow.pending} pending · {prismaFlow.maybe} maybe</small>
+            </div>
+            <div className="prismaScreeningRows">
+              {rows.map((row) => {
+                const entry = screening[row.source] ?? { decision: "pending" as const, reason: "" };
+                return (
+                  <article key={row.source} className={`prismaScreeningRow ${entry.decision}`}>
+                    <div>
+                      <span>{row.paperCode || (row.collection === "ncce" ? "NCCE" : "CE Project")}</span>
+                      <strong>{row.title}</strong>
+                    </div>
+                    <div className="prismaDecisionGroup" role="group" aria-label={`Screen ${row.title}`}>
+                      {(["included", "maybe", "excluded"] as const).map((decision) => (
+                        <button key={decision} type="button" className={entry.decision === decision ? "selected" : ""} aria-pressed={entry.decision === decision} onClick={() => updateScreening(row.source, decision)}>
+                          {decision === "included" ? "Include" : decision === "maybe" ? "Maybe" : "Exclude"}
+                        </button>
+                      ))}
+                    </div>
+                    {entry.decision === "excluded" ? (
+                      <input aria-label={`Exclusion reason for ${row.title}`} value={entry.reason} maxLength={240} onChange={(event) => updateScreening(row.source, "excluded", event.target.value)} placeholder="Required exclusion reason" />
+                    ) : null}
+                  </article>
+                );
+              })}
+            </div>
+          </div>
         </section>
       ) : null}
 
@@ -568,7 +766,7 @@ export function ResearchWorkspacePanel({
                     <button type="button" onClick={() => onOpenPaper(row.source)}>
                       <span>{row.paperCode || (row.collection === "ncce" ? "NCCE" : "CE Project")}</span>
                       <strong>{row.title}</strong>
-                      <small>{row.pageLabel} · {row.evidenceCount} evidence</small>
+                      <small>{row.pageLabel} · {row.evidenceCount} evidence{prismaEnabled ? ` · ${screening[row.source]?.decision ?? "pending"}` : ""}</small>
                     </button>
                   </th>
                   {columns.map((column) => {

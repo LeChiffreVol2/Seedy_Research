@@ -354,6 +354,22 @@ test("Founder Pro can batch-run, inspect, review, and export workspace cells", a
   const download = page.waitForEvent("download");
   await workspace.getByRole("button", { name: "Export CSV" }).click();
   await expect((await download).suggestedFilename()).toMatch(/^civilmcp-research-workspace-\d+\.csv$/);
+
+  await workspace.getByRole("button", { name: "Template" }).click();
+  await workspace.getByRole("menuitemradio", { name: /PRISMA scoping review/ }).click();
+  const prisma = workspace.getByLabel("PRISMA-guided scoping review");
+  await expect(prisma).toContainText("Bounded review protocol");
+  await prisma.getByRole("group", { name: "Screen Thai road safety evidence 1" }).getByRole("button", { name: "Include" }).click();
+  await prisma.getByRole("group", { name: "Screen Thai road safety evidence 2" }).getByRole("button", { name: "Exclude" }).click();
+  await prisma.getByLabel("Exclusion reason for Thai road safety evidence 2").fill("Outside the review context");
+  await expect(prisma.getByLabel("Screened 2")).toBeVisible();
+  await expect(prisma.getByLabel("Included 1")).toBeVisible();
+  await expect(prisma.getByLabel("Excluded 1")).toBeVisible();
+  await workspace.getByRole("button", { name: /Run included/ }).click();
+  await expect(workspace.getByText(/Run complete · 1 credits used/)).toBeVisible();
+  const prismaDownload = page.waitForEvent("download");
+  await workspace.getByRole("button", { name: "Export PRISMA" }).click();
+  await expect((await prismaDownload).suggestedFilename()).toMatch(/^civilmcp-prisma-scoping-review-\d+\.md$/);
   await expectNoPageOverflow(page);
 });
 
