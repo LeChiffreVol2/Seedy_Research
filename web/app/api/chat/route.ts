@@ -1098,6 +1098,13 @@ function explicitPaperSources(question: string): string[] {
   return sources;
 }
 
+function hasMixedExplicitPaperCollections(question: string): boolean {
+  const collections = new Set(
+    explicitPaperSources(question).map((source) => (source.startsWith("NCCE") ? "ncce" : "ce_project")),
+  );
+  return collections.size > 1;
+}
+
 function deterministicPlan(question: string): ContextPlan | null {
   const q = question.trim();
   if (!q) return contextPlanForIntent(question, "simple_lookup", "deterministic pre-pass: empty question fallback");
@@ -2394,10 +2401,13 @@ export async function POST(request: NextRequest) {
           .join("\n\n"),
       }
     : conversationContext;
+  const requestedCollection = normalizeCollection(collection);
+  const mixedExplicitPaperCollections = hasMixedExplicitPaperCollections(effectiveConversationContext.retrievalQuestion);
   const collectionFilter =
-    normalizeCollection(collection) ||
-    effectiveConversationContext.collection ||
-    inferCollectionFromQuestion(effectiveConversationContext.retrievalQuestion);
+    requestedCollection ||
+    (mixedExplicitPaperCollections
+      ? ""
+      : effectiveConversationContext.collection || inferCollectionFromQuestion(effectiveConversationContext.retrievalQuestion));
   const contextStarted = performance.now();
   const rawBuiltContext = await buildMcpContext(
     effectiveConversationContext.retrievalQuestion,

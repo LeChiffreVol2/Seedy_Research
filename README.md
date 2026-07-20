@@ -108,7 +108,7 @@ The indexer is incremental and does not re-embed unchanged chunks. A synthetic, 
 ## Demo prompts
 
 1. `Compare NCCE25_CEM14, NCCE25_CEM28, and NCCE25_CEM04. What delay, financial, and scheduling risks do they report? Cite exact pages and distinguish findings from inference.`
-2. `Compare road-safety evidence in Y2024_TR_Article_G01 and NCCE29_TRL42. Which factors lead to serious injury or death, and where do findings agree or differ? Cite exact pages.`
+2. `Compare NCCE29_TRL40 and NCCE29_TRL42. What truck-crash and road-system factors lead to serious injury or death, where do findings agree or differ, and which findings are site-specific? Cite exact pages.`
 3. `Compare NCCE25_MAT06, NCCE25_MAT13, and NCCE25_MAT18. Contrast materials, test methods, performance measures, and limitations with exact-page citations.`
 4. After an answer: `Use E1 and explain what a follow-up study should verify.`
 
