@@ -4361,3 +4361,172 @@ button,textarea,input,select { font:inherit; }
   .workspaceSurface.withInspector { grid-template-columns:1fr; }
   .workspaceInspector { border-top:1px solid #dfe2e7; border-left:0; }
 }
+
+/* Industrial liquid-glass system */
+:root {
+  --glass-fill:rgba(255,255,255,.62);
+  --glass-fill-strong:rgba(255,255,255,.78);
+  --glass-line:rgba(255,255,255,.82);
+  --glass-shadow:0 12px 30px rgba(37,48,73,.10),inset 0 1px 0 rgba(255,255,255,.92);
+}
+body {
+  background:
+    radial-gradient(circle at 16% -8%,rgba(98,108,224,.10),transparent 30%),
+    radial-gradient(circle at 88% 3%,rgba(28,163,139,.07),transparent 25%),
+    #f5f7fa;
+  background-attachment:fixed;
+}
+.appSidebar {
+  border-right-color:rgba(255,255,255,.78);
+  background:rgba(250,252,255,.72);
+  box-shadow:12px 0 36px rgba(31,42,64,.055);
+  backdrop-filter:blur(28px) saturate(145%);
+  -webkit-backdrop-filter:blur(28px) saturate(145%);
+}
+.searchComposer,.researchWorkspaceHeader,.workspaceToolbar,.pathBuilder,.accountCard,.authBenefitCard {
+  border-color:rgba(255,255,255,.86);
+  background:var(--glass-fill-strong);
+  box-shadow:var(--glass-shadow);
+  backdrop-filter:blur(24px) saturate(138%);
+  -webkit-backdrop-filter:blur(24px) saturate(138%);
+}
+.searchStage { position:relative; z-index:12; }
+.feedToolbar,.feedStack { position:relative; z-index:1; }
+.searchComposer:focus-within {
+  border-color:rgba(124,132,224,.48);
+  box-shadow:0 0 0 3px rgba(79,87,217,.09),0 18px 44px rgba(39,50,76,.11),inset 0 1px 0 rgba(255,255,255,.96);
+}
+.researchCard,.conversationCard,.historyCard,.shareCard,.missionArtifact {
+  border-color:rgba(255,255,255,.82);
+  background:rgba(255,255,255,.72);
+  box-shadow:0 8px 26px rgba(31,42,64,.055),inset 0 1px 0 rgba(255,255,255,.9);
+  backdrop-filter:blur(18px) saturate(125%);
+  -webkit-backdrop-filter:blur(18px) saturate(125%);
+}
+.researchCard:hover {
+  border-color:rgba(139,147,225,.4);
+  box-shadow:0 16px 38px rgba(31,42,64,.10),inset 0 1px 0 rgba(255,255,255,.94);
+  transform:translateY(-1px);
+}
+
+.liquidEffect,.liquidPanelEffect { display:block!important; }
+.glassWrap,.modeSegmentWrap {
+  overflow:hidden;
+  border-radius:11px;
+  box-shadow:0 7px 18px rgba(37,48,73,.08),inset 0 1px 0 rgba(255,255,255,.76);
+}
+.glassWrap:hover,.modeSegmentWrap:hover { filter:brightness(1.015); transform:translateY(-1px); }
+.glassWrap:active,.modeSegmentWrap:active { transform:scale(.985); }
+.glassButton,.modeSegment {
+  min-height:40px;
+  border:1px solid var(--glass-line);
+  background:linear-gradient(180deg,rgba(255,255,255,.76),rgba(235,241,249,.46)),rgba(255,255,255,.34);
+  box-shadow:inset 0 1px 0 rgba(255,255,255,.92),inset 0 -1px 0 rgba(68,79,105,.08),0 7px 16px rgba(37,48,73,.07);
+  backdrop-filter:blur(18px) saturate(145%);
+  -webkit-backdrop-filter:blur(18px) saturate(145%);
+}
+.glassButton { gap:7px; padding:0 11px; color:#272b33; font-size:.8rem; font-weight:680; }
+.glassButton::before { display:block; }
+.glassWrap:hover .glassButton,.glassButton:focus-visible {
+  border-color:rgba(255,255,255,.96);
+  background:linear-gradient(180deg,rgba(255,255,255,.88),rgba(232,239,249,.56)),rgba(255,255,255,.46);
+  box-shadow:inset 0 1px 0 #fff,0 10px 22px rgba(37,48,73,.10);
+}
+.glassWrap.active .glassButton {
+  border-color:rgba(158,165,235,.48);
+  background:linear-gradient(180deg,rgba(249,249,255,.88),rgba(226,228,255,.6)),rgba(238,240,255,.5);
+  color:#343ca8;
+}
+.controlIcon,.chipIcon { color:#4f57d9; }
+.promptTrigger .glassButton { min-width:100px; border-radius:11px; }
+.sendButtonWrap,.sendButtonWrap .glassButton { border-radius:11px; }
+.sendButtonWrap .glassButton {
+  border:1px solid rgba(255,255,255,.24);
+  background:linear-gradient(145deg,#282c37,#111318);
+  box-shadow:inset 0 1px 0 rgba(255,255,255,.2),0 10px 22px rgba(17,19,24,.18);
+}
+
+.glassDropdown,.dropdownSurface { border-radius:14px; }
+.glassDropdown { z-index:60; animation:menuReveal .2s var(--ease-spring); }
+.dropdownDismissLayer { z-index:59; }
+.dropdownSurface {
+  border:1px solid rgba(255,255,255,.88);
+  background:linear-gradient(145deg,rgba(255,255,255,.94),rgba(239,244,251,.87)),rgba(255,255,255,.84);
+  box-shadow:0 22px 54px rgba(29,39,62,.18),inset 0 1px 0 rgba(255,255,255,.96);
+  backdrop-filter:blur(32px) saturate(155%);
+  -webkit-backdrop-filter:blur(32px) saturate(155%);
+}
+.menuOption { border-radius:9px; }
+.menuOption:hover,.menuOption:focus-visible,.menuOption.selected {
+  border-color:rgba(142,150,226,.22);
+  background:linear-gradient(180deg,rgba(255,255,255,.72),rgba(229,232,255,.5)),rgba(244,245,255,.52);
+}
+
+.promptMenu .glassDropdown { width:356px; min-width:356px; }
+.promptOptions { gap:5px; }
+.promptOption {
+  min-height:54px; display:grid; grid-template-columns:32px minmax(0,1fr); justify-content:initial;
+  gap:10px; padding:8px 9px;
+}
+.promptOptionIcon {
+  width:32px; height:32px; display:grid; place-items:center; border:1px solid rgba(255,255,255,.86);
+  border-radius:9px; background:rgba(255,255,255,.56); color:#4f57d9;
+  box-shadow:inset 0 1px 0 rgba(255,255,255,.96),0 5px 12px rgba(45,55,82,.07);
+}
+.promptOptionCopy { min-width:0; align-self:center; }
+.promptOption .optionLabel { font-size:.78rem; font-weight:720; line-height:1.2; }
+.promptOption .optionDescription { margin-top:3px; overflow:hidden; color:#707887; font-size:.66rem; line-height:1.25; text-overflow:ellipsis; white-space:nowrap; }
+
+.glassMenuSelect { min-width:0; position:relative; }
+.glassSelectWrap { width:100%; }
+.glassSelectTrigger { min-width:178px; justify-content:flex-start; text-align:left; }
+.glassSelectCopy { min-width:0; display:grid; gap:2px; line-height:1.05; }
+.glassSelectCopy>span { color:#7b8390; font-size:.57rem; font-weight:740; letter-spacing:.055em; text-transform:uppercase; }
+.glassSelectCopy>strong { overflow:hidden; color:#262a31; font-size:.7rem; font-weight:720; text-overflow:ellipsis; white-space:nowrap; }
+.glassSelectDropdown { min-width:258px; }
+.pathPreferences .glassMenuSelect { width:100%; }
+.pathPreferences .glassSelectTrigger { width:100%; min-height:48px; }
+.pathPreferences .glassSelectDropdown { width:100%; min-width:100%; }
+.workspaceToolbar>.glassMenuSelect { flex:0 0 auto; }
+.workspaceToolbar .glassSelectTrigger { min-width:190px; min-height:38px; }
+.workspaceToolbar .glassWrap { border-radius:9px; }
+.workspaceToolbar .glassDropdown { top:calc(100% + 8px); }
+.workspaceToolbar {
+  position:relative; z-index:20; overflow:visible;
+  border-color:rgba(255,255,255,.82);
+  background:rgba(255,255,255,.56);
+}
+.workspaceProNotice { position:relative; z-index:2; }
+.workspaceSurface { position:relative; z-index:1; }
+.workspaceToolbar>button {
+  border-color:rgba(255,255,255,.86);
+  background:linear-gradient(180deg,rgba(255,255,255,.78),rgba(235,241,248,.5)),rgba(255,255,255,.38);
+  box-shadow:inset 0 1px 0 rgba(255,255,255,.94),0 6px 15px rgba(37,48,73,.065);
+  backdrop-filter:blur(16px) saturate(135%);
+  -webkit-backdrop-filter:blur(16px) saturate(135%);
+}
+.workspaceToolbar>button:hover:not(:disabled) { border-color:rgba(255,255,255,.98); background:rgba(255,255,255,.78); transform:translateY(-1px); }
+.workspaceToolbar .workspaceRunButton {
+  border-color:rgba(255,255,255,.2); background:linear-gradient(145deg,#292d38,#111318); color:#fff;
+  box-shadow:inset 0 1px 0 rgba(255,255,255,.2),0 10px 22px rgba(17,19,24,.16);
+}
+.workspaceProNotice {
+  border-color:rgba(255,255,255,.82); background:rgba(247,247,255,.64);
+  box-shadow:inset 0 1px 0 rgba(255,255,255,.92); backdrop-filter:blur(18px) saturate(135%);
+}
+
+@media (max-width:760px) {
+  .promptMenu .glassDropdown { top:auto; right:16px; bottom:94px; left:16px; width:auto; min-width:0; }
+  .workspaceToolbar>.glassMenuSelect,.workspaceToolbar>button { flex:0 0 auto; }
+  .workspaceToolbar .workspaceRunButton { order:-2; }
+  .workspaceToolbar>.workspaceGlassSelect:first-of-type { order:-1; }
+  .workspaceToolbar .glassSelectTrigger { min-width:174px; }
+  .workspaceToolbar .glassSelectDropdown { right:0; left:auto; }
+}
+@media (max-width:390px) {
+  .promptMenu>.glassWrap,
+  .promptMenu .promptTrigger .glassButton {
+    width:42px;
+    min-width:42px;
+  }
+}

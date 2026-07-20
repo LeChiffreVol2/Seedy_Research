@@ -2,10 +2,11 @@
 
 import {
   Check,
-  ChevronDown,
+  Cpu,
   Download,
   FileSearch,
   FolderOpen,
+  LayoutTemplate,
   LoaderCircle,
   Plus,
   RefreshCw,
@@ -17,6 +18,7 @@ import {
 import { useEffect, useMemo, useState } from "react";
 
 import { CHAT_MODELS, type ChatModel } from "@/lib/chat-models";
+import { GlassMenuSelect, type GlassMenuOption } from "@/components/glass-menu-select";
 
 export type ResearchWorkspacePaper = {
   id: string;
@@ -122,6 +124,16 @@ const TEMPLATE_LABELS: Record<WorkspaceTemplate, string> = {
   methods_audit: "Methods audit",
   evidence_gap: "Evidence gap map",
 };
+
+const TEMPLATE_MENU_OPTIONS: ReadonlyArray<GlassMenuOption<WorkspaceTemplate>> = Object.entries(TEMPLATE_LABELS).map(
+  ([value, label]) => ({ value: value as WorkspaceTemplate, label }),
+);
+
+const MODEL_MENU_OPTIONS: ReadonlyArray<GlassMenuOption<ChatModel>> = MODEL_OPTIONS.map((option) => ({
+  value: option.id,
+  label: option.label,
+  description: `${option.credits} ${option.credits === 1 ? "credit" : "credits"} per paper`,
+}));
 
 function blankCell(columnId: string): WorkspaceCell {
   return { columnId, value: "", confidence: "low", status: "idle", review: "unreviewed", evidence: [] };
@@ -445,20 +457,22 @@ export function ResearchWorkspacePanel({
       </header>
 
       <div className="workspaceToolbar" aria-label="Research workspace controls">
-        <label>
-          <span>Template</span>
-          <select aria-label="Workspace template" value={template} onChange={(event) => applyTemplate(event.target.value as WorkspaceTemplate)}>
-            {Object.entries(TEMPLATE_LABELS).map(([value, label]) => <option key={value} value={value}>{label}</option>)}
-          </select>
-          <ChevronDown size={14} aria-hidden />
-        </label>
-        <label>
-          <span>Model</span>
-          <select aria-label="Workspace model" value={model} onChange={(event) => setModel(event.target.value as ChatModel)}>
-            {MODEL_OPTIONS.map((option) => <option key={option.id} value={option.id}>{option.label}</option>)}
-          </select>
-          <ChevronDown size={14} aria-hidden />
-        </label>
+        <GlassMenuSelect
+          label="Template"
+          value={template}
+          options={TEMPLATE_MENU_OPTIONS}
+          onChange={applyTemplate}
+          icon={LayoutTemplate}
+          className="workspaceGlassSelect"
+        />
+        <GlassMenuSelect
+          label="Model"
+          value={model}
+          options={MODEL_MENU_OPTIONS}
+          onChange={setModel}
+          icon={Cpu}
+          className="workspaceGlassSelect"
+        />
         <button type="button" onClick={() => setPickerOpen((value) => !value)} aria-expanded={pickerOpen}>
           <FolderOpen size={16} aria-hidden />
           <span>Papers</span>

@@ -39,6 +39,7 @@ import {
   SlidersHorizontal,
   Sparkles,
   TableProperties,
+  Target,
   RefreshCw,
   Route,
   Trash2,
@@ -55,6 +56,7 @@ import {
   type ChatModel,
 } from "@/lib/chat-models";
 import { ResearchWorkspacePanel, type ResearchWorkspacePaper } from "@/components/research-workspace";
+import { GlassMenuSelect, type GlassMenuOption } from "@/components/glass-menu-select";
 
 type Mode = "baseline" | "mcp";
 type ChatExperience = "answer" | "mission" | "learn" | "research" | "automated";
@@ -321,6 +323,18 @@ type PaperTranslationResponse = {
 type PathLevel = "foundation" | "applied" | "research";
 type PathOutcome = "literature_review" | "study_plan" | "decision_brief";
 
+const PATH_LEVEL_OPTIONS: ReadonlyArray<GlassMenuOption<PathLevel>> = [
+  { value: "foundation", label: "New to the topic", description: "Start with concepts and vocabulary" },
+  { value: "applied", label: "Working knowledge", description: "Compare methods and real evidence" },
+  { value: "research", label: "Research-ready", description: "Prioritize gaps, validity, and transfer" },
+];
+
+const PATH_OUTCOME_OPTIONS: ReadonlyArray<GlassMenuOption<PathOutcome>> = [
+  { value: "literature_review", label: "Literature review", description: "Map evidence and disagreements" },
+  { value: "study_plan", label: "Study plan", description: "Build a sequenced learning path" },
+  { value: "decision_brief", label: "Decision brief", description: "Synthesize evidence for action" },
+];
+
 type ResearchPath = {
   version: "civilmcp-research-path-v1";
   goal: string;
@@ -365,12 +379,35 @@ type NavItem = {
   icon: LucideIcon;
 };
 
-const QUICK_PROMPTS = [
-  "Compare NCCE25_CEM14, NCCE25_CEM28, and NCCE25_CEM04. What delay, financial, and scheduling risks do they report? Cite exact pages and distinguish findings from inference.",
-  "Compare NCCE29_TRL40 and NCCE29_TRL42. What truck-crash and road-system factors lead to serious injury or death, where do findings agree or differ, and which findings are site-specific? Cite exact pages.",
-  "Compare NCCE25_MAT06, NCCE25_MAT13, and NCCE25_MAT18. Contrast materials, test methods, performance measures, and limitations with exact-page citations.",
-  "Use the strongest evidence as E1, then explain what a follow-up study should verify.",
-  "Run an Evidence Mission on flood-resilient infrastructure in Thailand: compare methods and findings, identify what may transfer internationally, and give me learning checkpoints with exact-page evidence.",
+const PROMPT_STARTERS: Array<{ id: string; label: string; description: string; prompt: string; icon: LucideIcon }> = [
+  {
+    id: "construction-risk",
+    label: "Construction risk",
+    description: "Delay, finance, and schedule evidence",
+    prompt: "Compare NCCE25_CEM14, NCCE25_CEM28, and NCCE25_CEM04. What delay, financial, and scheduling risks do they report? Cite exact pages and distinguish findings from inference.",
+    icon: Building2,
+  },
+  {
+    id: "road-safety",
+    label: "Road safety",
+    description: "Truck crashes and system factors",
+    prompt: "Compare NCCE29_TRL40 and NCCE29_TRL42. What truck-crash and road-system factors lead to serious injury or death, where do findings agree or differ, and which findings are site-specific? Cite exact pages.",
+    icon: ShieldCheck,
+  },
+  {
+    id: "materials-methods",
+    label: "Materials methods",
+    description: "Tests, performance, and limitations",
+    prompt: "Compare NCCE25_MAT06, NCCE25_MAT13, and NCCE25_MAT18. Contrast materials, test methods, performance measures, and limitations with exact-page citations.",
+    icon: Layers3,
+  },
+  {
+    id: "flood-mission",
+    label: "Flood evidence mission",
+    description: "Plan, compare, verify, and learn",
+    prompt: "Run an Evidence Mission on flood-resilient infrastructure in Thailand: compare methods and findings, identify what may transfer internationally, and give me learning checkpoints with exact-page evidence.",
+    icon: Route,
+  },
 ];
 
 const EXPERIENCE_OPTIONS: Array<MenuOption<ChatExperience>> = [
@@ -1191,22 +1228,29 @@ function PromptMenu({
       </GlassButton>
       {open ? (
         <GlassDropdown onDismiss={() => keyboard.closeMenu()}>
-          <div className="menuTitle">Prompt examples</div>
+          <div className="menuTitle">Research starters</div>
           <div ref={keyboard.menuRef} id="prompt-menu" className="menuOptions promptOptions" role="menu" aria-label="Prompt examples" onKeyDown={keyboard.onMenuKeyDown}>
-            {QUICK_PROMPTS.map((prompt) => (
-              <button
-                key={prompt}
-                type="button"
-                role="menuitem"
-                className="menuOption promptOption"
-                onClick={() => {
-                  setDraft(prompt);
-                  keyboard.closeMenu();
-                }}
-              >
-                <span className="optionLabel">{prompt}</span>
-              </button>
-            ))}
+            {PROMPT_STARTERS.map((starter) => {
+              const Icon = starter.icon;
+              return (
+                <button
+                  key={starter.id}
+                  type="button"
+                  role="menuitem"
+                  className="menuOption promptOption"
+                  onClick={() => {
+                    setDraft(starter.prompt);
+                    keyboard.closeMenu();
+                  }}
+                >
+                  <span className="promptOptionIcon"><Icon size={16} strokeWidth={2.1} aria-hidden /></span>
+                  <span className="promptOptionCopy">
+                    <span className="optionLabel">{starter.label}</span>
+                    <span className="optionDescription">{starter.description}</span>
+                  </span>
+                </button>
+              );
+            })}
           </div>
         </GlassDropdown>
       ) : null}
@@ -2781,22 +2825,22 @@ function PersonalizedResearchPathPanel({
             ))}
           </div>
           <div className="pathPreferences">
-            <label>
-              <span>Starting point</span>
-              <select value={level} onChange={(event) => setLevel(event.target.value as PathLevel)}>
-                <option value="foundation">New to the topic</option>
-                <option value="applied">Working knowledge</option>
-                <option value="research">Research-ready</option>
-              </select>
-            </label>
-            <label>
-              <span>Target outcome</span>
-              <select value={outcome} onChange={(event) => setOutcome(event.target.value as PathOutcome)}>
-                <option value="literature_review">Literature review</option>
-                <option value="study_plan">Study plan</option>
-                <option value="decision_brief">Decision brief</option>
-              </select>
-            </label>
+            <GlassMenuSelect
+              label="Starting point"
+              value={level}
+              options={PATH_LEVEL_OPTIONS}
+              onChange={setLevel}
+              icon={Gauge}
+              className="pathGlassSelect"
+            />
+            <GlassMenuSelect
+              label="Target outcome"
+              value={outcome}
+              options={PATH_OUTCOME_OPTIONS}
+              onChange={setOutcome}
+              icon={Target}
+              className="pathGlassSelect"
+            />
           </div>
           <button type="submit" className="primaryAction pathBuildAction" disabled={status === "loading" || goal.trim().length < 8}>
             {status === "loading" ? "Building your path…" : "Build my research path"}
