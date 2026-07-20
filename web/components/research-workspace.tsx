@@ -113,10 +113,24 @@ type RunResponse = {
 const STORAGE_KEY = "civilmcp-research-workspace-v1";
 const MODEL_OPTIONS = CHAT_MODELS.filter((model) => ["gpt-5.6-luna", "gpt-5.6-terra", "gpt-5.6-sol"].includes(model.id));
 const DEFAULT_REVIEW_PROTOCOL: ReviewProtocol = {
-  question: "What does the selected Thai civil engineering evidence show, where does it disagree, and what remains uncertain?",
-  inclusion: "Civil engineering studies relevant to the review question with page-linked evidence in CivilMCP.",
-  exclusion: "Out of scope, duplicate, or insufficient evidence to answer the review question.",
+  question: "What does this evidence show, where does it disagree, and what remains uncertain?",
+  inclusion: "Relevant civil engineering studies with page-level evidence.",
+  exclusion: "Out of scope, duplicate, or insufficient evidence.",
 };
+
+function normalizeReviewProtocol(value?: ReviewProtocol): ReviewProtocol {
+  return {
+    question: !value?.question || value.question === "What does the selected Thai civil engineering evidence show, where does it disagree, and what remains uncertain?"
+      ? DEFAULT_REVIEW_PROTOCOL.question
+      : value.question,
+    inclusion: !value?.inclusion || value.inclusion === "Civil engineering studies relevant to the review question with page-linked evidence in CivilMCP."
+      ? DEFAULT_REVIEW_PROTOCOL.inclusion
+      : value.inclusion,
+    exclusion: !value?.exclusion || value.exclusion === "Out of scope, duplicate, or insufficient evidence to answer the review question."
+      ? DEFAULT_REVIEW_PROTOCOL.exclusion
+      : value.exclusion,
+  };
+}
 
 const TEMPLATE_COLUMNS: Record<WorkspaceTemplate, WorkspaceColumn[]> = {
   literature_matrix: [
@@ -266,7 +280,7 @@ export function ResearchWorkspacePanel({
         setRows(parsed.rows);
         setColumns(parsed.columns);
         setSelectedSources(parsed.selectedSources);
-        setReviewProtocol(parsed.reviewProtocol ?? DEFAULT_REVIEW_PROTOCOL);
+        setReviewProtocol(normalizeReviewProtocol(parsed.reviewProtocol));
         setScreening(parsed.screening ?? {});
         setRestoredLocally(true);
       } else {
@@ -323,7 +337,7 @@ export function ResearchWorkspacePanel({
         setRows(saved.rows);
         setColumns(saved.columns);
         setSelectedSources(saved.selectedSources);
-        setReviewProtocol(saved.reviewProtocol ?? DEFAULT_REVIEW_PROTOCOL);
+        setReviewProtocol(normalizeReviewProtocol(saved.reviewProtocol));
         setScreening(saved.screening ?? {});
         setStatusText("Loaded synced workspace");
       })
@@ -565,12 +579,12 @@ export function ResearchWorkspacePanel({
       <header className="researchWorkspaceHeader">
         <div>
           <div className="workspaceTitleLine">
-            <span className="workspaceEyebrow">Research Workspace</span>
-            <span className="workspaceProBadge">Founder Pro</span>
-            {prismaEnabled ? <span className="workspaceStandardBadge">PRISMA-ScR guided</span> : null}
+            <span className="workspaceEyebrow">Workspace</span>
+            <span className="workspaceProBadge">Pro</span>
+            {prismaEnabled ? <span className="workspaceStandardBadge">PRISMA-ScR</span> : null}
           </div>
           <input aria-label="Workspace title" value={title} maxLength={160} onChange={(event) => setTitle(event.target.value)} />
-          <p>{prismaEnabled ? "Define a protocol, screen candidate papers, then extract page-linked evidence." : "Run evidence-linked AI columns across selected CivilMCP papers."}</p>
+          <p>{prismaEnabled ? "Screen papers, extract evidence, and keep a review log." : "Compare evidence across selected papers."}</p>
         </div>
         <div className="workspaceHeaderStatus" aria-live="polite">
           {status === "running" || status === "saving" ? <LoaderCircle size={15} className="workspaceSpinner" aria-hidden /> : status === "saved" ? <Check size={15} aria-hidden /> : null}
@@ -602,7 +616,7 @@ export function ResearchWorkspacePanel({
         </button>
         <button type="button" onClick={() => setCustomColumnOpen((value) => !value)} disabled={columns.length >= 6} aria-expanded={customColumnOpen}>
           <Plus size={16} aria-hidden />
-          <span>AI column</span>
+          <span>Add column</span>
         </button>
         <button type="button" onClick={() => void saveWorkspace()}>
           <Save size={16} aria-hidden />
@@ -614,14 +628,14 @@ export function ResearchWorkspacePanel({
         </button>
         <button className="workspaceRunButton" type="button" onClick={() => void runResearch()} disabled={proEnabled && (!runnableRows.length || !columns.length || status === "running")}>
           <Sparkles size={16} aria-hidden />
-          <span>{proEnabled ? (prismaEnabled ? "Run included" : "Run selected") : "Unlock batch run"}</span>
+          <span>{proEnabled ? (prismaEnabled ? "Run included" : "Run selected") : "Run with Pro"}</span>
           {runnableRows.length ? <strong>{estimatedCredits} cr</strong> : null}
         </button>
       </div>
 
       {pickerOpen ? (
         <section className="workspacePaperPicker" aria-label="Add papers to workspace">
-          <div><strong>Add papers</strong><span>Select up to 12; each batch run processes up to 6.</span></div>
+          <div><strong>Add papers</strong><span>Choose up to 12. Each run processes up to 6.</span></div>
           <div className="workspacePaperOptions">
             {papers.slice(0, 12).map((paper) => {
               const included = rows.some((row) => row.source === paper.source);
@@ -640,7 +654,7 @@ export function ResearchWorkspacePanel({
       {customColumnOpen ? (
         <section className="workspaceColumnBuilder" aria-label="Add AI research column">
           <label><span>Column name</span><input value={customColumnLabel} maxLength={80} onChange={(event) => setCustomColumnLabel(event.target.value)} placeholder="e.g. Safety factor" /></label>
-          <label><span>Agent instruction</span><input value={customColumnPrompt} maxLength={500} onChange={(event) => setCustomColumnPrompt(event.target.value)} placeholder="Extract the reported safety factor and its test condition." /></label>
+          <label><span>Instruction</span><input value={customColumnPrompt} maxLength={500} onChange={(event) => setCustomColumnPrompt(event.target.value)} placeholder="Extract the reported safety factor and its test condition." /></label>
           <button type="button" onClick={addCustomColumn} disabled={!customColumnLabel.trim() || customColumnPrompt.trim().length < 8}>Add column</button>
         </section>
       ) : null}
@@ -649,10 +663,10 @@ export function ResearchWorkspacePanel({
         <section className="prismaWorkspace" aria-label="PRISMA-guided scoping review">
           <header className="prismaWorkspaceHeader">
             <div>
-              <span><BookOpenCheck size={16} aria-hidden /> Bounded review protocol</span>
-              <strong>Human-governed screening, evidence-linked extraction</strong>
+              <span><BookOpenCheck size={16} aria-hidden /> Review protocol</span>
+              <strong>Screen first. Extract included studies.</strong>
             </div>
-            <small>PRISMA-ScR guided · CivilMCP candidate set</small>
+            <small>PRISMA-ScR · CivilMCP corpus</small>
           </header>
 
           <div className="prismaOverview">
@@ -663,11 +677,11 @@ export function ResearchWorkspacePanel({
               </label>
               <div>
                 <label>
-                  <span>Include when</span>
+                  <span>Include if</span>
                   <textarea value={reviewProtocol.inclusion} maxLength={600} rows={3} onChange={(event) => setReviewProtocol((current) => ({ ...current, inclusion: event.target.value }))} />
                 </label>
                 <label>
-                  <span>Exclude when</span>
+                  <span>Exclude if</span>
                   <textarea value={reviewProtocol.exclusion} maxLength={600} rows={3} onChange={(event) => setReviewProtocol((current) => ({ ...current, exclusion: event.target.value }))} />
                 </label>
               </div>
@@ -675,24 +689,24 @@ export function ResearchWorkspacePanel({
 
             <div className="prismaStatus" aria-label="PRISMA flow status">
               <div className="prismaFlow">
-                <span aria-label={`Candidate records ${prismaFlow.identified}`}><strong>{prismaFlow.identified}</strong>Candidate records</span>
+                <span aria-label={`Candidates ${prismaFlow.identified}`}><strong>{prismaFlow.identified}</strong>Candidates</span>
                 <span aria-label={`Screened ${prismaFlow.screened}`}><strong>{prismaFlow.screened}</strong>Screened</span>
                 <span aria-label={`Excluded ${prismaFlow.excluded}`}><strong>{prismaFlow.excluded}</strong>Excluded</span>
                 <span aria-label={`Included ${prismaFlow.included}`}><strong>{prismaFlow.included}</strong>Included</span>
               </div>
               <div className="prismaChecklist">
-                <span className={protocolReady ? "complete" : ""}>{protocolReady ? <Check size={14} aria-hidden /> : <Circle size={14} aria-hidden />}Protocol captured</span>
-                <span className={screeningReady ? "complete" : ""}>{screeningReady ? <Check size={14} aria-hidden /> : <Circle size={14} aria-hidden />}Screening log complete</span>
-                <span className={prismaFlow.included > 0 ? "complete" : ""}>{prismaFlow.included > 0 ? <Check size={14} aria-hidden /> : <Circle size={14} aria-hidden />}Included set ready</span>
+                <span className={protocolReady ? "complete" : ""}>{protocolReady ? <Check size={14} aria-hidden /> : <Circle size={14} aria-hidden />}Protocol ready</span>
+                <span className={screeningReady ? "complete" : ""}>{screeningReady ? <Check size={14} aria-hidden /> : <Circle size={14} aria-hidden />}Screening complete</span>
+                <span className={prismaFlow.included > 0 ? "complete" : ""}>{prismaFlow.included > 0 ? <Check size={14} aria-hidden /> : <Circle size={14} aria-hidden />}Studies selected</span>
               </div>
-              <p>Search source: CivilMCP selected candidate records. Add external databases before claiming a comprehensive global systematic review.</p>
+              <p>Scope: selected CivilMCP papers. Add external databases before treating this as a comprehensive systematic review.</p>
             </div>
           </div>
 
           <div className="prismaScreening">
             <div className="prismaScreeningHeading">
-              <span><ClipboardCheck size={16} aria-hidden /> Screening decisions</span>
-              <small>{prismaFlow.pending} pending · {prismaFlow.maybe} maybe</small>
+              <span><ClipboardCheck size={16} aria-hidden /> Screen papers</span>
+              <small>{prismaFlow.pending} to review · {prismaFlow.maybe} maybe</small>
             </div>
             <div className="prismaScreeningRows">
               {rows.map((row) => {
@@ -711,7 +725,7 @@ export function ResearchWorkspacePanel({
                       ))}
                     </div>
                     {entry.decision === "excluded" ? (
-                      <input aria-label={`Exclusion reason for ${row.title}`} value={entry.reason} maxLength={240} onChange={(event) => updateScreening(row.source, "excluded", event.target.value)} placeholder="Required exclusion reason" />
+                      <input aria-label={`Exclusion reason for ${row.title}`} value={entry.reason} maxLength={240} onChange={(event) => updateScreening(row.source, "excluded", event.target.value)} placeholder="Why was this paper excluded?" />
                     ) : null}
                   </article>
                 );
@@ -724,8 +738,8 @@ export function ResearchWorkspacePanel({
       {!proEnabled ? (
         <div className="workspaceProNotice" role="note">
           <ShieldCheck size={18} aria-hidden />
-          <span><strong>Preview the workspace free.</strong> Batch runs, account sync, Terra, and Sol require Founder Pro.</span>
-          <button type="button" onClick={() => onUpgrade("Research Workspace is included in Founder Pro. Sign in or upgrade to continue.")}>View Founder Pro</button>
+          <span><strong>Preview for free.</strong> Pro runs batches, syncs work, and adds Terra and Sol.</span>
+          <button type="button" onClick={() => onUpgrade("Research Workspace is included in Founder Pro. Sign in or upgrade to continue.")}>View Pro</button>
         </div>
       ) : null}
 

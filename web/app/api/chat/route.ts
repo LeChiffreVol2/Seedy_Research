@@ -2246,7 +2246,7 @@ function buildMissionMarkdown(artifact: MissionArtifact): string {
       ? "## Automated Research Dossier"
       : artifact.experience === "research"
         ? "## Deep Research Brief"
-        : "## Agentic Evidence Mission",
+        : "## Evidence Review",
     summary,
     "",
     `**Evidence verdict — ${missionVerdictLabel(artifact.verdict.status)}:** ${rationale}`,

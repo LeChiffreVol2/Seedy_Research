@@ -53,19 +53,19 @@ async function expectNoInteractiveOverlap(page: Page) {
 test("desktop feed keeps the approved research hierarchy", async ({ page }) => {
   await page.setViewportSize({ width: 1440, height: 1000 });
   await page.goto("/");
-  await expect(page.getByRole("heading", { name: "Thai civil engineering, grounded in evidence." })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Thai civil engineering research, with sources." })).toBeVisible();
   await expect(page.getByLabel("CivilMCP corpus coverage")).toContainText("papers");
-  await expect(page.getByLabel("CivilMCP corpus coverage")).toContainText("evidence chunks");
+  await expect(page.getByLabel("CivilMCP corpus coverage")).toContainText("cited passages");
   await expect(page.getByLabel("CivilMCP corpus coverage")).toContainText("Exact-page citations");
-  await expect(page.getByText(/Agentic evidence missions · GPT-5.6 Luna/)).toBeVisible();
-  const runControl = page.getByRole("button", { name: /Evidence Mission/ });
-  await expect(runControl).toContainText("Evidence Mission");
+  await expect(page.getByText(/Powered by GPT-5.6 Luna/)).toBeVisible();
+  const runControl = page.getByRole("button", { name: /Evidence Review/ });
+  await expect(runControl).toContainText("Evidence Review");
   await runControl.click();
-  await expect(page.getByRole("menuitemradio", { name: /Evidence Mission/ })).toContainText("Flagship");
-  await expect(page.getByRole("menuitemradio", { name: /Tutor Mission/ })).toBeVisible();
+  await expect(page.getByRole("menuitemradio", { name: /Evidence Review/ })).toContainText("Recommended");
+  await expect(page.getByRole("menuitemradio", { name: /Guided Learning/ })).toBeVisible();
   await expect(page.getByRole("menuitemradio", { name: /Deep Research/ })).toContainText("Pro");
-  await expect(page.getByRole("menuitemradio", { name: /Fast Answer/ })).toBeVisible();
-  await expect(page.getByRole("button", { name: "Workspace Pro" })).toBeVisible();
+  await expect(page.getByRole("menuitemradio", { name: /Quick Answer/ })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Workspace" })).toBeVisible();
   await page.keyboard.press("Escape");
   await expect(page.getByRole("region", { name: "CivilMCP research feed" })).toBeVisible();
   await expect.poll(() => page.locator(".researchCard").count()).toBeGreaterThan(0);
@@ -88,7 +88,7 @@ test("intermediate responsive widths stay collision-free", async ({ page }) => {
   ]) {
     await page.setViewportSize(viewport);
     await page.goto("/");
-    await expect(page.getByRole("heading", { name: "Thai civil engineering, grounded in evidence." })).toBeVisible();
+    await expect(page.getByRole("heading", { name: "Thai civil engineering research, with sources." })).toBeVisible();
     await expectNoPageOverflow(page);
     await expectNoInteractiveOverlap(page);
   }
@@ -100,7 +100,7 @@ test("320px layout has no control collision and exposes all primary filters", as
   await expect(page.getByRole("button", { name: "Collection" })).toBeVisible();
   await expect(page.getByRole("button", { name: "Session actions" })).toBeVisible();
 
-  for (const label of ["Hot", "Recent", "Evidence", "Saved"]) {
+  for (const label of ["Top", "Recent", "Evidence", "Saved"]) {
     await expect(page.getByRole("button", { name: new RegExp(`^${label}`) })).toBeVisible();
   }
 
@@ -130,14 +130,14 @@ test("navigation resets rail scroll and account does not render the composer", a
 
   await expect.poll(() => page.locator(".mainRail").evaluate((element) => element.scrollTop)).toBe(0);
   await expect(page.locator(".searchComposer")).toHaveCount(0);
-  await expect(page.getByRole("heading", { name: "Sign in to save your research" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Sign in" })).toBeVisible();
   await expect(page.getByRole("button", { name: "Continue with Google" })).toBeVisible();
   await expect(page.getByRole("button", { name: "Send sign-in link" })).toBeVisible();
   await expect(page.getByText("฿199")).toBeVisible();
 
   await page.getByLabel("Account and chat history login").getByRole("button", { name: "Sign in", exact: true }).click();
   await page.getByRole("button", { name: "Forgot password?" }).click();
-  await expect(page.getByRole("heading", { name: "Reset your password" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Reset password" })).toBeVisible();
   await expect(page.getByRole("button", { name: "Send recovery link" })).toBeVisible();
   await expect(page.getByLabel("Password")).toHaveCount(0);
 
@@ -158,9 +158,9 @@ test("Terra and Sol lead free users to the Founder Pro decision point", async ({
   await expect(terra).toContainText("PRO");
   await expect(sol).toContainText("PRO");
   await terra.click();
-  await expect(page.getByRole("heading", { name: "Go deeper when the question demands it." })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "For larger research projects." })).toBeVisible();
   await expect(page.getByRole("button", { name: "Sign in to upgrade" })).toBeVisible();
-  await expect(page.getByText("Luna and exact-page evidence remain available")).toBeVisible();
+  await expect(page.getByText("Free includes Luna and exact-page citations.")).toBeVisible();
   await expectNoPageOverflow(page);
 });
 
@@ -217,26 +217,26 @@ test("Research Path turns an explicit goal into a four-stage learning sequence",
 test("Deep Research is visible but gated to Founder Pro", async ({ page }) => {
   await page.setViewportSize({ width: 390, height: 844 });
   await page.goto("/");
-  await page.getByRole("button", { name: /Evidence Mission/ }).click();
+  await page.getByRole("button", { name: /Evidence Review/ }).click();
   const deepResearch = page.getByRole("menuitemradio", { name: /Deep Research/ });
   await expect(deepResearch).toContainText("Pro");
   await deepResearch.click();
-  await expect(page.getByRole("heading", { name: "Go deeper when the question demands it." })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "For larger research projects." })).toBeVisible();
   await expect(page.getByText(/Deep Research is included in Founder Pro/)).toBeVisible();
 });
 
 test("Research Workspace is a separate Founder Pro surface", async ({ page }) => {
   await page.setViewportSize({ width: 390, height: 844 });
   await page.goto("/");
-  await page.getByRole("button", { name: "Workspace Pro" }).click();
+  await page.getByRole("button", { name: "Workspace" }).click();
   const workspace = page.getByLabel("Research Workspace Pro");
   await expect(workspace).toBeVisible();
-  await expect(workspace.getByText("Run evidence-linked AI columns across selected CivilMCP papers.")).toBeVisible();
-  await expect(workspace.getByRole("button", { name: /Unlock batch run/ })).toBeVisible();
-  await workspace.getByRole("button", { name: /Unlock batch run/ }).click();
-  await expect(page.getByRole("heading", { name: "Go deeper when the question demands it." })).toBeVisible();
+  await expect(workspace.getByText("Compare evidence across selected papers.")).toBeVisible();
+  await expect(workspace.getByRole("button", { name: /Run with Pro/ })).toBeVisible();
+  await workspace.getByRole("button", { name: /Run with Pro/ }).click();
+  await expect(page.getByRole("heading", { name: "For larger research projects." })).toBeVisible();
   await expect(page.getByText(/Research Workspace is included in Founder Pro/)).toBeVisible();
-  await expect(page.getByText(/Research Workspace \+ Deep Research/)).toBeVisible();
+  await expect(page.getByText("Research Workspace", { exact: true })).toBeVisible();
   await expectNoPageOverflow(page);
 });
 
@@ -340,7 +340,7 @@ test("Founder Pro can batch-run, inspect, review, and export workspace cells", a
 
   await page.setViewportSize({ width: 1440, height: 1000 });
   await page.goto("/");
-  await page.getByRole("button", { name: "Workspace Pro" }).click();
+  await page.getByRole("button", { name: "Workspace" }).click();
   const workspace = page.getByLabel("Research Workspace Pro");
   await expect(workspace.locator("tbody tr")).toHaveCount(2);
   await workspace.getByRole("button", { name: /Run selected/ }).click();
@@ -358,7 +358,7 @@ test("Founder Pro can batch-run, inspect, review, and export workspace cells", a
   await workspace.getByRole("button", { name: "Template" }).click();
   await workspace.getByRole("menuitemradio", { name: /PRISMA scoping review/ }).click();
   const prisma = workspace.getByLabel("PRISMA-guided scoping review");
-  await expect(prisma).toContainText("Bounded review protocol");
+  await expect(prisma).toContainText("Review protocol");
   await prisma.getByRole("group", { name: "Screen Thai road safety evidence 1" }).getByRole("button", { name: "Include" }).click();
   await prisma.getByRole("group", { name: "Screen Thai road safety evidence 2" }).getByRole("button", { name: "Exclude" }).click();
   await prisma.getByLabel("Exclusion reason for Thai road safety evidence 2").fill("Outside the review context");
@@ -481,7 +481,7 @@ test("Evidence Mission renders a linked brief and exports Markdown", async ({ pa
     const body = [
       `8:${JSON.stringify([{ type: "civilmcp_context", traceId: "trace-test", evidenceItems: [evidenceItem] }])}`,
       `8:${JSON.stringify([{ type: "civilmcp_mission", traceId: "trace-test", artifact }])}`,
-      `0:${JSON.stringify("## Agentic Evidence Mission\nThe brief is grounded in [E1].")}`,
+      `0:${JSON.stringify("## Evidence Review\nThe brief is grounded in [E1].")}`,
       `d:${JSON.stringify({ finishReason: "stop", usage: { promptTokens: 10, completionTokens: 20 } })}`,
       "",
     ].join("\n");
@@ -501,7 +501,7 @@ test("Evidence Mission renders a linked brief and exports Markdown", async ({ pa
   await expect(send).toBeEnabled();
   await send.click();
 
-  const mission = page.getByLabel("Agentic Evidence Mission");
+  const mission = page.getByLabel("Evidence Review");
   await expect(mission).toContainText("Road safety evidence mission");
   await expect(mission).toContainText("100% exact-page coverage");
   await expect(mission).toContainText("Thailand → World bridge");

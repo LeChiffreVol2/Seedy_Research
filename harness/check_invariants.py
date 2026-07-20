@@ -280,7 +280,7 @@ def check_build_week_contract() -> Check:
             marker in page
             for marker in (
                 'value: "mission"',
-                'label: "Evidence Mission"',
+                'label: "Evidence Review"',
                 "AgenticMissionCard",
                 "evidenceBriefMarkdown",
                 "openPaperDetailBySource",
@@ -315,7 +315,7 @@ def check_build_week_contract() -> Check:
                 "Export CSV",
                 "Verified",
             )
-        ) and all(marker in page for marker in ('label: "Workspace Pro"', "ResearchWorkspacePanel")),
+        ) and all(marker in page for marker in ('label: "Workspace"', "ResearchWorkspacePanel")),
     }
     missing = [name for name, present in required.items() if not present]
     if missing:

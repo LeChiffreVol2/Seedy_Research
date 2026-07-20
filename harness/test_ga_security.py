@@ -197,9 +197,9 @@ class GASecurityContracts(unittest.TestCase):
         self.assertIn('aria-label="Research Workspace Pro"', workspace_ui)
         self.assertIn('"prisma_scoping"', workspace_ui)
         self.assertIn('aria-label="PRISMA-guided scoping review"', workspace_ui)
-        self.assertIn('PRISMA-ScR guided', workspace_ui)
+        self.assertIn('PRISMA-ScR', workspace_ui)
         self.assertIn('screening[row.source]?.decision === "included"', workspace_ui)
-        self.assertIn('label: "Workspace Pro"', page)
+        self.assertIn('label: "Workspace"', page)
         self.assertNotIn('label: "Automated Research"', page)
 
 

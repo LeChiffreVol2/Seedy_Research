@@ -403,9 +403,9 @@ const PROMPT_STARTERS: Array<{ id: string; label: string; description: string; p
   },
   {
     id: "flood-mission",
-    label: "Flood evidence mission",
-    description: "Plan, compare, verify, and learn",
-    prompt: "Run an Evidence Mission on flood-resilient infrastructure in Thailand: compare methods and findings, identify what may transfer internationally, and give me learning checkpoints with exact-page evidence.",
+    label: "Flood resilience",
+    description: "Compare findings and transfer limits",
+    prompt: "Review the evidence on flood-resilient infrastructure in Thailand. Compare methods and findings, identify what may transfer internationally, and cite the exact pages used.",
     icon: Route,
   },
 ];
@@ -413,32 +413,32 @@ const PROMPT_STARTERS: Array<{ id: string; label: string; description: string; p
 const EXPERIENCE_OPTIONS: Array<MenuOption<ChatExperience>> = [
   {
     value: "mission",
-    label: "Evidence Mission",
-    description: "Plan, search, compare, verify, and publish a linked evidence brief",
-    badge: "Flagship",
+    label: "Evidence Review",
+    description: "Find, compare, and verify evidence across papers",
+    badge: "Recommended",
   },
   {
     value: "learn",
-    label: "Tutor Mission",
-    description: "Investigate the evidence, then learn through Socratic checkpoints",
+    label: "Guided Learning",
+    description: "Learn through questions grounded in the selected evidence",
   },
   {
     value: "research",
     label: "Deep Research",
-    description: "A rigorous multi-paper brief with methods, conflicts, gaps, and next validation",
+    description: "Compare methods, conflicts, limitations, and gaps across papers",
     badge: "Pro",
   },
-  { value: "answer", label: "Fast Answer", description: "Stream the standard cited research brief" },
+  { value: "answer", label: "Quick Answer", description: "Answer directly with page citations" },
 ];
 
 const COLLECTION_OPTIONS: Array<MenuOption<CollectionFilter>> = [
-  { value: "", label: "All", description: "Search every indexed collection" },
+  { value: "", label: "All", description: "All indexed papers" },
   { value: "ce_project", label: "CE Project", description: "Civil engineering project reports" },
-  { value: "ncce", label: "NCCE", description: "National civil engineering proceedings" },
+  { value: "ncce", label: "NCCE", description: "Conference proceedings" },
 ];
 
 const FILTER_OPTIONS: Array<{ id: FeedFilter; label: string; icon: LucideIcon }> = [
-  { id: "hot", label: "Hot", icon: Flame },
+  { id: "hot", label: "Top", icon: Flame },
   { id: "recent", label: "Recent", icon: Clock3 },
   { id: "evidence", label: "Evidence", icon: FileText },
   { id: "saved", label: "Saved", icon: Bookmark },
@@ -448,7 +448,7 @@ const FILTER_OPTIONS: Array<{ id: FeedFilter; label: string; icon: LucideIcon }>
 
 const MAIN_NAV_ITEMS: NavItem[] = [
   { id: "explore", label: "Explore", icon: Compass },
-  { id: "workspace", label: "Workspace Pro", icon: TableProperties },
+  { id: "workspace", label: "Workspace", icon: TableProperties },
   { id: "path", label: "Research Path", icon: Route },
   { id: "chat", label: "Chat", icon: MessageCircle },
   { id: "history", label: "History", icon: History },
@@ -667,7 +667,7 @@ function evidenceBriefMarkdown(annotation: CivilMissionAnnotation, evidenceItems
       ? evidenceItems.map((item) => `- [${item.evidenceId}] ${item.source}${pageLabel(item) ? ` · ${pageLabel(item)}` : ""}${item.sectionTitle ? ` · ${item.sectionTitle}` : ""}`)
       : ["- See the linked CivilMCP session for source packets and exact-page evidence."]),
     "",
-    "_Research evidence, not professional engineering advice._",
+    "_For research use. Not engineering advice._",
   ];
   return lines.join("\n");
 }
@@ -698,7 +698,7 @@ function displayTitle(card: ResearchCardData): string {
 
 function displaySummary(card: ResearchCardData): string {
   return card.summary.includes("ยังไม่มี summary ที่อ่านได้")
-    ? "Open the indexed outline and representative evidence, or ask CivilMCP to answer from this paper with citations."
+    ? "Read the evidence or ask a cited question about this paper."
     : card.summary;
 }
 
@@ -1326,13 +1326,13 @@ function AgenticMissionCard({
     ? "Automated Research Dossier"
     : isDeepResearch
       ? "Deep Research Brief"
-      : "Agentic Evidence Mission";
+      : "Evidence Review";
   return (
     <section className="missionArtifact" aria-label={artifactLabel}>
       <div className="missionHeader">
         <div>
           <span className="missionEyebrow">
-            {isAutomatedResearch ? "Pro · Automated Research" : isDeepResearch ? "Pro · Deep Research" : "Linked Evidence Brief"}
+            {isAutomatedResearch ? "Pro · Automated Research" : isDeepResearch ? "Pro · Deep Research" : "Evidence Review"}
           </span>
           <h3>{artifact.title}</h3>
         </div>
@@ -1698,7 +1698,7 @@ function AppSidebar({
               <p className="brandName">CivilMCP</p>
               <span className="brandBadge">Research Preview</span>
             </div>
-            <p className="brandSubline">Civil engineering research assistant</p>
+            <p className="brandSubline">Civil engineering evidence</p>
           </div>
         </div>
 
@@ -1736,7 +1736,7 @@ function AppSidebar({
         <div className={`mcpStatus ${syncState}`}>
           <span className="syncDot" aria-hidden />
           <span>
-            <strong>MCP status</strong>
+            <strong>Workspace</strong>
             <small>{syncLabel}</small>
           </span>
         </div>
@@ -1828,8 +1828,8 @@ function SearchComposer({
 }) {
   const composerHint =
     activeNav === "explore"
-      ? "Typing filters the paper feed. Send asks CivilMCP with evidence."
-      : "Ask CivilMCP in the current chat session.";
+      ? "Search filters papers. Enter asks a cited question."
+      : "Ask a cited research question.";
 
   return (
     <form onSubmit={onSubmit} className="searchComposer">
@@ -1837,7 +1837,7 @@ function SearchComposer({
         value={draft}
         onChange={(event) => setDraft(event.target.value)}
         onKeyDown={onKeyDown}
-        placeholder={activeNav === "explore" ? "Search papers or ask an evidence question" : "Ask a research question"}
+        placeholder={activeNav === "explore" ? "Search papers or ask a question" : "Ask about the evidence"}
         aria-label="Ask or search civil engineering papers"
         aria-describedby="composer-intent"
         rows={3}
@@ -2557,9 +2557,9 @@ function ChatWorkspace({
     <section className="workspacePanel" aria-label="Chat workspace">
       <div className="workspaceHeader">
         <div>
-          <p className="workspaceEyebrow">Chat workspace</p>
-          <h2>{title || "Untitled chat"}</h2>
-          <p>Each conversation keeps its own model, collection, research mode, and cited evidence.</p>
+          <p className="workspaceEyebrow">Conversation</p>
+          <h2>{title || "New research"}</h2>
+          <p>Sources and answers stay together in this chat.</p>
         </div>
         <button type="button" className="cardAction primary" onClick={onNewChat} disabled={isLoading}>
           <Plus size={17} strokeWidth={2.2} aria-hidden />
@@ -2577,14 +2577,14 @@ function ChatWorkspace({
         />
       ) : (
         <article className="feedStateCard chatEmptyState">
-          <h2>Start a new research conversation</h2>
-          <p>Ask above or choose a paper to begin with evidence from the CivilMCP collection.</p>
+          <h2>Ask your first question</h2>
+          <p>CivilMCP searches the selected collection and cites the pages it uses.</p>
         </article>
       )}
       {error ? (
         <article className="feedStateCard errorState" role="alert">
-          <h2>Your question could not be sent</h2>
-          <p>Check the connection and selected model, then try again.</p>
+          <h2>We couldn&apos;t send that question</h2>
+          <p>Try again or choose another model.</p>
         </article>
       ) : null}
     </section>
@@ -2620,9 +2620,9 @@ function ChatHistoryPanel({
     <section className="workspacePanel" aria-label="Chat history">
       <div className="workspaceHeader">
         <div>
-          <p className="workspaceEyebrow">Chat history</p>
-          <h2>Saved conversations</h2>
-          <p>Resume a previous research thread or start a separate conversation.</p>
+          <p className="workspaceEyebrow">History</p>
+          <h2>Saved research</h2>
+          <p>Resume a conversation or start a new one.</p>
         </div>
         <button type="button" className="cardAction primary" onClick={onNewChat}>
           <Plus size={17} strokeWidth={2.2} aria-hidden />
@@ -2632,12 +2632,12 @@ function ChatHistoryPanel({
 
       {status === "loading" ? (
         <article className="feedStateCard">
-          <h2>Loading chat history</h2>
-          <p>Retrieving your saved research sessions.</p>
+          <h2>Loading history</h2>
+          <p>Fetching saved conversations.</p>
         </article>
       ) : status === "error" ? (
         <article className="feedStateCard errorState" role="alert">
-          <h2>Chat history unavailable</h2>
+          <h2>History unavailable</h2>
           <p>{error || "Check the connection and reopen History."}</p>
         </article>
       ) : sessions.length ? (
@@ -2682,8 +2682,8 @@ function ChatHistoryPanel({
         </div>
       ) : (
         <article className="feedStateCard">
-          <h2>No chat history yet</h2>
-          <p>Start a new chat and CivilMCP will keep it as a separate research session.</p>
+          <h2>No saved research yet</h2>
+          <p>Start a chat to save it here.</p>
         </article>
       )}
     </section>
@@ -2714,9 +2714,9 @@ function SharedPanel({
     <section className="workspacePanel" aria-label="Share workspace">
       <div className="workspaceHeader">
         <div>
-          <p className="workspaceEyebrow">Shared work</p>
-          <h2>Share or export this research session</h2>
-          <p>Create a link when teammates need to review the questions, answers, and cited evidence.</p>
+          <p className="workspaceEyebrow">Share</p>
+          <h2>Share this research</h2>
+          <p>Create a read-only link to the conversation and its sources.</p>
         </div>
         <button
           type="button"
@@ -2733,7 +2733,7 @@ function SharedPanel({
         <article className="shareCard">
           <p className="workspaceEyebrow">Current session</p>
           <h3>{title || "Untitled chat"}</h3>
-          <p>{messageCount ? `${messageCount} messages are ready to share.` : "Start a chat before sharing a research session."}</p>
+          <p>{messageCount ? `${messageCount} messages ready to share.` : "Start a chat before creating a link."}</p>
           {shareUrl ? (
             <div className="shareUrlBox">
               <span>{shareUrl}</span>
@@ -2745,9 +2745,9 @@ function SharedPanel({
         </article>
 
         <article className="shareCard secondary">
-          <p className="workspaceEyebrow">Portable archive</p>
-          <h3>Export as JSON</h3>
-          <p>Keep a portable record for audit, handoff, or debugging without creating a public link.</p>
+          <p className="workspaceEyebrow">Export</p>
+          <h3>Download session data</h3>
+          <p>Keep a copy without creating a public link.</p>
           <button type="button" className="cardAction" onClick={onExport}>
             <Download size={17} strokeWidth={2.2} aria-hidden />
             <span>Export session</span>
@@ -2800,10 +2800,10 @@ function PersonalizedResearchPathPanel({
       <header className="pathHeader">
         <div>
           <p className="workspaceEyebrow">Research Path</p>
-          <h2>{path ? path.goal : "Turn an interest into a research plan"}</h2>
-          <p>{path ? "A focused sequence through CivilMCP evidence, shaped to your level and outcome." : "Tell CivilMCP what you want to understand. It will select a small set of Thai studies and organize the work into four evidence-based stages."}</p>
+          <h2>{path ? path.goal : "Build a research path"}</h2>
+          <p>{path ? "A focused sequence of papers and cited questions." : "Choose a topic. CivilMCP builds four stages from relevant Thai studies."}</p>
         </div>
-        {path ? <button type="button" className="textAction" onClick={onReset}>Build a new path</button> : null}
+        {path ? <button type="button" className="textAction" onClick={onReset}>New path</button> : null}
       </header>
 
       {!path ? (
@@ -2843,7 +2843,7 @@ function PersonalizedResearchPathPanel({
             />
           </div>
           <button type="submit" className="primaryAction pathBuildAction" disabled={status === "loading" || goal.trim().length < 8}>
-            {status === "loading" ? "Building your path…" : "Build my research path"}
+            {status === "loading" ? "Building path…" : "Build path"}
           </button>
           {error ? <p className="pathError" role="alert">{error}</p> : null}
         </form>
@@ -2889,9 +2889,9 @@ function PersonalizedResearchPathPanel({
           </div>
           <aside className="openAlexBridge" aria-label="Global research discovery with OpenAlex">
             <div>
-              <p className="workspaceEyebrow">Global bridge · OpenAlex</p>
-              <h3>Check the Thai evidence against the wider research graph</h3>
-              <p>OpenAlex adds global works, authors, institutions, topics, and citation relationships without weakening CivilMCP&apos;s exact-page evidence boundary.</p>
+              <p className="workspaceEyebrow">OpenAlex</p>
+              <h3>Compare with global research</h3>
+              <p>Explore related work, authors, and citation paths outside the CivilMCP corpus.</p>
             </div>
             {path.openAlex.works.length ? (
               <div className="openAlexWorks">
@@ -2974,30 +2974,32 @@ function AccountPanel({
     ? new Intl.DateTimeFormat("en-US", { month: "short", day: "numeric" }).format(new Date(billing.resetAt))
     : "next month";
   const authTitle = signedIn
-    ? "Your CivilMCP account"
+    ? "Account"
     : isSignup
-      ? "Create your CivilMCP account"
+      ? "Create an account"
       : isMagic
-        ? "Sign in to save your research"
+        ? "Sign in"
         : isForgot || isRecovery
-          ? "Reset your password"
-          : "Sign in to CivilMCP";
+          ? "Reset password"
+          : "Sign in";
   const authSubtitle = signedIn
-    ? "Your saved chats and research sessions stay connected across devices."
+    ? "Your chats, paths, and papers sync across devices."
     : isSignup
-      ? "Create one account for saved chats, cited answers, and shared research sessions."
+      ? "Save chats, paths, and papers across devices."
       : isMagic
-        ? "Sync research paths, cited chats, and saved papers across devices."
+        ? "Save chats, paths, and papers across devices."
         : isForgot
-          ? "Enter your account email and we will send a secure recovery link."
+          ? "We'll email you a secure reset link."
           : isRecovery
-            ? "Choose a new password with at least eight characters."
-            : "Continue to your synced research workspace.";
+            ? "Use at least eight characters."
+            : "Save chats, paths, and papers across devices.";
   const authSwitchLabel = isSignup
     ? "Already have an account?"
-    : isMagic || isForgot || isRecovery
-      ? "Prefer password sign-in?"
-      : "New to CivilMCP?";
+    : isForgot || isRecovery
+      ? "Back to sign in"
+      : isMagic
+        ? "Use a password instead"
+        : "New to CivilMCP?";
   const authSwitchAction = isSignup || isMagic || isForgot || isRecovery ? "Sign in" : "Create account";
   const authSwitchMode: AuthMode = isSignup || isMagic || isForgot || isRecovery ? "signin" : "signup";
   const primaryActionLabel = isBusy
@@ -3061,7 +3063,7 @@ function AccountPanel({
               <button type="button" className="googleAuthAction" onClick={onGoogle} disabled={isBusy}>
                 <span>Continue with Google</span>
               </button>
-              <div className="authDivider"><span>or continue with email</span></div>
+              <div className="authDivider"><span>or use email</span></div>
               <div className="authSwitch authSwitchTop">
                 <span>{authSwitchLabel}</span>
                 <button type="button" onClick={() => setAuthMode(authSwitchMode)} disabled={isBusy}>
@@ -3071,11 +3073,11 @@ function AccountPanel({
 
               {isSignup ? (
                 <label>
-                  <span>Name or organization</span>
+                  <span>Name</span>
                   <input
                     value={displayName}
                     onChange={(event) => setDisplayName(event.target.value)}
-                    placeholder="CivilMCP research team"
+                    placeholder="Your name"
                     autoComplete="name"
                     disabled={isBusy}
                   />
@@ -3180,12 +3182,12 @@ function AccountPanel({
               {founderPro ? <Crown size={19} strokeWidth={2.2} aria-hidden /> : <Sparkles size={19} strokeWidth={2.2} aria-hidden />}
             </span>
             <div>
-              <p className="workspaceEyebrow">{founderPro ? "Founder Pro" : "Research Preview"}</p>
-              <h3>{founderPro ? "Pro research is unlocked." : "Go deeper when the question demands it."}</h3>
+              <p className="workspaceEyebrow">Founder Pro</p>
+              <h3>{founderPro ? "Your Pro tools are ready." : "For larger research projects."}</h3>
             </div>
           </div>
           <p className="planPrice"><strong>฿{billing.priceThb}</strong><span>/ month</span></p>
-          <p className="authBenefitIntro">150 weighted answer credits for rigorous multi-paper work. Luna uses 1, Terra 3, and Sol 5.</p>
+          <p className="authBenefitIntro">150 monthly credits. Luna 1 · Terra 3 · Sol 5.</p>
           {signedIn && billing.creditsRemaining != null && billing.creditsIncluded != null ? (
             <div className="creditMeter" aria-label={`${billing.creditsRemaining} of ${billing.creditsIncluded} answer credits remaining`}>
               <div><strong>{billing.creditsRemaining}</strong><span>of {billing.creditsIncluded} credits left</span></div>
@@ -3196,11 +3198,11 @@ function AccountPanel({
           <div className="authFeatureList">
             <div className="authFeatureRow">
               <Crown size={17} strokeWidth={2.2} aria-hidden />
-              <span><strong>Research Workspace + Deep Research</strong><small>Run cited batch extraction across many papers or produce a rigorous multi-paper brief.</small></span>
+              <span><strong>Research Workspace</strong><small>Screen, compare, and extract evidence across papers.</small></span>
             </div>
             <div className="authFeatureRow">
               <FileText size={17} strokeWidth={2.2} aria-hidden />
-              <span><strong>Same evidence discipline</strong><small>Every model stays grounded in CivilMCP page-linked evidence.</small></span>
+              <span><strong>Deep Research</strong><small>Create cited briefs across methods, findings, conflicts, and gaps.</small></span>
             </div>
           </div>
           {signedIn ? (
@@ -3215,10 +3217,10 @@ function AccountPanel({
                 {billingBusy
                   ? "Opening..."
                   : founderPro || billing.hasStripeCustomer
-                    ? "Manage membership"
+                    ? "Manage plan"
                     : billing.billingConfigured
                       ? "Upgrade to Founder Pro"
-                      : "Founder Pro opening soon"}
+                      : "Founder Pro coming soon"}
               </span>
             </button>
           ) : (
@@ -3227,7 +3229,7 @@ function AccountPanel({
               <span>Sign in to upgrade</span>
             </button>
           )}
-          <p className="planFinePrint">Luna and exact-page evidence remain available in the free Research Preview.</p>
+          <p className="planFinePrint">Free includes Luna and exact-page citations.</p>
         </aside>
       </div>
     </section>
@@ -4642,7 +4644,7 @@ export default function Home() {
     } else if (item === "shared") {
       setStatusText("");
     } else {
-      setStatusText(isAuthenticated ? "Account settings and synced history are available." : "Sign in to keep CivilMCP history available across devices.");
+      setStatusText(isAuthenticated ? "Your account and saved work are synced." : "Sign in to sync your work across devices.");
     }
   };
 
@@ -4669,18 +4671,18 @@ export default function Home() {
           <section className="searchStage">
             <h1>
               {activeMobileNav === "explore"
-                ? "Thai civil engineering, grounded in evidence."
-                : "Research with cited evidence"}
+                ? "Thai civil engineering research, with sources."
+                : "Research with sources."}
             </h1>
             {activeMobileNav === "explore" ? (
               <>
-                <p className="searchLead">Search {(feedTotal || 941).toLocaleString("en-US")} Thai papers and verify every answer against the original pages.</p>
+                <p className="searchLead">Search {(feedTotal || 941).toLocaleString("en-US")} papers. Compare findings. Verify every claim on the original page.</p>
                 <div className="corpusProof" aria-label="CivilMCP corpus coverage">
                   <span><strong>{(feedTotal || 941).toLocaleString("en-US")}</strong> papers</span>
-                  <span><strong>{(feedTotalChunks || 48_370).toLocaleString("en-US")}</strong> evidence chunks</span>
+                  <span><strong>{(feedTotalChunks || 48_370).toLocaleString("en-US")}</strong> cited passages</span>
                   <span>Exact-page citations</span>
                 </div>
-                <p className="corpusContext">Thai + English · Agentic evidence missions · GPT-5.6 Luna</p>
+                <p className="corpusContext">Thai + English · Powered by GPT-5.6 Luna</p>
               </>
             ) : null}
             <SearchComposer
@@ -4707,7 +4709,7 @@ export default function Home() {
               isReady={isReady}
               isLoading={isLoading}
             />
-            <p className="researchDisclaimer">Research evidence, not professional engineering advice.</p>
+            <p className="researchDisclaimer">For research use. Not engineering advice.</p>
           </section>
         ) : null}
 
