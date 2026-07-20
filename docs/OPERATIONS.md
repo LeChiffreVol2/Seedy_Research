@@ -9,7 +9,6 @@ cd web && npm run dev -- --port 3000
 ## Production URLs
 - Web: `https://civil-mcp-web.vercel.app`
 - MCP: `https://civil-mcp-server.vercel.app`
-- CityMCP Ops: `https://citymcp.vercel.app`
 
 Run the local release gate before promotion:
 ```bash
@@ -29,19 +28,20 @@ make release-gate
 ```
 
 ## CI Deploy Gate
-`.github/workflows/ci.yml` runs:
-- Python `py_compile`.
-- Harness invariants.
-- Web `npm run build`.
-- Optional strict production smoke.
+Use `.github/workflows/preview-release.yml` for releases. Pull requests get Preview-environment deployments and smoke tests. Keep `SUPABASE_PREVIEW_DB_URL` in the protected GitHub `preview` environment. A manual, protected release then creates staged Production deployments with `--prod --skip-domain`, tests those exact URLs, and promotes them without rebuilding. Set `GA_PROMOTION_ENABLED=true` in the protected `production` environment; the workflow validates it only after environment approval.
 
-Production smoke is opt-in for CI. Configure these GitHub repository values before enabling it:
-- Variable `RUN_PRODUCTION_SMOKE=true`.
-- Variable `PRODUCTION_MCP_URL=https://civil-mcp-server.vercel.app`.
-- Variable `PRODUCTION_WEB_URL=https://civil-mcp-web.vercel.app`.
-- Secret `MCP_SERVER_API_KEY` matching the deployed MCP server.
+Required GitHub secrets:
+- `VERCEL_TOKEN`, `VERCEL_ORG_ID`
+- `VERCEL_WEB_PROJECT_ID`, `VERCEL_MCP_PROJECT_ID`
+- `SUPABASE_PREVIEW_DB_URL`, `SUPABASE_DB_URL`
+- `MCP_HARNESS_API_KEY`, `VERCEL_AUTOMATION_BYPASS_SECRET`
 
-If `RUN_PRODUCTION_SMOKE` is not `true`, CI skips production smoke after build. If it is `true` and any required URL/secret is missing, CI fails before calling production.
+Required variables:
+- `CORPUS_FINGERPRINT`
+- `PRODUCTION_MCP_URL`, `PRODUCTION_WEB_URL`
+- `GA_PROMOTION_ENABLED=true` only after GA data-quality gates pass
+
+`SUPABASE_PREVIEW_DB_URL` must target the same Supabase project configured in the Vercel Preview environments. Keep it separate from production unless an explicitly reviewed additive migration is intentionally shared.
 
 ## Rollback
 - Disable agentic orchestration: `AGENTIC_CONTEXT_ENABLED=false`.
@@ -51,21 +51,21 @@ If `RUN_PRODUCTION_SMOKE` is not `true`, CI skips production smoke after build. 
 
 ## Incident Checks
 - MCP `/health` for service status.
+- MCP `/health/ready` for Supabase, schema, and distributed-quota readiness.
 - MCP `/metrics` for request/tool error counters.
 - Web `/api/research-feed?filter=ncce` for Supabase feed health.
 - Web `/api/chat` debug mode for context/evidence traces.
-- CityMCP `/api/ops/sources/sla` for source SLA, freshness, and ingest health.
-- CityMCP `/api/ops/layers/registry` and `/api/ops/tiles/{z}/{x}/{y}.mvt` for spatial read-model health.
-- CityMCP `/api/ops/commands/log` and `/api/ops/actions/log` for command/action audit trails.
 
 ## Secrets
-Server-only keys must remain in Vercel/server env only: `OPENAI_API_KEY`, `DEEPSEEK_API_KEY`, `SUPABASE_SERVICE_KEY`, `MCP_SERVER_API_KEY`.
+Server-only keys must remain in Vercel/server env only: `OPENAI_API_KEY`, `DEEPSEEK_API_KEY`, `SUPABASE_SERVICE_KEY`, `MCP_SERVER_API_KEY`, `MCP_CLIENT_KEYS_JSON`, `GUEST_SESSION_HMAC_KEY`, and `CRON_SECRET`.
 
 ## Backbone Hardening Notes
-- Production MCP transport must require `MCP_SERVER_API_KEY` for every mounted MCP path except public status/list endpoints.
-- `/api/chat` is bounded by body/message caps and per-session/IP rate limits before any paid model or MCP call.
-- Chat traces are stored in `civil_chat_traces` when the operational schema is applied. Trace persistence is fail-soft so chat does not break during migration.
+- Production MCP transport accepts named consumer keys from `MCP_CLIENT_KEYS_JSON`; keep `MCP_SERVER_API_KEY` for one compatibility release only.
+- `/api/chat` uses an HMAC-signed guest identity and atomic Supabase minute/hour quotas before any paid model or MCP call.
+- Unsigned legacy `civilmcp_user` cookies are intentionally reset. Authenticated Supabase identity always wins and never falls back to a legacy owner cookie.
+- Expired/invalid Supabase sessions return `401` and clear stale auth cookies; transient auth outages return `503` without silently switching ownership.
+- Production traces default to metadata-only. Debug content and explicit negative-feedback snapshots expire after 30 days through `/api/internal/maintenance`.
+- Share links expire after 30 days and can be revoked with `DELETE /api/share?sessionId=<uuid>`.
 - User feedback is stored in `civil_chat_feedback` and can be exported with `python3.10 harness/export_feedback_eval.py` to seed future eval cases.
-- The ops dashboard fails closed in production unless `OPS_DASHBOARD_BASIC_AUTH_USER` and `OPS_DASHBOARD_BASIC_AUTH_PASSWORD` are set. Use `OPS_DASHBOARD_AUTH_DISABLED=true` only for local development.
-- CityMCP action authority is server-derived. Clients must not provide `actor`; action records require persisted CivilMCP `researchRunId`, `proposalId`, direct/indirect `mcp:*` evidence, and a non-stale real object.
-- CityMCP command execution is audited in `smart_city_commands`/`smart_city_command_events`; action lifecycle changes are audited in `smart_city_action_events`.
+
+CityMCP operational procedures are maintained in `citymcp/README.md` and its separate release workflow.

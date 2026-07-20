@@ -7,7 +7,9 @@
 - Retrieval/feed health: MCP health, tools list, CE/NCCE chunk search, NCCE feed, chat context debug.
 - Answer/citation quality: fixed eval suite must stay within tool/chunk/token budgets and include evidence/citation markers where required.
 - Memory continuity: `latest_memory_eval.json` must pass.
-- Deploy readiness: CI workflow must exist and the latest smoke report must be a strict production pass.
+- Report provenance: all required reports must be no older than 24 hours and match Git SHA/source fingerprint, schema migration, corpus fingerprint, target, and deployment URLs.
+- Deploy readiness: preview/promote workflow must exist and latest smoke must be a full strict preview or production run.
+- CityMCP reports are excluded; CityMCP has its own readiness score under `citymcp/harness/`.
 
 ## Status Meaning
 - `pass`: ready for this gate.
@@ -15,4 +17,4 @@
 - `fail`: blocks limited rollout for the affected surface.
 
 ## Current Release Bar
-For limited rollout, `check_invariants.py` must pass, `run_smoke.py` should pass against the target environment, and `run_eval.py --mode smoke` should pass before promotion.
+For the Build Week Public Research Preview, score must be at least `90`, no gate may fail, citation correctness must be `100%`, and data quality must meet unknown discipline `0`, weak title `0`, and missing embeddings `0`. GA candidacy keeps the stricter score target of `95`.

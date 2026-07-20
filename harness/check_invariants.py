@@ -20,6 +20,8 @@ REQUIRED_ENV_KEYS = [
     "SUPABASE_URL",
     "SUPABASE_SERVICE_KEY",
     "MCP_SERVER_API_KEY",
+    "MCP_CLIENT_KEYS_JSON",
+    "GUEST_SESSION_HMAC_KEY",
     "AGENTIC_CONTEXT_ENABLED",
     "ROUTER_PROVIDER",
     "ROUTER_MODEL",
@@ -28,11 +30,20 @@ REQUIRED_ENV_KEYS = [
     "MAX_CONTEXT_CHUNKS",
     "MAX_CONTEXT_TOKENS",
     "CHAT_MAX_BODY_BYTES",
-    "CHAT_RATE_LIMIT_MAX_CALLS",
-    "CHAT_RATE_LIMIT_WINDOW_SECONDS",
+    "CHAT_GUEST_REQUESTS_PER_MINUTE",
+    "CHAT_GUEST_REQUESTS_PER_HOUR",
+    "CHAT_AUTH_REQUESTS_PER_MINUTE",
+    "CHAT_AUTH_REQUESTS_PER_HOUR",
     "ANSWER_MAX_TOKENS",
 ]
-SERVER_SECRET_KEYS = ["OPENAI_API_KEY", "DEEPSEEK_API_KEY", "SUPABASE_SERVICE_KEY", "MCP_SERVER_API_KEY"]
+SERVER_SECRET_KEYS = [
+    "OPENAI_API_KEY",
+    "DEEPSEEK_API_KEY",
+    "SUPABASE_SERVICE_KEY",
+    "MCP_SERVER_API_KEY",
+    "MCP_CLIENT_KEYS_JSON",
+    "GUEST_SESSION_HMAC_KEY",
+]
 EXPECTED_TOOLS = [
     "search_civil_knowledge",
     "search_civil_sections",
@@ -47,6 +58,12 @@ EXPECTED_TOOLS = [
 
 def count_generated_entries(path: Path) -> int:
     text = path.read_text(encoding="utf-8", errors="replace")
+    if path.suffix == ".json":
+        try:
+            payload = json.loads(text)
+        except json.JSONDecodeError:
+            return 0
+        return len(payload) if isinstance(payload, dict) else 0
     match = re.search(r"= (\{[\s\S]*\});\s*$", text)
     if not match:
         return 0
@@ -139,16 +156,42 @@ def check_backbone_guardrails() -> Check:
     server_text = (ROOT / "mcp-server" / "server.py").read_text(encoding="utf-8", errors="replace")
     chat_text = (ROOT / "web" / "app" / "api" / "chat" / "route.ts").read_text(encoding="utf-8", errors="replace")
     schema_text = (ROOT / "supabase" / "schema.sql").read_text(encoding="utf-8", errors="replace")
+    auth_text = (ROOT / "web" / "lib" / "chat-auth.ts").read_text(encoding="utf-8", errors="replace")
+    cookie_text = (ROOT / "web" / "lib" / "chat-cookies.ts").read_text(encoding="utf-8", errors="replace")
+    store_text = (ROOT / "web" / "lib" / "chat-store.ts").read_text(encoding="utf-8", errors="replace")
+    history_text = (ROOT / "web" / "app" / "api" / "history" / "route.ts").read_text(encoding="utf-8", errors="replace")
+    release_text = (ROOT / ".github" / "workflows" / "preview-release.yml").read_text(encoding="utf-8", errors="replace")
     required = {
         "mcp_transport_guard": "is_mounted_transport_request" in server_text and "record_transport" in server_text,
-        "chat_rate_limit": "checkRateLimit" in chat_text and "CHAT_RATE_LIMIT_MAX_CALLS" in chat_text,
+        "mcp_named_clients": "MCP_CLIENT_KEYS_JSON" in server_text and "enforce_mcp_rate_limit" in server_text,
+        "signed_guest_identity": "verifySignedGuestCookie" in cookie_text and "signedGuestIdFromRequest" in auth_text,
+        "expired_auth_fail_closed": "ChatIdentityError" in auth_text and "hasSupabaseAuthCookie" in auth_text,
+        "guest_secret_strength": (
+            "assertGuestCookieConfigured" in chat_text
+            and "configured.length >= 32" in cookie_text
+            and 'deriveCivilSecurityKey("guest-session")' in cookie_text
+            and 'update(`civilmcp:${purpose}:v1`)' in cookie_text
+        ),
+        "chat_rate_limit": "consumeChatQuota" in chat_text and "CHAT_GUEST_REQUESTS_PER_HOUR" in chat_text,
+        "distributed_quota_rpc": "consume_civil_quota" in schema_text,
+        "backbone_readiness_rpc": "civil_backbone_readiness" in schema_text and '"/health/ready"' in server_text,
         "chat_body_cap": "readBoundedJson" in chat_text and "CHAT_MAX_BODY_BYTES" in chat_text,
+        "history_write_bounds": "readBoundedJson" in history_text and "HISTORY_MAX_MESSAGES" in history_text,
+        "lazy_guest_persistence": "createEmptyChatSession" in history_text and "storedUser ??" in auth_text,
         "trace_annotation": "traceId" in chat_text and "civilmcp_trace" in chat_text,
         "trace_table": "civil_chat_traces" in schema_text,
         "feedback_table": "civil_chat_feedback" in schema_text,
+        "trace_metadata_mode": "question_hash" in schema_text and "retention_expires_at" in schema_text,
+        "trace_metadata_redaction": "metadataOnlyTraceValue" in store_text,
+        "feedback_owner_validation": '.eq("user_id", feedback.userId)' in store_text,
+        "share_expiry": "share_expires_at" in schema_text and "share_revoked_at" in schema_text,
         "workspace_table": "civil_paper_workspace_items" in schema_text,
         "feedback_api": (ROOT / "web" / "app" / "api" / "feedback" / "route.ts").exists(),
         "data_quality_harness": (ROOT / "harness" / "run_data_quality.py").exists(),
+        "staged_production_release": all(
+            marker in release_text
+            for marker in ("stage-production:", "production-candidate-smoke:", "--prod --skip-domain", "GA_PROMOTION_ENABLED")
+        ),
     }
     missing = [name for name, ok in required.items() if not ok]
     if missing:
@@ -162,7 +205,7 @@ def check_backbone_guardrails() -> Check:
 
 
 def check_generated_feed_artifacts() -> Check:
-    title_path = ROOT / "web" / "lib" / "paper-title-overrides.ts"
+    title_path = ROOT / "web" / "lib" / "paper-title-overrides.json"
     summary_path = ROOT / "web" / "lib" / "paper-summary-overrides.ts"
     if not title_path.exists() or not summary_path.exists():
         return Check("generated_feed_artifacts", "fail", "Generated title/summary override files are missing.", "Run pipeline/generate_title_overrides.py.")
@@ -181,6 +224,40 @@ def check_generated_feed_artifacts() -> Check:
         f"title_count={title_count}; summary_count={summary_count}",
         metrics={"titleCount": title_count, "summaryCount": summary_count},
     )
+
+
+def check_build_week_contract() -> Check:
+    models = (ROOT / "web" / "lib" / "chat-models.ts").read_text(encoding="utf-8", errors="replace")
+    chat = (ROOT / "web" / "app" / "api" / "chat" / "route.ts").read_text(encoding="utf-8", errors="replace")
+    translation = (ROOT / "web" / "app" / "api" / "paper-translation" / "route.ts").read_text(encoding="utf-8", errors="replace")
+    page = (ROOT / "web" / "app" / "page.tsx").read_text(encoding="utf-8", errors="replace")
+    feed = (ROOT / "web" / "lib" / "research-feed.ts").read_text(encoding="utf-8", errors="replace")
+    ci = (ROOT / ".github" / "workflows" / "ci.yml").read_text(encoding="utf-8", errors="replace")
+    release = (ROOT / ".github" / "workflows" / "preview-release.yml").read_text(encoding="utf-8", errors="replace")
+    score = (ROOT / "harness" / "score_quality.py").read_text(encoding="utf-8", errors="replace")
+    required = {
+        "luna_default": 'DEFAULT_CHAT_MODEL: ChatModel = "gpt-5.6-luna"' in models,
+        "gpt_5_6_picker": all(model in models for model in ("gpt-5.6-luna", "gpt-5.6-terra", "gpt-5.6-sol")),
+        "luna_router": 'process.env.ROUTER_MODEL ?? "gpt-5.6-luna"' in chat,
+        "luna_translation": '"gpt-5.6-luna"' in translation,
+        "guest_hour_quota": "CHAT_GUEST_REQUESTS_PER_HOUR, 1, 500, 30" in chat,
+        "corpus_facets": all(marker in feed for marker in ("totalSections", "totalChunks")),
+        "verified_corpus_fallback": all(marker in page for marker in ("8_148", "48_370", "active sections", "page-linked chunks")),
+        "explicit_paper_routing": all(marker in chat for marker in ("explicitPaperSources", "fetch_civil_paper", "exactPaperMatches")),
+        "city_directory": (ROOT / "citymcp" / "ops-dashboard").exists(),
+        "city_ci": (ROOT / ".github" / "workflows" / "citymcp-ci.yml").exists(),
+        "city_release": (ROOT / ".github" / "workflows" / "citymcp-release.yml").exists(),
+        "civil_ci_isolated": "citymcp" not in ci.lower() and "ops-dashboard" not in ci,
+        "civil_release_isolated": "citymcp" not in release.lower() and "ops-dashboard" not in release,
+        "civil_score_isolated": "citymcp_ops_quality" not in score and "ops_quality_check" not in score,
+        "build_week_evidence": (ROOT / "BUILD_WEEK.md").exists() and (ROOT / "DATA_SOURCES.md").exists(),
+        "code_license": (ROOT / "LICENSE").exists(),
+        "synthetic_fixture": (ROOT / "fixtures" / "synthetic-civil-paper.json").exists(),
+    }
+    missing = [name for name, present in required.items() if not present]
+    if missing:
+        return Check("build_week_product_contract", "fail", f"missing={missing}", "Restore the approved Build Week product and release contract.")
+    return Check("build_week_product_contract", "pass", "Luna, corpus proof, data rights, and Civil/City release boundaries are present.")
 
 
 def check_no_static_feed() -> Check:
@@ -210,6 +287,7 @@ def main() -> None:
         check_agent_bounds_and_annotations(),
         check_backbone_guardrails(),
         check_generated_feed_artifacts(),
+        check_build_week_contract(),
         check_no_static_feed(),
         check_reports_ignored(),
     ]

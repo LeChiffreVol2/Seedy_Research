@@ -10,7 +10,7 @@ CivilMCP has three production surfaces:
 ```text
 user question
 -> web /api/chat
--> router/context planner (deepseek-v4-flash by default)
+-> router/context planner (gpt-5.6-luna by default)
 -> MCP retrieval tools
 -> evidence packet builder + dedupe + context budget
 -> selected answer model
@@ -25,9 +25,10 @@ user question
 
 ## Shared MCP Consumers
 - CivilMCP Research (`web/app/api/chat/route.ts`) uses the MCP server as the retrieval tool layer behind the bounded Agentic Context Engine.
-- CityMCP Ops (`ops-dashboard/lib/mcp.ts`) uses the same MCP server as a read-only evidence service, primarily through `search_civil_chunks`.
+- CityMCP Ops (`citymcp/ops-dashboard/lib/mcp.ts`) uses the same MCP server as a read-only evidence service, primarily through `search_civil_chunks`.
 - Keep the `collection`, `discipline`, and read-only tool contracts backward compatible. CityMCP currently relies on `discipline="transport"` with `collection=""` for civil evidence gating.
 - Data-quality cleanup can change source text, titles, summaries, pages, hashes, and embeddings, but must not rename existing tool names or remove v2 fields used by either consumer.
+- CityMCP application code, harnesses, CI, release, and operations docs live under `citymcp/` and are excluded from CivilMCP competition scoring.
 
 ## Boundary Rules
 - Browser never receives service-role Supabase key, OpenAI key, DeepSeek key, or MCP server key.

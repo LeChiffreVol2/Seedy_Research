@@ -1,7 +1,7 @@
 # CivilMCP GitHub Push Wrap-Up
 
 ## Repository Scope
-This repo should contain source code, schemas, harnesses, docs, and generated paper preview assets required by the web UI.
+This repo should contain source code, schemas, harnesses, and docs. Generated reports, source PDFs/markdown, root ZIP archives, secrets, and runtime build artifacts stay out of Git.
 
 Do not commit local runtime data:
 - `.env`, `.env.local`, or real provider keys
@@ -9,21 +9,17 @@ Do not commit local runtime data:
 - `NCCE Project Database/`
 - Python virtualenvs, `node_modules`, `.next`, `.vercel`
 - `harness/reports/`
-- root QA screenshots
+- root QA screenshots and ZIP handoff bundles
 
 ## Current Production State
 - CivilMCP web: `https://civil-mcp-web.vercel.app`
 - CivilMCP MCP server: `https://civil-mcp-server.vercel.app`
-- CityMCP ops dashboard: `https://citymcp.vercel.app`
 - Retrieval substrate: Supabase pgvector v2
 - Embedding: `text-embedding-3-small`, `EMBEDDING_DIMENSIONS=768`
 - Current release gate: `make release-gate`
 
 ## Latest Validation
-Last local preparation check:
-- `make local-gate`: pass
-- `make prod-smoke`: pass
-- `harness/score_quality.py`: pass, score `100.0`
+Do not reuse an old readiness score. Reports are valid for at most 24 hours and must match the exact source/deployment provenance.
 
 ## First Push Flow
 Create a new empty GitHub repo, then run:
@@ -59,19 +55,19 @@ Keep these in Vercel/Supabase/GitHub secrets only, never in source:
 - `SUPABASE_SERVICE_KEY`
 - `SUPABASE_ANON_KEY`
 - `MCP_SERVER_API_KEY`
+- `MCP_CLIENT_KEYS_JSON`
+- `MCP_HARNESS_API_KEY`
+- `GUEST_SESSION_HMAC_KEY`
 - `SUPABASE_DB_URL`
-- `OPS_DASHBOARD_BASIC_AUTH_USER`
-- `OPS_DASHBOARD_BASIC_AUTH_PASSWORD`
 
-## GitHub CI Optional Production Smoke
-Set these only after the repo exists:
-- Repository variable `RUN_PRODUCTION_SMOKE=true`
+## GitHub Preview And Promotion
+Set these after the private repo exists:
 - Repository variable `PRODUCTION_MCP_URL=https://civil-mcp-server.vercel.app`
 - Repository variable `PRODUCTION_WEB_URL=https://civil-mcp-web.vercel.app`
-- Repository secret `MCP_SERVER_API_KEY`
+- Repository variable `CORPUS_FINGERPRINT`
+- Repository variable `GA_PROMOTION_ENABLED=true` only after all GA gates pass
+- Repository secrets for Vercel org/project IDs and `MCP_HARNESS_API_KEY`
+- Repository secrets `SUPABASE_PREVIEW_DB_URL` and `SUPABASE_DB_URL` for additive migration steps
+- Protect the GitHub `production` environment with required reviewers
 
-For CityMCP ops smoke:
-- Repository variable `RUN_OPS_PRODUCTION_SMOKE=true`
-- Repository variable `RUN_OPS_BROWSER_E2E=true`
-- Repository variable `OPS_DASHBOARD_URL=https://citymcp.vercel.app`
-- Repository secrets `OPS_DASHBOARD_BASIC_AUTH_USER`, `OPS_DASHBOARD_BASIC_AUTH_PASSWORD`
+Pushes and pull requests create Preview deployments only. Use manual `workflow_dispatch` with `promote=true` after preview QA; the protected job creates staged Production deployments, tests them, and promotes those exact deployments without another rebuild.

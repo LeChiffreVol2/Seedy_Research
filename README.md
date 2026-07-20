@@ -1,269 +1,145 @@
 # CivilMCP
 
-CivilMCP is a **Research Preview** for an Agentic Context Engine over civil engineering papers. It combines a production-style RAG v2 retrieval substrate with bounded orchestration, so the app can choose, compress, and cite context before answering.
+**CivilMCP is the evidence layer for Thai civil engineering education.** It is a Public Research Preview that turns a uniquely structured corpus of Thai civil-engineering research into searchable, bilingual, page-linked evidence for students, instructors, and researchers.
 
-Current production concept:
+[Open the public preview](https://civil-mcp-web.vercel.app/) · [Build Week notes](BUILD_WEEK.md) · [Data sources and rights](DATA_SOURCES.md)
 
-- Frontend: Next.js 15 chat UI on Vercel
-- MCP server: Python FastAPI MCP-style tool endpoints on Vercel
-- Retrieval: Supabase Postgres + pgvector
-- Embeddings: `text-embedding-3-small` with `EMBEDDING_DIMENSIONS=768`
-- Chat models: `gpt-5-mini-2025-08-07`, `gpt-5-nano`, `deepseek-v4-flash`, `deepseek-v4-pro`
-- Router/context planner: `deepseek-v4-flash` by default
-- Data pipeline: PDF -> Markdown -> sections/chunks -> embeddings -> Supabase
+> Research evidence, not professional engineering advice.
 
-## Production Data Status
+## Corpus
 
-Indexed v2 corpus after the NCCE ingestion patch:
-
-| Collection | Documents | Notes |
+| Collection | Papers | Coverage |
 | --- | ---: | --- |
-| `ce_project` | 67 | Existing CE Project Database papers |
-| `ncce` | 874 | NCCE proceedings split into paper-level markdown with page metadata |
-| Total | 941 | 9,412 sections and 49,965 chunks |
+| CE Project | 67 | Civil-engineering research projects, 2019–2024 |
+| NCCE | 874 | NCCE25, NCCE26, and NCCE29 proceedings |
+| **Total** | **941** | **8,148 active, page-linked sections · 48,370 active, page-linked evidence chunks** |
 
-NCCE source PDFs currently ingested:
+These public proof metrics intentionally exclude legacy/stale or non-page-linked
+rows. The underlying index currently contains 9,413 section records and 50,588
+chunk records; only evidence with active page provenance is included above.
 
-- `Proceedings_NCCE25.pdf`
-- `Proceedings_NCCE26.pdf`
-- `Proceedings_NCCE29.pdf`
+The application can search this corpus, synthesize findings across papers, open the exact evidence pages, and translate Thai paper content to English. The source PDFs and extracted corpus are intentionally not redistributed through Git; see [DATA_SOURCES.md](DATA_SOURCES.md).
 
-## Project Structure
+## Model behavior
 
-```text
-.
-├── CE Project Database/        # Existing CE PDFs
-├── NCCE Project Database/      # NCCE proceedings PDFs
-├── supabase/                   # Schema, migrations, readiness checks
-├── pipeline/                   # PDF extraction and v2 indexing
-├── mcp-server/                 # FastAPI MCP-style retrieval server
-├── eval/                       # Baseline/simple RAG/agentic eval scripts
-└── web/                        # Next.js chat UI
-```
+- `gpt-5.6-luna` is the default for answers, retrieval planning, memory compaction, and paper translation.
+- The answer-model picker also offers `gpt-5.6-terra`, `gpt-5.6-sol`, `deepseek-v4-flash`, and `deepseek-v4-pro`.
+- DeepSeek is optional. The default product path only requires OpenAI.
+- Retrieval remains bounded by `MAX_AGENT_STEPS`, `MAX_TOOL_CALLS`, `MAX_CONTEXT_CHUNKS`, and `MAX_CONTEXT_TOKENS`.
 
-## Environment
-
-Single source of truth:
-
-```bash
-/Users/lechiffre/Desktop/Civil_MCP/.env
-```
-
-Start from:
-
-```bash
-cp .env.example .env
-```
-
-Required server-side keys:
-
-- `OPENAI_API_KEY`
-- `DEEPSEEK_API_KEY`
-- `SUPABASE_URL`
-- `SUPABASE_SERVICE_KEY`
-- `MCP_SERVER_API_KEY`
-
-Do not expose these as `NEXT_PUBLIC_*`. `SUPABASE_SERVICE_KEY`, `OPENAI_API_KEY`, `DEEPSEEK_API_KEY`, and `MCP_SERVER_API_KEY` must stay server-side only.
-
-## Supabase Setup
-
-Apply the schema:
-
-```bash
-python3.10 supabase/recheck.py --apply --v2
-```
-
-Or run [supabase/schema.sql](/Users/lechiffre/Desktop/Civil_MCP/supabase/schema.sql) in Supabase SQL Editor.
-
-Check readiness:
-
-```bash
-python3.10 supabase/recheck.py --v2
-```
-
-Rebuild IVFFlat indexes after large ingestion:
-
-```bash
-python3.10 supabase/recheck.py --reindex-v2 --v2
-```
-
-## Pipeline
-
-Install once:
-
-```bash
-cd /Users/lechiffre/Desktop/Civil_MCP/pipeline
-python3.10 -m venv .venv
-source .venv/bin/activate
-pip install -r requirements.txt
-pip install -r requirements.index.txt
-```
-
-Extract CE PDFs:
-
-```bash
-python3.10 extract.py
-```
-
-Extract NCCE proceedings into paper-level markdown:
-
-```bash
-python3.10 extract_ncce.py
-```
-
-Index v2 with OpenAI Batch API:
-
-```bash
-python3.10 index.py --mode batch
-```
-
-For small debug runs:
-
-```bash
-python3.10 index.py --mode sync
-```
-
-Batch limits can be adjusted through `.env` or CLI, for example:
-
-```bash
-python3.10 index.py --mode batch --max-batch-estimated-tokens 750000
-```
-
-The indexer is incremental. It uses document/section/chunk hashes and does not re-embed unchanged rows.
-
-## MCP Server
-
-Local run:
-
-```bash
-cd /Users/lechiffre/Desktop/Civil_MCP/mcp-server
-python3.10 -m venv .venv
-source .venv/bin/activate
-pip install -r requirements.txt
-uvicorn server:app --reload --port 8000
-```
-
-Useful endpoints:
-
-- `/health`
-- `/metrics`
-- `/tools/list`
-- `/tools/call`
-
-Main read-only tools:
-
-- `search_civil_knowledge`
-- `search_civil_sections`
-- `search_civil_chunks`
-- `fetch_civil_paper`
-- `fetch_chunk_neighbors`
-- `fetch_paper_outline`
-- `list_papers`
-- `list_collections`
-
-Tool calls support optional `collection`:
-
-- `""` = all collections
-- `"ce_project"` = CE Project only
-- `"ncce"` = NCCE only
-
-## Web App
-
-Local run:
-
-```bash
-cd /Users/lechiffre/Desktop/Civil_MCP/web
-npm install
-npm run dev
-```
-
-UI supports:
-
-- MCP/Context toggle
-- Model dropdown
-- Collection dropdown: `All | CE Project | NCCE`
-- Shareable chat URL/export
-- Local/cloud-backed chat session support depending on environment
-
-`MCP ON` uses the bounded Agentic Context Engine. `MCP OFF` is model-only.
-
-## Agentic Context Engine
-
-Default flow:
+## Architecture
 
 ```text
 question
--> router/context planner
--> retrieval recipe
--> section search
--> chunk search / neighbors when needed
--> dedupe + budget + citations
--> selected answer model
+  -> Next.js /api/chat
+  -> GPT-5.6 Luna retrieval plan
+  -> read-only MCP retrieval tools
+  -> bounded evidence packet with exact pages
+  -> selected answer model
+  -> cited answer + trace/feedback metadata
 ```
 
-Default limits:
+- `web/`: Next.js research feed, chat, paper detail, translation, history, and feedback.
+- `mcp-server/`: FastAPI MCP-style retrieval service.
+- `pipeline/`: PDF extraction, metadata normalization, chunking, and indexing.
+- `supabase/`: shared schema and additive migration ledger.
+- `harness/` and `eval/`: CivilMCP release, security, retrieval, citation, and memory gates.
+- `citymcp/`: separately managed CityMCP consumer; excluded from the Build Week scope and Civil quality score.
 
-- `MAX_AGENT_STEPS=3`
-- `MAX_TOOL_CALLS=4`
-- `MAX_CONTEXT_CHUNKS=8`
-- `MAX_CONTEXT_TOKENS=8000`
+CityMCP shares only the read-only MCP contract and applied Supabase migration history. Its application, harness, CI, and release live under [citymcp/](citymcp/).
 
-Conversation memory:
+## Quick start
 
-- `AUTO_COMPACT_ENABLED=true` enables automatic compaction.
-- `MEMORY_COMPACT_TRIGGER_PERCENT=75` compacts when estimated chat history reaches 75% of the selected model context window.
-- Compaction keeps `running_summary`, `active_evidence_map`, and the most recent `MEMORY_RECENT_MESSAGES=8` messages.
-- The UI shows `Memory compacted` or `Memory active` on assistant messages when compacted memory is used.
-- `Clear chat` keeps the same session row but overwrites the transcript with `[]`, so compacted memory annotations are cleared with the chat.
-
-Rollback options:
-
-- `AGENTIC_CONTEXT_ENABLED=false` returns to simple RAG.
-- `RETRIEVAL_VERSION=v1` returns MCP retrieval to the v1 rollback path.
-- Filtering `collection=ce_project` excludes NCCE without schema changes.
-
-## QA Commands
+Requirements: Python 3.10, Node.js 20, npm, and a Supabase project containing the indexed corpus.
 
 ```bash
-python3.10 -m py_compile mcp-server/server.py pipeline/index.py pipeline/extract.py pipeline/extract_ncce.py supabase/recheck.py
-python3.10 supabase/recheck.py --v2
-cd web && npm run build
+cp .env.example .env
+python3.10 -m venv .venv310
+source .venv310/bin/activate
+pip install -r mcp-server/requirements.txt
+cd web && npm ci
 ```
 
-## Harness Engineering
+Required server-only environment variables:
 
-CivilMCP uses a harness-first agentic workflow. The harness keeps the bounded agentic product legible, measurable, and safe to extend before adding more autonomous product behavior.
+- `OPENAI_API_KEY`
+- `SUPABASE_URL`
+- `SUPABASE_SERVICE_KEY`
+- `SUPABASE_ANON_KEY`
+- `MCP_SERVER_API_KEY`
+- `GUEST_SESSION_HMAC_KEY`
 
-System-of-record docs:
+`DEEPSEEK_API_KEY` is required only when a DeepSeek answer model is selected. Never expose provider, service-role, or MCP keys through `NEXT_PUBLIC_*` variables.
 
-- [AGENTS.md](/Users/lechiffre/Desktop/Civil_MCP/AGENTS.md)
-- [docs/ARCHITECTURE.md](/Users/lechiffre/Desktop/Civil_MCP/docs/ARCHITECTURE.md)
-- [docs/HARNESS.md](/Users/lechiffre/Desktop/Civil_MCP/docs/HARNESS.md)
-- [docs/QUALITY_SCORE.md](/Users/lechiffre/Desktop/Civil_MCP/docs/QUALITY_SCORE.md)
-- [docs/OPERATIONS.md](/Users/lechiffre/Desktop/Civil_MCP/docs/OPERATIONS.md)
-- [docs/GITHUB_PUSH_WRAPUP.md](/Users/lechiffre/Desktop/Civil_MCP/docs/GITHUB_PUSH_WRAPUP.md)
-
-Harness commands:
+Run the services in separate terminals:
 
 ```bash
-make local-gate
-make prod-smoke
-make release-gate
+cd mcp-server
+uvicorn server:app --reload --port 8000
+```
 
+```bash
+cd web
+npm run dev
+```
+
+Open `http://localhost:3000`.
+
+## Data setup
+
+Raw PDFs and extracted markdown are local-only and ignored by Git. The default locations are:
+
+```text
+CE Project Database/
+NCCE Project Database/
+pipeline/data/markdown/
+```
+
+Extract and index only when you have lawful local access to the source documents:
+
+```bash
+python3.10 pipeline/extract.py
+python3.10 pipeline/extract_ncce.py
+python3.10 pipeline/index.py --mode batch
+```
+
+The indexer is incremental and does not re-embed unchanged chunks. A synthetic, redistributable schema example is available at [fixtures/synthetic-civil-paper.json](fixtures/synthetic-civil-paper.json).
+
+## Demo prompts
+
+1. `Compare NCCE25_CEM14, NCCE25_CEM28, and NCCE25_CEM04. What delay, financial, and scheduling risks do they report? Cite exact pages and distinguish findings from inference.`
+2. `Compare road-safety evidence in Y2024_TR_Article_G01 and NCCE29_TRL42. Which factors lead to serious injury or death, and where do findings agree or differ? Cite exact pages.`
+3. `Compare NCCE25_MAT06, NCCE25_MAT13, and NCCE25_MAT18. Contrast materials, test methods, performance measures, and limitations with exact-page citations.`
+4. After an answer: `Use E1 and explain what a follow-up study should verify.`
+
+## Verification
+
+```bash
 python3.10 harness/check_invariants.py
-python3.10 harness/run_smoke.py
+python3.10 harness/test_ga_security.py
+python3.10 harness/run_data_quality.py --strict
+cd web && npm run build && npm run test:e2e
+python3.10 harness/run_smoke.py --strict
 python3.10 harness/run_eval.py --mode smoke
+python3.10 harness/run_memory_eval.py
 python3.10 harness/score_quality.py
-cd web && npm run harness:web-smoke
 ```
 
-Reports are written to `harness/reports/latest_<suite>.json` and are ignored by git.
+Generated reports are written to ignored `harness/reports/`. Reports must match the candidate source fingerprint and be no older than 24 hours.
 
-Production smoke checklist:
+## Release and rollback
 
-- MCP `/health`
-- MCP `/tools/list`
-- MCP `list_collections`
-- MCP `search_civil_chunks` with `collection='ncce'`
-- MCP `search_civil_chunks` with `collection='ce_project'`
-- Web `/api/chat` with Context ON and `collection='ncce'`
+`.github/workflows/preview-release.yml` builds CivilMCP MCP and web artifacts from one commit, verifies the preview, stages production artifacts without assigning domains, verifies them again, and promotes the same artifacts.
+
+Rollback controls:
+
+- Promote the previous Vercel deployment.
+- Set `AGENTIC_CONTEXT_ENABLED=false` to return to simple RAG.
+- Set `RETRIEVAL_VERSION=v1` to use the previous retrieval path.
+- Filter to `collection=ce_project` to exclude NCCE without changing data.
+
+Operational details are in [docs/OPERATIONS.md](docs/OPERATIONS.md).
+
+## License
+
+Source code is available under the [MIT License](LICENSE). The license does not grant rights to source papers, extracted text, previews, or third-party datasets.

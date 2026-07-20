@@ -1,0 +1,51 @@
+{
+  "notice": "Synthetic demonstration data. It is not derived from a real paper.",
+  "document": {
+    "id": "00000000-0000-4000-8000-000000000001",
+    "source": "SYNTHETIC_TRANSPORT_001.md",
+    "source_pdf": "SYNTHETIC_TRANSPORT_001.pdf",
+    "collection": "ce_project",
+    "paper_code": "SYNTHETIC-TR-001",
+    "discipline": "transport",
+    "page_start": 1,
+    "page_end": 3,
+    "section_count": 2,
+    "chunk_count": 2
+  },
+  "sections": [
+    {
+      "id": "00000000-0000-4000-8000-000000000011",
+      "section_index": 0,
+      "section_title": "Synthetic methodology",
+      "page_start": 1,
+      "page_end": 2,
+      "content": "A fictional study compares two simulated intersection-safety treatments."
+    },
+    {
+      "id": "00000000-0000-4000-8000-000000000012",
+      "section_index": 1,
+      "section_title": "Synthetic findings",
+      "page_start": 3,
+      "page_end": 3,
+      "content": "The fictional example reports illustrative results only."
+    }
+  ],
+  "chunks": [
+    {
+      "id": "00000000-0000-4000-8000-000000000021",
+      "section_index": 0,
+      "chunk_index": 0,
+      "page_start": 1,
+      "page_end": 2,
+      "content": "Synthetic evidence chunk for testing retrieval shape and page citations."
+    },
+    {
+      "id": "00000000-0000-4000-8000-000000000022",
+      "section_index": 1,
+      "chunk_index": 0,
+      "page_start": 3,
+      "page_end": 3,
+      "content": "Synthetic finding with no professional engineering claim."
+    }
+  ]
+}
