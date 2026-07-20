@@ -45,8 +45,10 @@ $$;
 create table if not exists civil_chat_sessions (
   session_id   text primary key,
   share_id     text unique,
+  share_expires_at timestamptz,
+  share_revoked_at timestamptz,
   mode         text not null default 'mcp',
-  model        text not null default 'gpt-5-mini-2025-08-07',
+  model        text not null default 'gpt-5.6-luna',
   collection   text not null default '',
   transcript   jsonb not null default '[]'::jsonb,
   created_at   timestamptz default now(),
@@ -76,6 +78,9 @@ add column if not exists archived boolean not null default false;
 
 alter table civil_chat_sessions
 add column if not exists last_message_at timestamptz;
+
+alter table civil_chat_sessions add column if not exists share_expires_at timestamptz;
+alter table civil_chat_sessions add column if not exists share_revoked_at timestamptz;
 
 create index if not exists civil_chat_sessions_updated_at_idx
 on civil_chat_sessions (updated_at desc);
@@ -411,6 +416,9 @@ create table if not exists civil_chat_traces (
   collection    text not null default '',
   question      text,
   answer        text,
+  question_hash text,
+  content_mode  text not null default 'debug',
+  retention_expires_at timestamptz,
   context_stats jsonb not null default '{}'::jsonb,
   evidence_items jsonb not null default '[]'::jsonb,
   tool_trace    jsonb not null default '[]'::jsonb,
@@ -432,6 +440,13 @@ on civil_chat_traces (user_id, created_at desc);
 create index if not exists civil_chat_traces_status_created_idx
 on civil_chat_traces (status, created_at desc);
 
+update civil_chat_traces
+set content_mode = case
+  when question is not null or answer is not null then 'debug'
+  else 'metadata'
+end
+where content_mode = 'metadata';
+
 create table if not exists civil_chat_feedback (
   feedback_id    text primary key,
   trace_id       text references civil_chat_traces(trace_id) on delete set null,
@@ -441,6 +456,9 @@ create table if not exists civil_chat_feedback (
   rating         text not null check (rating in ('up', 'down')),
   categories     text[] not null default '{}'::text[],
   correction     text,
+  question_snapshot text,
+  answer_snapshot text,
+  content_expires_at timestamptz,
   citation_issue boolean not null default false,
   created_at     timestamptz not null default now()
 );
@@ -489,5 +507,100 @@ create index if not exists civil_paper_workspace_items_owner_updated_idx
 on civil_paper_workspace_items (owner_id, updated_at desc);
 
 alter table civil_paper_workspace_items enable row level security;
+
+create table if not exists civil_api_rate_limits (
+  scope text not null,
+  identity_hash text not null,
+  bucket_start timestamptz not null,
+  window_seconds integer not null check (window_seconds between 1 and 86400),
+  request_count integer not null default 0,
+  expires_at timestamptz not null,
+  primary key (scope, identity_hash, bucket_start, window_seconds)
+);
+
+create index if not exists civil_api_rate_limits_expires_idx
+on civil_api_rate_limits (expires_at);
+
+alter table civil_api_rate_limits enable row level security;
+revoke all on table civil_api_rate_limits from public, anon, authenticated;
+grant all on table civil_api_rate_limits to service_role;
+
+create or replace function consume_civil_quota(
+  p_identity_hash text,
+  p_scope text,
+  p_limit integer,
+  p_window_seconds integer
+)
+returns table (allowed boolean, remaining integer, reset_at timestamptz, request_count integer)
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  v_now timestamptz := clock_timestamp();
+  v_bucket_start timestamptz;
+  v_reset_at timestamptz;
+  v_count integer;
+begin
+  if p_identity_hash is null or length(p_identity_hash) < 16 then raise exception 'identity hash is required'; end if;
+  if p_scope is null or p_scope !~ '^[a-z0-9_:-]{1,80}$' then raise exception 'invalid quota scope'; end if;
+  if p_limit < 1 or p_limit > 10000 then raise exception 'invalid quota limit'; end if;
+  if p_window_seconds < 1 or p_window_seconds > 86400 then raise exception 'invalid quota window'; end if;
+  v_bucket_start := to_timestamp(floor(extract(epoch from v_now) / p_window_seconds) * p_window_seconds);
+  v_reset_at := v_bucket_start + make_interval(secs => p_window_seconds);
+  insert into civil_api_rate_limits (scope, identity_hash, bucket_start, window_seconds, request_count, expires_at)
+  values (p_scope, p_identity_hash, v_bucket_start, p_window_seconds, 1, v_reset_at + interval '1 day')
+  on conflict (scope, identity_hash, bucket_start, window_seconds)
+  do update set request_count = civil_api_rate_limits.request_count + 1, expires_at = excluded.expires_at
+  returning civil_api_rate_limits.request_count into v_count;
+  return query select v_count <= p_limit, greatest(0, p_limit - v_count), v_reset_at, v_count;
+end;
+$$;
+
+revoke all on function consume_civil_quota(text, text, integer, integer) from public, anon, authenticated;
+grant execute on function consume_civil_quota(text, text, integer, integer) to service_role;
+
+create or replace function prune_civil_operational_data()
+returns table (deleted_rate_buckets bigint, deleted_traces bigint, cleared_feedback_snapshots bigint)
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  v_rate bigint;
+  v_traces bigint;
+  v_feedback bigint;
+begin
+  delete from civil_api_rate_limits where expires_at < now();
+  get diagnostics v_rate = row_count;
+  update civil_chat_feedback
+  set question_snapshot = null, answer_snapshot = null, content_expires_at = null
+  where content_expires_at is not null and content_expires_at < now();
+  get diagnostics v_feedback = row_count;
+  delete from civil_chat_traces where retention_expires_at is not null and retention_expires_at < now();
+  get diagnostics v_traces = row_count;
+  return query select v_rate, v_traces, v_feedback;
+end;
+$$;
+
+revoke all on function prune_civil_operational_data() from public, anon, authenticated;
+grant execute on function prune_civil_operational_data() to service_role;
+
+create or replace function civil_backbone_readiness()
+returns jsonb
+language sql
+stable
+security definer
+set search_path = public
+as $$
+  select jsonb_build_object(
+    'quota_table', to_regclass('public.civil_api_rate_limits') is not null,
+    'quota_rpc', to_regprocedure('public.consume_civil_quota(text,text,integer,integer)') is not null,
+    'retention_rpc', to_regprocedure('public.prune_civil_operational_data()') is not null
+  );
+$$;
+
+revoke all on function civil_backbone_readiness() from public, anon, authenticated;
+grant execute on function civil_backbone_readiness() to service_role;
 
 notify pgrst, 'reload schema';

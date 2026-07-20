@@ -10,10 +10,13 @@ Highlights:
 from __future__ import annotations
 
 import asyncio
+import hashlib
 import hmac
 import inspect
+import json
 import logging
 import os
+import re
 import time
 import uuid
 from collections import defaultdict, deque
@@ -52,15 +55,19 @@ OPENAI_TIMEOUT_SECONDS = float(os.getenv("OPENAI_TIMEOUT_SECONDS", "20"))
 TOOL_TIMEOUT_SECONDS = float(os.getenv("TOOL_TIMEOUT_SECONDS", "20"))
 
 RATE_LIMIT_WINDOW_SECONDS = int(os.getenv("RATE_LIMIT_WINDOW_SECONDS", "60"))
-RATE_LIMIT_MAX_CALLS = int(os.getenv("RATE_LIMIT_MAX_CALLS", "60"))
+RATE_LIMIT_MAX_CALLS = int(os.getenv("RATE_LIMIT_MAX_CALLS", "240"))
+MCP_DISTRIBUTED_RATE_LIMIT = os.getenv("MCP_DISTRIBUTED_RATE_LIMIT", "true").lower() == "true"
 
 REQUIRE_TOOL_AUTH = os.getenv("REQUIRE_TOOL_AUTH", "true").lower() == "true"
 MCP_SERVER_API_KEY = os.getenv("MCP_SERVER_API_KEY", "")
+MCP_CLIENT_KEYS_JSON = os.getenv("MCP_CLIENT_KEYS_JSON", "").strip()
 PLACEHOLDER_MCP_KEYS = {
     "replace-with-random-secret",
     "change-me",
     "changeme",
     "your-secret",
+    "sk-...",
+    "eyj...",
 }
 
 LOG_LEVEL = os.getenv("LOG_LEVEL", "INFO").upper()
@@ -71,19 +78,59 @@ if not logging.getLogger().handlers:
     )
 logger = logging.getLogger("civil_mcp_server")
 
-if not OPENAI_API_KEY:
-    raise RuntimeError("OPENAI_API_KEY is missing")
-if not SUPABASE_URL or not SUPABASE_SERVICE_KEY:
-    raise RuntimeError("SUPABASE_URL or SUPABASE_SERVICE_KEY is missing")
+
+def is_placeholder_secret(value: str | None) -> bool:
+    normalized = (value or "").strip().lower()
+    return not normalized or normalized in PLACEHOLDER_MCP_KEYS or normalized.startswith("replace-")
+
+
+def log_event(level: int, event: str, **fields: Any) -> None:
+    payload = {"event": event, **{key: value for key, value in fields.items() if value is not None}}
+    logger.log(level, json.dumps(payload, ensure_ascii=True, separators=(",", ":")))
+
+
+def load_mcp_client_keys(raw: str) -> dict[str, str]:
+    if not raw:
+        return {}
+    try:
+        parsed = json.loads(raw)
+    except json.JSONDecodeError as exc:
+        raise RuntimeError("MCP_CLIENT_KEYS_JSON must be valid JSON") from exc
+    if not isinstance(parsed, dict):
+        raise RuntimeError("MCP_CLIENT_KEYS_JSON must be a JSON object")
+    result: dict[str, str] = {}
+    for raw_name, raw_value in parsed.items():
+        if not isinstance(raw_name, str) or not isinstance(raw_value, str):
+            raise RuntimeError("MCP_CLIENT_KEYS_JSON contains an invalid client entry")
+        name = raw_name.strip()
+        value = raw_value.strip()
+        if not re.fullmatch(r"[a-z0-9][a-z0-9._-]{0,79}", name) or not value:
+            raise RuntimeError("MCP_CLIENT_KEYS_JSON contains an invalid client entry")
+        if is_placeholder_secret(value):
+            raise RuntimeError(f"MCP client key for {name} is a placeholder")
+        if value.startswith("sha256:") and not re.fullmatch(r"sha256:[0-9a-f]{64}", value):
+            raise RuntimeError(f"MCP client key hash for {name} is invalid")
+        if not value.startswith("sha256:") and len(value) < 32:
+            raise RuntimeError(f"MCP client key for {name} must contain at least 32 characters")
+        result[name] = value
+    return result
+
+if is_placeholder_secret(OPENAI_API_KEY):
+    raise RuntimeError("OPENAI_API_KEY is missing or placeholder")
+if not SUPABASE_URL or is_placeholder_secret(SUPABASE_SERVICE_KEY):
+    raise RuntimeError("SUPABASE_URL or SUPABASE_SERVICE_KEY is missing or placeholder")
 if RETRIEVAL_VERSION not in {"v1", "v2"}:
     raise RuntimeError("RETRIEVAL_VERSION must be 'v1' or 'v2'")
 if RETRIEVAL_VERSION == "v2" and EMBEDDING_DIMENSIONS != 768:
     raise RuntimeError("RETRIEVAL_VERSION=v2 requires EMBEDDING_DIMENSIONS=768")
+MCP_CLIENT_KEYS = load_mcp_client_keys(MCP_CLIENT_KEYS_JSON)
+
 if REQUIRE_TOOL_AUTH:
     key = MCP_SERVER_API_KEY.strip()
-    if not key or key.lower() in PLACEHOLDER_MCP_KEYS:
+    legacy_key_valid = not is_placeholder_secret(key) and len(key) >= 32
+    if not legacy_key_valid and not MCP_CLIENT_KEYS:
         raise RuntimeError(
-            "MCP_SERVER_API_KEY must be set to a non-placeholder secret when REQUIRE_TOOL_AUTH=true"
+            "MCP_CLIENT_KEYS_JSON or a non-placeholder MCP_SERVER_API_KEY is required when REQUIRE_TOOL_AUTH=true"
         )
 
 oa = OpenAI(api_key=OPENAI_API_KEY, timeout=OPENAI_TIMEOUT_SECONDS)
@@ -96,6 +143,12 @@ VALID_DISCIPLINES = {
     "structural",
     "geotechnical",
     "construction_mgmt",
+    "water_resources",
+    "surveying_gis",
+    "environmental",
+    "infrastructure",
+    "civil_education",
+    "ai_engineering",
 }
 
 VALID_COLLECTIONS = {
@@ -313,7 +366,9 @@ def normalize_discipline(value: str | None) -> str | None:
     if cleaned not in VALID_DISCIPLINES:
         raise InputValidationError(
             "discipline must be one of: "
-            "'transport', 'structural', 'geotechnical', 'construction_mgmt', ''."
+            "'transport', 'structural', 'geotechnical', 'construction_mgmt', "
+            "'water_resources', 'surveying_gis', 'environmental', 'infrastructure', "
+            "'civil_education', 'ai_engineering', ''."
         )
     return cleaned or None
 
@@ -395,9 +450,19 @@ def authenticate_mcp_request(request: Request, surface: str = "mcp") -> str:
     x_api_key = request.headers.get("x-mcp-api-key", "").strip()
     provided = x_api_key or bearer
 
-    if not provided or not hmac.compare_digest(provided, MCP_SERVER_API_KEY):
-        raise UnauthorizedToolCall(f"Missing or invalid API key for {surface}")
-    return "api_key"
+    if provided:
+        provided_hash = hashlib.sha256(provided.encode("utf-8")).hexdigest()
+        for caller, configured in MCP_CLIENT_KEYS.items():
+            if configured.startswith("sha256:"):
+                matches = hmac.compare_digest(provided_hash, configured.removeprefix("sha256:"))
+            else:
+                matches = hmac.compare_digest(provided, configured)
+            if matches:
+                return caller
+        legacy = MCP_SERVER_API_KEY.strip()
+        if legacy and legacy.lower() not in PLACEHOLDER_MCP_KEYS and hmac.compare_digest(provided, legacy):
+            return "legacy"
+    raise UnauthorizedToolCall(f"Missing or invalid API key for {surface}")
 
 
 def authenticate_tools_call(request: Request) -> str:
@@ -414,8 +479,54 @@ def client_host_for_request(request: Request) -> str:
 PUBLIC_ENDPOINTS: set[tuple[str, str]] = {
     ("GET", "/"),
     ("GET", "/health"),
+    ("GET", "/health/ready"),
     ("GET", "/tools/list"),
 }
+
+
+def consume_distributed_mcp_quota(caller: str, surface: str) -> tuple[bool, int]:
+    if not MCP_DISTRIBUTED_RATE_LIMIT:
+        return True, 0
+    identity_hash = hashlib.sha256(f"mcp:{caller}".encode("utf-8")).hexdigest()
+    response = sb.rpc(
+        "consume_civil_quota",
+        {
+            "p_identity_hash": identity_hash,
+            "p_scope": f"mcp_{surface}",
+            "p_limit": RATE_LIMIT_MAX_CALLS,
+            "p_window_seconds": RATE_LIMIT_WINDOW_SECONDS,
+        },
+    ).execute()
+    data = response.data
+    row = data[0] if isinstance(data, list) and data else data
+    if not isinstance(row, dict) or not isinstance(row.get("allowed"), bool):
+        raise RuntimeError("Distributed MCP quota returned an invalid response")
+    reset_at = row.get("reset_at")
+    retry_after = RATE_LIMIT_WINDOW_SECONDS
+    if isinstance(reset_at, str):
+        try:
+            from datetime import datetime, timezone
+
+            reset = datetime.fromisoformat(reset_at.replace("Z", "+00:00"))
+            retry_after = max(1, int((reset - datetime.now(timezone.utc)).total_seconds()) + 1)
+        except ValueError:
+            pass
+    return bool(row["allowed"]), retry_after
+
+
+async def enforce_mcp_rate_limit(caller: str, surface: str, client_host: str) -> None:
+    try:
+        allowed, retry_after = await asyncio.to_thread(consume_distributed_mcp_quota, caller, surface)
+    except Exception as exc:  # noqa: BLE001
+        log_event(logging.ERROR, "mcp_distributed_quota_failed", caller=caller, surface=surface, error=type(exc).__name__)
+        raise UpstreamToolCallError("MCP quota service is temporarily unavailable") from exc
+    if not allowed:
+        raise RateLimitedToolCall("Too many MCP requests. Please retry later.", retry_after_seconds=retry_after)
+
+    local_key = f"{surface}:{caller}:{client_host}"
+    local_allowed, local_retry_after = RATE_LIMITER.check(local_key)
+    if not local_allowed:
+        raise RateLimitedToolCall("Too many MCP requests. Please retry later.", retry_after_seconds=local_retry_after)
 
 
 def is_mounted_transport_request(request: Request) -> bool:
@@ -1555,24 +1666,21 @@ async def request_middleware(request: Request, call_next):
 
     started = time.perf_counter()
     is_transport = is_mounted_transport_request(request)
+    caller = "public"
     if is_transport:
         try:
             caller = authenticate_mcp_request(request, "MCP transport")
-            rate_key = f"transport:{caller}:{client_host_for_request(request)}"
-            allowed, retry_after = RATE_LIMITER.check(rate_key)
-            if not allowed:
-                raise RateLimitedToolCall(
-                    "Too many MCP transport requests. Please retry later.",
-                    retry_after_seconds=retry_after,
-                )
+            request.state.mcp_caller = caller
+            await enforce_mcp_rate_limit(caller, "transport", client_host_for_request(request))
         except ToolCallError as exc:
             METRICS.record_transport(ok=False, error_code=exc.error_code)
-            logger.warning(
-                "mcp_transport_rejected path=%s req_id=%s code=%s message=%s",
-                request.url.path,
-                request_id,
-                exc.error_code,
-                str(exc),
+            log_event(
+                logging.WARNING,
+                "mcp_transport_rejected",
+                path=request.url.path,
+                request_id=request_id,
+                caller=caller,
+                error_code=exc.error_code,
             )
             return tool_error_response(exc, request_id)
 
@@ -1615,13 +1723,15 @@ async def request_middleware(request: Request, call_next):
 
     latency_ms = (time.perf_counter() - started) * 1000
     response.headers["x-request-id"] = request_id
-    logger.info(
-        "request_complete method=%s path=%s status=%s req_id=%s latency_ms=%.2f",
-        request.method,
-        request.url.path,
-        response.status_code,
-        request_id,
-        latency_ms,
+    log_event(
+        logging.INFO,
+        "request_complete",
+        method=request.method,
+        path=request.url.path,
+        status=response.status_code,
+        request_id=request_id,
+        caller=getattr(request.state, "mcp_caller", caller),
+        latency_ms=round(latency_ms, 2),
     )
     return response
 
@@ -1629,6 +1739,34 @@ async def request_middleware(request: Request, call_next):
 @app.get("/health")
 async def health() -> JSONResponse:
     return JSONResponse({"status": "ok"})
+
+
+@app.get("/health/ready")
+async def readiness() -> JSONResponse:
+    def check_dependencies() -> dict[str, Any]:
+        docs = sb.table("civil_documents_v2").select("id", count="exact").limit(1).execute()
+        readiness_response = sb.rpc("civil_backbone_readiness").execute()
+        readiness_data = readiness_response.data
+        readiness_row = readiness_data[0] if isinstance(readiness_data, list) and readiness_data else readiness_data
+        if not isinstance(readiness_row, dict) or not all(
+            readiness_row.get(key) is True for key in ("quota_table", "quota_rpc", "retention_rpc")
+        ):
+            raise RuntimeError("CivilMCP backbone migration is incomplete")
+        return {"documents": int(docs.count or 0), "backbone": readiness_row}
+
+    try:
+        dependencies = await asyncio.wait_for(asyncio.to_thread(check_dependencies), timeout=5)
+        return JSONResponse(
+            {
+                "status": "ready",
+                "dependencies": dependencies,
+                "retrieval_version": RETRIEVAL_VERSION,
+                "auth_clients": len(MCP_CLIENT_KEYS) + (1 if MCP_SERVER_API_KEY.strip() else 0),
+            }
+        )
+    except Exception as exc:  # noqa: BLE001
+        log_event(logging.ERROR, "readiness_failed", error=type(exc).__name__)
+        return JSONResponse({"status": "not_ready", "error": "dependency_check_failed"}, status_code=503)
 
 
 @app.get("/")
@@ -1644,6 +1782,7 @@ async def root_info() -> JSONResponse:
             },
             "endpoints": {
                 "health": "/health",
+                "readiness": "/health/ready",
                 "tools_list": "/tools/list",
                 "tools_call": "/tools/call",
             },
@@ -1690,14 +1829,8 @@ async def tools_call(payload: ToolCallPayload, request: Request) -> dict[str, An
     try:
         caller = authenticate_tools_call(request)
         client_host = client_host_for_request(request)
-        rate_key = f"{caller}:{client_host}"
-
-        allowed, retry_after = RATE_LIMITER.check(rate_key)
-        if not allowed:
-            raise RateLimitedToolCall(
-                "Too many /tools/call requests. Please retry later.",
-                retry_after_seconds=retry_after,
-            )
+        request.state.mcp_caller = caller
+        await enforce_mcp_rate_limit(caller, "tools_call", client_host)
 
         started = time.perf_counter()
         result = await asyncio.wait_for(

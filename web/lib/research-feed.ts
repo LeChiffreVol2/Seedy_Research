@@ -41,6 +41,8 @@ export type ResearchFeedResponse = {
   cards: ResearchFeedCard[];
   facets: {
     total: number;
+    totalSections: number;
+    totalChunks: number;
     collections: Array<{ collection: string; documents: number }>;
     filters: Record<FeedFilter, number>;
   };
@@ -499,10 +501,10 @@ function previewPageLabel(doc: DocumentRow): string {
 }
 
 function formatDate(value: string | null | undefined): string {
-  if (!value) return "ไม่ระบุวันที่";
+  if (!value) return "Date unavailable";
   const date = new Date(value);
-  if (Number.isNaN(date.getTime())) return "ไม่ระบุวันที่";
-  return new Intl.DateTimeFormat("th-TH", { day: "numeric", month: "short", year: "numeric" }).format(date);
+  if (Number.isNaN(date.getTime())) return "Date unavailable";
+  return new Intl.DateTimeFormat("en-GB", { day: "numeric", month: "short", year: "numeric" }).format(date);
 }
 
 function collectionLabel(value: CollectionFilter): string {
@@ -518,30 +520,37 @@ function disciplineLabel(value: string | null | undefined): string {
     structural: "Structural",
     geotechnical: "Geotechnical",
     construction_mgmt: "Construction Mgmt",
+    water_resources: "Water Resources",
+    surveying_gis: "Surveying & GIS",
+    environmental: "Environmental",
+    infrastructure: "Infrastructure",
+    civil_education: "Civil Education",
+    ai_engineering: "AI Engineering",
   };
   return labels[cleaned] ?? cleaned;
 }
 
-function deriveTags(doc: DocumentRow, sections: SectionRow[], title: string): string[] {
+function deriveTags(doc: DocumentRow, title: string, summary: string): string[] {
   const terms = new Set<string>();
   const collection = normalizeCollection(doc.collection);
-  if (collection) terms.add(collectionLabel(collection));
   if (doc.discipline) terms.add(disciplineLabel(doc.discipline));
+  if (collection) terms.add(collectionLabel(collection));
   if (doc.paper_code) terms.add(doc.paper_code);
   if (doc.proceeding_no) terms.add(`NCCE${doc.proceeding_no}`);
-  if (doc.proceeding_year) terms.add(`พ.ศ. ${doc.proceeding_year}`);
+  if (doc.proceeding_year) terms.add(`Year ${doc.proceeding_year}`);
 
-  const haystack = `${title} ${sections.slice(0, 5).map((section) => `${section.section_title ?? ""} ${section.content ?? ""}`).join(" ")}`;
+  const titleHaystack = title;
+  const summaryHaystack = summary;
   const keywordMap: Array<[RegExp, string]> = [
     [/คอนกรีต|concrete|cement|reinforced/i, "Concrete"],
     [/โครงสร้าง|structural|beam|column|seismic/i, "Structural"],
     [/ขนส่ง|traffic|transport|intersection|road/i, "Transport"],
     [/น้ำท่วม|flood|drainage|hydraulic|hec-ras/i, "Water"],
-    [/ดิน|soil|geotech|slope|foundation/i, "Geotechnical"],
+    [/ชั้นดิน|ดินเหนียว|ดินทราย|ปฐพี|soil|geotech|slope|foundation/i, "Geotechnical"],
     [/วิธี|method|experiment|model|แบบจำลอง/i, "Method"],
   ];
   for (const [pattern, tag] of keywordMap) {
-    if (pattern.test(haystack)) terms.add(tag);
+    if (pattern.test(titleHaystack) || pattern.test(summaryHaystack)) terms.add(tag);
   }
 
   return [...terms].filter(Boolean).slice(0, 6);
@@ -584,9 +593,9 @@ function filtersForDoc(doc: DocumentRow): FeedFilter[] {
 }
 
 function buildPrompt(card: Pick<ResearchFeedCard, "title" | "source" | "collection" | "paperCode">): string {
-  const collection = card.collection ? `ในชุด ${collectionLabel(card.collection)}` : "";
+  const collection = card.collection ? `from the ${collectionLabel(card.collection)} collection` : "";
   const paper = card.paperCode ? ` (${card.paperCode})` : "";
-  return `สรุป paper นี้${paper}: ${card.title} ${collection} พร้อมทำ Research Brief และอ้างหลักฐานจากเอกสาร ${card.source}`.trim();
+  return `Summarize this paper${paper}: ${card.title} ${collection}. Create a concise Research Brief and cite evidence from ${card.source}.`.trim();
 }
 
 function titleOverrideForDocument(doc: DocumentRow): string | null {
@@ -634,7 +643,7 @@ function cardFromDocument(doc: DocumentRow, sections: SectionRow[], chunks: Chun
     date: formatDate(doc.indexed_at ?? doc.updated_at ?? doc.created_at),
     sourceLabel: [collectionLabel(collection), disciplineLabel(doc.discipline), doc.source_type].filter(Boolean).join(" · "),
     summary,
-    tags: deriveTags(doc, sections, title),
+    tags: deriveTags(doc, title, summary),
     filters: filtersForDoc(doc),
     evidenceCount: doc.chunk_count ?? 0,
     pages: pageCount(doc),
@@ -775,6 +784,8 @@ function facetsFromDocuments(docs: DocumentRow[]): ResearchFeedResponse["facets"
 
   return {
     total: docs.length,
+    totalSections: docs.reduce((total, doc) => total + (doc.section_count ?? 0), 0),
+    totalChunks: docs.reduce((total, doc) => total + (doc.chunk_count ?? 0), 0),
     collections: [...collections.entries()].map(([collection, documents]) => ({ collection, documents })),
     filters,
   };

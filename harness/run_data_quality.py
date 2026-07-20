@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import argparse
 import json
 import re
 from collections import Counter
@@ -20,6 +21,27 @@ except Exception:  # pragma: no cover
     ocr_quality_metrics = None
 
 MD_DIR = ROOT / "pipeline" / "data" / "markdown"
+TITLE_OVERRIDES_PATH = ROOT / "web" / "lib" / "paper-title-overrides.json"
+
+
+def load_title_overrides() -> dict[str, str]:
+    if not TITLE_OVERRIDES_PATH.exists():
+        return {}
+    try:
+        payload = json.loads(TITLE_OVERRIDES_PATH.read_text(encoding="utf-8"))
+    except json.JSONDecodeError:
+        return {}
+    return {str(key): str(value).strip() for key, value in payload.items()} if isinstance(payload, dict) else {}
+
+
+def is_weak_title(value: str) -> bool:
+    cleaned = re.sub(r"\s+", " ", value).strip()
+    return (
+        len(cleaned) < 8
+        or bool(re.match(r"^(Y\d{4}|NCCE\d{2})[_-]", cleaned, re.I))
+        or bool(re.match(r"^2101499(?:\s|โครงงาน)", cleaned, re.I))
+        or bool(re.match(r"^find\s+the\s+result\s+that\s+minimizes", cleaned, re.I))
+    )
 
 
 def parse_frontmatter(path: Path) -> tuple[dict[str, str], str]:
@@ -50,13 +72,15 @@ def markdown_quality_check() -> Check:
     missing_page = 0
     replacement_rates: list[tuple[str, float]] = []
     weak_titles = 0
+    title_overrides = load_title_overrides()
 
     for path in files:
         meta, body = parse_frontmatter(path)
         collection = meta.get("collection") or ("ncce" if path.name.startswith("NCCE") else "ce_project")
         by_collection[collection] += 1
         inferred_discipline = infer_discipline_from_code(path.stem) if infer_discipline_from_code else "unknown"
-        discipline = meta.get("discipline") or inferred_discipline
+        declared_discipline = (meta.get("discipline") or "").strip()
+        discipline = inferred_discipline if declared_discipline in {"", "unknown"} else declared_discipline
         if discipline == "unknown":
             code = meta.get("paper_code") or path.stem
             prefix = prefix_from_code(code) if prefix_from_code else code[:3]
@@ -69,7 +93,8 @@ def markdown_quality_check() -> Check:
         ):
             missing_page += 1
         first_heading = re.search(r"^#\s+(.+)$", body, re.M)
-        if not first_heading or len(first_heading.group(1).strip()) < 8:
+        effective_title = title_overrides.get(path.name) or (first_heading.group(1).strip() if first_heading else "")
+        if is_weak_title(effective_title):
             weak_titles += 1
         if ocr_quality_metrics:
             metrics = ocr_quality_metrics(body)
@@ -80,9 +105,9 @@ def markdown_quality_check() -> Check:
     top_noisy = sorted(replacement_rates, key=lambda item: item[1], reverse=True)[:10]
     status = "pass"
     remediation = ""
-    if unknown_rate > 0.35 or missing_page > 0:
+    if unknown_rate >= 0.02 or weak_titles > 0 or missing_page > 0:
         status = "warn"
-        remediation = "Review unmapped NCCE prefixes and page metadata before the next production re-index."
+        remediation = "GA requires unknown discipline <2%, weak titles=0, and complete page metadata before re-index."
 
     return Check(
         "markdown_corpus_quality",
@@ -139,6 +164,14 @@ def supabase_quality_check() -> Check:
                 .count
                 or 0
             )
+            unknown_disciplines = (
+                sb.table("civil_documents_v2")
+                .select("id", count="exact")
+                .eq("discipline", "unknown")
+                .execute()
+                .count
+                or 0
+            )
             source = "supabase_rest"
         except Exception as rest_exc:  # noqa: BLE001
             if not env.get("SUPABASE_DB_URL"):
@@ -153,17 +186,26 @@ def supabase_quality_check() -> Check:
                     missing_doc_pages = int(cur.fetchone()[0] or 0)
                     cur.execute("select count(*) from civil_chunks_v2 where embedding is null and is_stale = false")
                     missing_chunk_embeddings = int(cur.fetchone()[0] or 0)
+                    cur.execute("select count(*) from civil_documents_v2 where discipline = 'unknown'")
+                    unknown_disciplines = int(cur.fetchone()[0] or 0)
             source = "supabase_db_url"
-        status = "pass" if docs > 0 and missing_chunk_embeddings == 0 else "warn"
+        if docs <= 0 or missing_chunk_embeddings > 0 or unknown_disciplines > 0:
+            status = "fail"
+        elif missing_doc_pages > 0:
+            status = "warn"
+        else:
+            status = "pass"
         return Check(
             "supabase_index_quality",
             status,
-            f"source={source}; documents={docs}; missing_doc_pages={missing_doc_pages}; missing_chunk_embeddings={missing_chunk_embeddings}",
+            f"source={source}; documents={docs}; missing_doc_pages={missing_doc_pages}; "
+            f"missing_chunk_embeddings={missing_chunk_embeddings}; unknown_disciplines={unknown_disciplines}",
             "Run pipeline/index.py after applying schema and extraction updates." if status != "pass" else "",
             metrics={
                 "documents": docs,
                 "missingDocPages": missing_doc_pages,
                 "missingChunkEmbeddings": missing_chunk_embeddings,
+                "unknownDisciplines": unknown_disciplines,
                 "source": source,
             },
         )
@@ -172,11 +214,25 @@ def supabase_quality_check() -> Check:
 
 
 def main() -> None:
+    parser = argparse.ArgumentParser(description="Run CivilMCP corpus and index data-quality checks.")
+    parser.add_argument("--strict", action="store_true", help="Exit non-zero when any data-quality check warns.")
+    args = parser.parse_args()
     checks = [markdown_quality_check(), supabase_quality_check()]
-    report = make_report("data_quality", checks)
+    report = make_report(
+        "data_quality",
+        checks,
+        {
+            "strict": args.strict,
+            "gaThresholds": {
+                "unknownDisciplineRateMaxExclusive": 0.02,
+                "weakTitleCount": 0,
+                "missingChunkEmbeddings": 0,
+            },
+        },
+    )
     path = write_report("data_quality", report)
     print_report(report, path)
-    if report["status"] == "fail":
+    if report["status"] == "fail" or (args.strict and report["status"] == "warn"):
         raise SystemExit(1)
 
 

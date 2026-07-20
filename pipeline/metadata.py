@@ -18,6 +18,14 @@ DISCIPLINE_BY_PREFIX = {
     "GE": "geotechnical",
     "CEM": "construction_mgmt",
     "CM": "construction_mgmt",
+    "WRE": "water_resources",
+    "SGI": "surveying_gis",
+    "ENV": "environmental",
+    "INF": "infrastructure",
+    "EEC": "infrastructure",
+    "DET": "infrastructure",
+    "CEE": "civil_education",
+    "AIE": "ai_engineering",
 }
 
 
