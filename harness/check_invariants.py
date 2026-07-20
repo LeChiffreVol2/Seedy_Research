@@ -235,6 +235,9 @@ def check_build_week_contract() -> Check:
     ci = (ROOT / ".github" / "workflows" / "ci.yml").read_text(encoding="utf-8", errors="replace")
     release = (ROOT / ".github" / "workflows" / "preview-release.yml").read_text(encoding="utf-8", errors="replace")
     score = (ROOT / "harness" / "score_quality.py").read_text(encoding="utf-8", errors="replace")
+    billing = (ROOT / "web" / "lib" / "billing.ts").read_text(encoding="utf-8", errors="replace")
+    billing_migration = (ROOT / "supabase" / "migrations" / "20260720160000_civil_founder_pro.sql").read_text(encoding="utf-8", errors="replace")
+    billing_period_guard = (ROOT / "supabase" / "migrations" / "20260720163000_civil_billing_period_guards.sql").read_text(encoding="utf-8", errors="replace")
     required = {
         "luna_default": 'DEFAULT_CHAT_MODEL: ChatModel = "gpt-5.6-luna"' in models,
         "gpt_5_6_picker": all(model in models for model in ("gpt-5.6-luna", "gpt-5.6-terra", "gpt-5.6-sol")),
@@ -253,6 +256,10 @@ def check_build_week_contract() -> Check:
         "build_week_evidence": (ROOT / "BUILD_WEEK.md").exists() and (ROOT / "DATA_SOURCES.md").exists(),
         "code_license": (ROOT / "LICENSE").exists(),
         "synthetic_fixture": (ROOT / "fixtures" / "synthetic-civil-paper.json").exists(),
+        "pro_model_gate": all(marker in models for marker in ("credits: 3, requiresPro: true", "credits: 5, requiresPro: true")),
+        "atomic_credit_ledger": all(marker in billing_migration for marker in ("civil_credit_ledger", "for update", "civil_refund_answer_credits")),
+        "expired_pro_downgrade": all(marker in billing_period_guard for marker in ("civil_expire_billing_account", "plan = 'free'", "current_period_end <= clock_timestamp()")),
+        "signed_stripe_webhook": "timingSafeEqual(received, expected)" in billing,
     }
     missing = [name for name, present in required.items() if not present]
     if missing:

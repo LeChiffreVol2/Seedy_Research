@@ -23,9 +23,17 @@ The application can search this corpus, synthesize findings across papers, open 
 ## Model behavior
 
 - `gpt-5.6-luna` is the default for answers, retrieval planning, memory compaction, and paper translation.
-- The answer-model picker also offers `gpt-5.6-terra`, `gpt-5.6-sol`, `deepseek-v4-flash`, and `deepseek-v4-pro`.
+- The answer-model picker also offers `gpt-5.6-terra`, `gpt-5.6-sol`, `deepseek-v4-flash`, and `deepseek-v4-pro`. Terra and Sol require Founder Pro.
 - DeepSeek is optional. The default product path only requires OpenAI.
 - Retrieval remains bounded by `MAX_AGENT_STEPS`, `MAX_TOOL_CALLS`, `MAX_CONTEXT_CHUNKS`, and `MAX_CONTEXT_TOKENS`.
+
+## Research Preview plans
+
+- Guest preview: Luna with the public judge/demo rate limit; no login required.
+- Free account: Luna, synced history, and 25 weighted answer credits per month.
+- Founder Pro: ฿199/month, 150 credits, and Terra/Sol access. Luna uses 1 credit, Terra 3, and Sol 5; credits do not roll over.
+
+Supabase Auth remains the identity source. Google OAuth and email magic links are the primary sign-in paths, with password sign-in available as a fallback. Billing uses Stripe-hosted Checkout and Customer Portal; entitlement and credit checks are always enforced on the server.
 
 ## Architecture
 
@@ -70,6 +78,8 @@ Required server-only environment variables:
 - `GUEST_SESSION_HMAC_KEY`
 
 `DEEPSEEK_API_KEY` is required only when a DeepSeek answer model is selected. Never expose provider, service-role, or MCP keys through `NEXT_PUBLIC_*` variables.
+
+Founder Pro additionally requires `STRIPE_SECRET_KEY`, `STRIPE_WEBHOOK_SECRET`, and `STRIPE_FOUNDER_PRO_PRICE_ID`. Without them, the free Research Preview remains fully available and the upgrade control shows “opening soon”. Configure Google as a Supabase Auth provider and allow `/auth/callback` on the deployed application origin.
 
 Run the services in separate terminals:
 

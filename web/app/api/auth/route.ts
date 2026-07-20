@@ -25,6 +25,10 @@ const displayNameSchema = z.string().trim().min(1).max(80);
 
 const authPayloadSchema = z.discriminatedUnion("action", [
   z.object({
+    action: z.literal("oauth"),
+    provider: z.literal("google"),
+  }),
+  z.object({
     action: z.literal("signin"),
     email: emailSchema,
     password: passwordSchema,
@@ -117,6 +121,21 @@ export async function POST(request: NextRequest) {
 
   const auth = createRouteAuthClient(request);
   const payload = parsed.data;
+
+  if (payload.action === "oauth") {
+    const callbackUrl = new URL("/auth/callback", request.nextUrl.origin);
+    const { data, error } = await auth.supabase.auth.signInWithOAuth({
+      provider: payload.provider,
+      options: {
+        redirectTo: callbackUrl.toString(),
+        skipBrowserRedirect: true,
+      },
+    });
+    if (error || !data.url) {
+      return auth.applyCookies(errorResponse(error?.message ?? "Google sign-in is unavailable."));
+    }
+    return auth.applyCookies(NextResponse.json({ url: data.url }));
+  }
 
   if (payload.action === "forgot-password") {
     const callbackUrl = new URL("/auth/callback", request.nextUrl.origin);

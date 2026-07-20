@@ -119,8 +119,12 @@ test("navigation resets rail scroll and account does not render the composer", a
 
   await expect.poll(() => page.locator(".mainRail").evaluate((element) => element.scrollTop)).toBe(0);
   await expect(page.locator(".searchComposer")).toHaveCount(0);
-  await expect(page.getByRole("heading", { name: "Sign in to CivilMCP" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Sign in with an email link" })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Continue with Google" })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Send sign-in link" })).toBeVisible();
+  await expect(page.getByText("฿199")).toBeVisible();
 
+  await page.getByRole("button", { name: "Sign in", exact: true }).click();
   await page.getByRole("button", { name: "Forgot password?" }).click();
   await expect(page.getByRole("heading", { name: "Reset your password" })).toBeVisible();
   await expect(page.getByRole("button", { name: "Send recovery link" })).toBeVisible();
@@ -131,6 +135,21 @@ test("navigation resets rail scroll and account does not render the composer", a
   await expect(password).toHaveAttribute("type", "password");
   await page.getByRole("button", { name: "Show password" }).click();
   await expect(password).toHaveAttribute("type", "text");
+  await expectNoPageOverflow(page);
+});
+
+test("Terra and Sol lead free users to the Founder Pro decision point", async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.goto("/");
+  await page.getByRole("button", { name: "Model" }).click();
+  const terra = page.getByRole("menuitemradio", { name: /GPT-5.6 Terra/ });
+  const sol = page.getByRole("menuitemradio", { name: /GPT-5.6 Sol/ });
+  await expect(terra).toContainText("PRO");
+  await expect(sol).toContainText("PRO");
+  await terra.click();
+  await expect(page.getByRole("heading", { name: "Unlock Terra and Sol." })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Sign in to upgrade" })).toBeVisible();
+  await expect(page.getByText("Luna and exact-page evidence remain available")).toBeVisible();
   await expectNoPageOverflow(page);
 });
 

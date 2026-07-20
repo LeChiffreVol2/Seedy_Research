@@ -7,6 +7,7 @@ import { z } from "zod";
 import { applyChatIdentityCookies, chatIdentityErrorResponse, resolveChatIdentity } from "@/lib/chat-auth";
 import { assertGuestCookieConfigured } from "@/lib/chat-cookies";
 import { consumeChatQuota, ensureChatUser, getChatSessionForOwner, isValidSessionId, saveChatTrace } from "@/lib/chat-store";
+import { refundAnswerCredits, reserveAnswerCredits } from "@/lib/billing";
 import {
   DEFAULT_CHAT_MODEL,
   isDeepSeekChatModel,
@@ -490,8 +491,14 @@ function estimateCostUsd(model: string, usage: Record<string, unknown> | null): 
   const inputTokens = usageNumber(usage, ["promptTokens", "inputTokens", "prompt_tokens", "input_tokens"]);
   const outputTokens = usageNumber(usage, ["completionTokens", "outputTokens", "completion_tokens", "output_tokens"]);
   if (!inputTokens && !outputTokens) return null;
-  const inputPer1k = Number.parseFloat(process.env.CHAT_COST_INPUT_PER_1K_USD ?? "");
-  const outputPer1k = Number.parseFloat(process.env.CHAT_COST_OUTPUT_PER_1K_USD ?? "");
+  const openAiRates: Record<string, [number, number]> = {
+    "gpt-5.6-luna": [0.001, 0.006],
+    "gpt-5.6-terra": [0.0025, 0.015],
+    "gpt-5.6-sol": [0.005, 0.03],
+  };
+  const configuredRates = openAiRates[model];
+  const inputPer1k = configuredRates?.[0] ?? Number.parseFloat(process.env.CHAT_COST_INPUT_PER_1K_USD ?? "");
+  const outputPer1k = configuredRates?.[1] ?? Number.parseFloat(process.env.CHAT_COST_OUTPUT_PER_1K_USD ?? "");
   if (!Number.isFinite(inputPer1k) || !Number.isFinite(outputPer1k)) return null;
   return Number(((inputTokens / 1000) * inputPer1k + (outputTokens / 1000) * outputPer1k).toFixed(6));
 }
@@ -2176,7 +2183,8 @@ async function buildMcpContext(
 
 export async function POST(request: NextRequest) {
   const totalStarted = performance.now();
-  const requestId = request.headers.get("x-request-id")?.trim() || safeTraceId();
+  const providedRequestId = request.headers.get("x-request-id")?.trim() ?? "";
+  const requestId = /^[a-zA-Z0-9:_-]{8,160}$/.test(providedRequestId) ? providedRequestId : safeTraceId();
   const traceId = safeTraceId();
 
   let body: ChatBody;
@@ -2284,6 +2292,43 @@ export async function POST(request: NextRequest) {
       Response.json({ error: "Chat persistence service is temporarily unavailable." }, { status: 503, headers: rateLimitHeaders(rate) }),
     );
   }
+
+  let creditReservation: Awaited<ReturnType<typeof reserveAnswerCredits>>;
+  try {
+    creditReservation = await reserveAnswerCredits({
+      userId,
+      isAuthenticated: identity.isAuthenticated,
+      model: selectedModel,
+      requestId,
+      contextOnly: debug && contextOnly,
+    });
+  } catch (error) {
+    console.error("civilmcp_credit_reservation_failed", error instanceof Error ? error.message : String(error));
+    return finalizeResponse(
+      Response.json({ error: "Answer credits are temporarily unavailable." }, { status: 503, headers: rateLimitHeaders(rate) }),
+    );
+  }
+  if (!creditReservation.allowed) {
+    const proRequired = creditReservation.reason === "pro_required";
+    return finalizeResponse(Response.json({
+      error: proRequired
+        ? `${selectedModel} is included in Founder Pro. Sign in and upgrade to use this model.`
+        : `Monthly answer credits are used up. Credits reset at ${creditReservation.resetAt ?? "the next billing period"}.`,
+      code: creditReservation.reason,
+      plan: creditReservation.plan,
+      creditsRemaining: creditReservation.creditsRemaining,
+      resetAt: creditReservation.resetAt,
+    }, { status: 402, headers: rateLimitHeaders(rate) }));
+  }
+
+  let creditRefunded = false;
+  const refundCredits = async () => {
+    if (creditRefunded) return;
+    creditRefunded = true;
+    await refundAnswerCredits(userId, requestId, creditReservation.charged);
+  };
+
+  try {
   const latestUserForTrace = getLatestUserText(messages ?? []);
   const memoryPreparation = await prepareConversationMemory(
     messages ?? [],
@@ -2355,6 +2400,7 @@ export async function POST(request: NextRequest) {
       system,
       messages: coreMessages,
       ...answerGenerationOptions(selectedModel),
+      onError: refundCredits,
       onFinish: async (event) => {
         const answer = typeof event.text === "string" ? event.text : "";
         const usage = normalizeUsage(event.usage ?? null);
@@ -2527,6 +2573,7 @@ export async function POST(request: NextRequest) {
     system,
     messages: coreMessages,
     ...answerGenerationOptions(selectedModel),
+    onError: refundCredits,
     onFinish: async (event) => {
       const generatedAnswer = typeof event.text === "string" ? event.text : "";
       const answer = shouldUseAnswerFallback(generatedAnswer, builtContext.evidenceItems)
@@ -2560,4 +2607,12 @@ export async function POST(request: NextRequest) {
   });
 
   return finalizeResponse(result.toDataStreamResponse({ data, headers: rateLimitHeaders(rate) }));
+  } catch (error) {
+    await refundCredits();
+    console.error("civilmcp_chat_generation_failed", error instanceof Error ? error.message : String(error));
+    return finalizeResponse(Response.json(
+      { error: "CivilMCP could not generate this answer. Your credits were restored." },
+      { status: 503, headers: rateLimitHeaders(rate) },
+    ));
+  }
 }

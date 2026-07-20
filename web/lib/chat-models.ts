@@ -1,12 +1,12 @@
 export const OPENAI_CHAT_MODELS = [
-  { id: "gpt-5.6-luna", label: "GPT-5.6 Luna", provider: "openai" },
-  { id: "gpt-5.6-terra", label: "GPT-5.6 Terra", provider: "openai" },
-  { id: "gpt-5.6-sol", label: "GPT-5.6 Sol", provider: "openai" },
+  { id: "gpt-5.6-luna", label: "GPT-5.6 Luna", provider: "openai", credits: 1, requiresPro: false },
+  { id: "gpt-5.6-terra", label: "GPT-5.6 Terra", provider: "openai", credits: 3, requiresPro: true },
+  { id: "gpt-5.6-sol", label: "GPT-5.6 Sol", provider: "openai", credits: 5, requiresPro: true },
 ] as const;
 
 export const DEEPSEEK_CHAT_MODELS = [
-  { id: "deepseek-v4-flash", label: "DeepSeek V4 Flash", provider: "deepseek" },
-  { id: "deepseek-v4-pro", label: "DeepSeek V4 Pro", provider: "deepseek" },
+  { id: "deepseek-v4-flash", label: "DeepSeek V4 Flash", provider: "deepseek", credits: 1, requiresPro: false },
+  { id: "deepseek-v4-pro", label: "DeepSeek V4 Pro", provider: "deepseek", credits: 3, requiresPro: false },
 ] as const;
 
 export const CHAT_MODELS = [...OPENAI_CHAT_MODELS, ...DEEPSEEK_CHAT_MODELS] as const;
@@ -33,6 +33,14 @@ export function isOpenAIChatModel(value: string): value is OpenAIChatModel {
 
 export function isDeepSeekChatModel(value: string): value is DeepSeekChatModel {
   return DEEPSEEK_MODEL_IDS.has(value);
+}
+
+export function chatModelCredits(value: ChatModel): number {
+  return CHAT_MODELS.find((model) => model.id === value)?.credits ?? 1;
+}
+
+export function chatModelRequiresPro(value: ChatModel): boolean {
+  return CHAT_MODELS.find((model) => model.id === value)?.requiresPro ?? false;
 }
 
 export function normalizeChatModel(value: string | undefined): ChatModel {

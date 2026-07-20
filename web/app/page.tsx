@@ -15,6 +15,8 @@ import {
   Clock3,
   Compass,
   Copy,
+  CreditCard,
+  Crown,
   Database,
   Download,
   Eye,
@@ -43,7 +45,13 @@ import {
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 
-import { CHAT_MODELS, DEFAULT_CHAT_MODEL, isChatModel, type ChatModel } from "@/lib/chat-models";
+import {
+  CHAT_MODELS,
+  DEFAULT_CHAT_MODEL,
+  chatModelRequiresPro,
+  isChatModel,
+  type ChatModel,
+} from "@/lib/chat-models";
 
 type Mode = "baseline" | "mcp";
 type CollectionFilter = "" | "ce_project" | "ncce";
@@ -134,10 +142,24 @@ type ChatSessionsResponse = {
   authenticated?: boolean;
 };
 
+type BillingState = {
+  plan: "guest" | "free" | "founder_pro";
+  status: string;
+  creditsIncluded: number | null;
+  creditsUsed: number | null;
+  creditsRemaining: number | null;
+  resetAt: string | null;
+  premiumModels: boolean;
+  billingConfigured: boolean;
+  priceThb: number;
+  hasStripeCustomer: boolean;
+};
+
 type MenuOption<T extends string> = {
   value: T;
   label: string;
   description?: string;
+  badge?: string;
 };
 
 type ResearchCardData = {
@@ -284,6 +306,18 @@ const TRANSLATION_CACHE_TTL_MS = 7 * 24 * 60 * 60 * 1_000;
 const TRANSLATION_CACHE_MAX_PAPERS = 30;
 const TRANSLATION_BATCH_MAX_SEGMENTS = 48;
 const TRANSLATION_BATCH_MAX_CHARS = 14_000;
+const GUEST_BILLING_STATE: BillingState = {
+  plan: "guest",
+  status: "active",
+  creditsIncluded: null,
+  creditsUsed: null,
+  creditsRemaining: null,
+  resetAt: null,
+  premiumModels: false,
+  billingConfigured: false,
+  priceThb: 199,
+  hasStripeCustomer: false,
+};
 
 function normalizeCollection(value: string | undefined): CollectionFilter {
   return value === "ce_project" || value === "ncce" ? value : "";
@@ -694,7 +728,10 @@ function GlassSelect<T extends string>({
                   }}
                 >
                   <span>
-                    <span className="optionLabel">{option.label}</span>
+                    <span className="optionLabel">
+                      {option.label}
+                      {option.badge ? <small className="optionBadge">{option.badge}</small> : null}
+                    </span>
                     {option.description ? <span className="optionDescription">{option.description}</span> : null}
                   </span>
                   <span className="checkMark" aria-hidden>
@@ -2195,6 +2232,7 @@ function SharedPanel({
 function AccountPanel({
   user,
   authenticated,
+  billing,
   authMode,
   setAuthMode,
   statusText,
@@ -2207,14 +2245,19 @@ function AccountPanel({
   setPassword,
   setPasswordConfirm,
   onAuthSubmit,
+  onGoogle,
   onMagicLink,
   onForgotPassword,
   onUpdatePassword,
   onLogout,
+  onCheckout,
+  onPortal,
   isBusy,
+  billingBusy,
 }: {
   user: ChatUserProfile | null;
   authenticated: boolean;
+  billing: BillingState;
   authMode: AuthMode;
   setAuthMode: (mode: AuthMode) => void;
   statusText: string;
@@ -2227,11 +2270,15 @@ function AccountPanel({
   setPassword: (value: string) => void;
   setPasswordConfirm: (value: string) => void;
   onAuthSubmit: () => void;
+  onGoogle: () => void;
   onMagicLink: () => void;
   onForgotPassword: () => void;
   onUpdatePassword: () => void;
   onLogout: () => void;
+  onCheckout: () => void;
+  onPortal: () => void;
   isBusy: boolean;
+  billingBusy: boolean;
 }) {
   const [showPassword, setShowPassword] = useState(false);
   const isSignup = authMode === "signup";
@@ -2239,6 +2286,10 @@ function AccountPanel({
   const isForgot = authMode === "forgot-password";
   const isRecovery = authMode === "recovery";
   const signedIn = authenticated && user?.isGuest === false && !isRecovery;
+  const founderPro = billing.plan === "founder_pro" && billing.premiumModels;
+  const resetLabel = billing.resetAt
+    ? new Intl.DateTimeFormat("en-US", { month: "short", day: "numeric" }).format(new Date(billing.resetAt))
+    : "next month";
   const authTitle = signedIn
     ? "Your CivilMCP account"
     : isSignup
@@ -2324,6 +2375,11 @@ function AccountPanel({
             </div>
           ) : (
             <>
+              <button type="button" className="googleAuthAction" onClick={onGoogle} disabled={isBusy}>
+                <ShieldCheck size={18} strokeWidth={2.2} aria-hidden />
+                <span>Continue with Google</span>
+              </button>
+              <div className="authDivider"><span>or continue with email</span></div>
               <div className="authSwitch authSwitchTop">
                 <span>{authSwitchLabel}</span>
                 <button type="button" onClick={() => setAuthMode(authSwitchMode)} disabled={isBusy}>
@@ -2437,51 +2493,59 @@ function AccountPanel({
         </form>
 
         <aside className="authBenefitCard" aria-label="CivilMCP workspace benefits">
+          <div className="planHeading">
+            <span className={`planIcon ${founderPro ? "pro" : ""}`}>
+              {founderPro ? <Crown size={19} strokeWidth={2.2} aria-hidden /> : <Sparkles size={19} strokeWidth={2.2} aria-hidden />}
+            </span>
+            <div>
+              <p className="workspaceEyebrow">{founderPro ? "Founder Pro" : "Research Preview"}</p>
+              <h3>{founderPro ? "Deeper synthesis is unlocked." : "Unlock Terra and Sol."}</h3>
+            </div>
+          </div>
+          <p className="planPrice"><strong>฿{billing.priceThb}</strong><span>/ month</span></p>
+          <p className="authBenefitIntro">150 weighted answer credits. Luna uses 1, Terra 3, and Sol 5. Credits reset monthly with no rollover.</p>
+          {signedIn && billing.creditsRemaining != null && billing.creditsIncluded != null ? (
+            <div className="creditMeter" aria-label={`${billing.creditsRemaining} of ${billing.creditsIncluded} answer credits remaining`}>
+              <div><strong>{billing.creditsRemaining}</strong><span>of {billing.creditsIncluded} credits left</span></div>
+              <progress value={billing.creditsRemaining} max={billing.creditsIncluded} />
+              <small>Resets {resetLabel}</small>
+            </div>
+          ) : null}
+          <div className="authFeatureList">
+            <div className="authFeatureRow">
+              <Crown size={17} strokeWidth={2.2} aria-hidden />
+              <span><strong>GPT-5.6 Terra + Sol</strong><small>Choose more depth only when the research question needs it.</small></span>
+            </div>
+            <div className="authFeatureRow">
+              <FileText size={17} strokeWidth={2.2} aria-hidden />
+              <span><strong>Same evidence discipline</strong><small>Every model stays grounded in CivilMCP page-linked evidence.</small></span>
+            </div>
+          </div>
           {signedIn ? (
-            <>
-              <p className="workspaceEyebrow">Workspace ready</p>
-              <h3>Your account is connected.</h3>
-              <p className="authBenefitIntro">New chats and saved sessions will stay tied to this workspace account.</p>
-              <div className="authFeatureList">
-                <div className="authFeatureRow">
-                  <History size={17} strokeWidth={2.2} aria-hidden />
-                  <span>
-                    <strong>History available</strong>
-                    <small>Open saved sessions from the History tab.</small>
-                  </span>
-                </div>
-                <div className="authFeatureRow">
-                  <Share2 size={17} strokeWidth={2.2} aria-hidden />
-                  <span>
-                    <strong>Share intentionally</strong>
-                    <small>Create links from the Shared work tab when needed.</small>
-                  </span>
-                </div>
-              </div>
-            </>
+            <button
+              type="button"
+              className="cardAction primary planAction"
+              onClick={founderPro || billing.hasStripeCustomer ? onPortal : onCheckout}
+              disabled={billingBusy || (!billing.billingConfigured && !billing.hasStripeCustomer)}
+            >
+              <CreditCard size={17} strokeWidth={2.2} aria-hidden />
+              <span>
+                {billingBusy
+                  ? "Opening..."
+                  : founderPro || billing.hasStripeCustomer
+                    ? "Manage membership"
+                    : billing.billingConfigured
+                      ? "Upgrade to Founder Pro"
+                      : "Founder Pro opening soon"}
+              </span>
+            </button>
           ) : (
-            <>
-              <p className="workspaceEyebrow">Research workspace</p>
-              <h3>Keep your paper-backed work connected.</h3>
-              <p className="authBenefitIntro">Sign in to continue important research from any device.</p>
-              <div className="authFeatureList">
-                <div className="authFeatureRow">
-                  <History size={17} strokeWidth={2.2} aria-hidden />
-                  <span>
-                    <strong>Synced chat history</strong>
-                    <small>Resume saved conversations from another device.</small>
-                  </span>
-                </div>
-                <div className="authFeatureRow">
-                  <Layers3 size={17} strokeWidth={2.2} aria-hidden />
-                  <span>
-                    <strong>Research context</strong>
-                    <small>Keep model, collection, and MCP mode with each session.</small>
-                  </span>
-                </div>
-              </div>
-            </>
+            <button type="button" className="cardAction primary planAction" onClick={() => setAuthMode("magic-link")}>
+              <Mail size={17} strokeWidth={2.2} aria-hidden />
+              <span>Sign in to upgrade</span>
+            </button>
           )}
+          <p className="planFinePrint">Luna and exact-page evidence remain available in the free Research Preview.</p>
         </aside>
       </div>
     </section>
@@ -2549,12 +2613,15 @@ export default function Home() {
   const [chatSessionsError, setChatSessionsError] = useState("");
   const [pendingDeleteSessionId, setPendingDeleteSessionId] = useState<string | null>(null);
   const [deletingSessionId, setDeletingSessionId] = useState<string | null>(null);
-  const [authMode, setAuthMode] = useState<AuthMode>("signin");
+  const [authMode, setAuthMode] = useState<AuthMode>("magic-link");
   const [loginName, setLoginName] = useState("");
   const [loginEmail, setLoginEmail] = useState("");
   const [loginPassword, setLoginPassword] = useState("");
   const [loginPasswordConfirm, setLoginPasswordConfirm] = useState("");
   const [authBusy, setAuthBusy] = useState(false);
+  const [billing, setBilling] = useState<BillingState>(GUEST_BILLING_STATE);
+  const [billingLoaded, setBillingLoaded] = useState(false);
+  const [billingBusy, setBillingBusy] = useState(false);
   const [shareUrl, setShareUrl] = useState("");
   const [shareBusy, setShareBusy] = useState(false);
   const [bookmarkedCards, setBookmarkedCards] = useState<Record<string, ResearchCardData>>({});
@@ -2601,6 +2668,16 @@ export default function Home() {
     api: "/api/chat",
     id: "civilmcp-session",
   });
+
+  const refreshBilling = useCallback(async () => {
+    try {
+      setBilling(await fetchJson<BillingState>("/api/billing"));
+    } catch {
+      // Billing configuration never blocks the free Research Preview.
+    } finally {
+      setBillingLoaded(true);
+    }
+  }, []);
 
   const buildFeedParams = useCallback(
     (cursor?: string | null) => {
@@ -2773,6 +2850,20 @@ export default function Home() {
         setLoginEmail(normalized.user?.email ?? "");
         setIsSharedView(Boolean(shareId));
         setSyncState("saved");
+        const billingResult = searchParams.get("billing");
+        if (billingResult) {
+          setAppView("settings");
+          setStatusText(
+            billingResult === "success"
+              ? "Payment received. Founder Pro will appear as soon as Stripe confirms the subscription."
+              : billingResult === "cancelled"
+                ? "Checkout cancelled. Your current plan is unchanged."
+                : "Billing settings updated.",
+          );
+          const nextUrl = new URL(window.location.href);
+          nextUrl.searchParams.delete("billing");
+          window.history.replaceState({}, "", `${nextUrl.pathname}${nextUrl.search}${nextUrl.hash}`);
+        }
         if (isRecovery) {
           setAppView("settings");
           setAuthMode(normalized.authenticated ? "recovery" : "forgot-password");
@@ -2782,6 +2873,7 @@ export default function Home() {
               : "This recovery link is invalid or has expired. Request a new link.",
           );
         }
+        void refreshBilling();
         void refreshChatSessions();
       } catch (error) {
         if (!cancelled) {
@@ -2803,7 +2895,13 @@ export default function Home() {
         clearTimeout(saveTimerRef.current);
       }
     };
-  }, [refreshChatSessions, setAppView, setMessages]);
+  }, [refreshBilling, refreshChatSessions, setAppView, setMessages]);
+
+  useEffect(() => {
+    if (billingLoaded && !billing.premiumModels && chatModelRequiresPro(selectedModel)) {
+      setSelectedModel(DEFAULT_CHAT_MODEL);
+    }
+  }, [billing.premiumModels, billingLoaded, selectedModel]);
 
   useEffect(() => {
     if (!isReady || !currentSessionId || isSharedView) return;
@@ -2947,15 +3045,27 @@ export default function Home() {
       CHAT_MODELS.map((option) => ({
         value: option.id,
         label: option.label,
+        badge: option.requiresPro ? (billing.premiumModels ? `${option.credits} credits` : "PRO") : undefined,
         description:
           option.id === DEFAULT_CHAT_MODEL
-            ? "Default · fast, high-volume reasoning"
+            ? "Default · 1 credit · fast, high-volume reasoning"
+            : option.requiresPro
+              ? `${option.credits} credits · deeper evidence synthesis`
             : option.provider === "openai"
               ? "OpenAI GPT-5.6 reasoning model"
-              : "Optional DeepSeek chat model",
+              : `${option.credits} ${option.credits === 1 ? "credit" : "credits"} · optional DeepSeek model`,
       })),
-    [],
+    [billing.premiumModels],
   );
+
+  const selectModel = (model: ChatModel) => {
+    if (chatModelRequiresPro(model) && !billing.premiumModels) {
+      setAppView("settings");
+      setStatusText(`${CHAT_MODELS.find((option) => option.id === model)?.label ?? model} is included in Founder Pro.`);
+      return;
+    }
+    setSelectedModel(model);
+  };
 
   const visibleCards = useMemo(() => {
     if (activeFeedFilter !== "saved") return feedCards;
@@ -3026,10 +3136,13 @@ export default function Home() {
           body: { mode: modeOverride ?? mode, model: selectedModel, collection: selectedCollection, sessionId: writableSessionId, paperAnchor },
         },
       );
-    } catch {
+      void refreshBilling();
+    } catch (error) {
       setDraft(trimmed);
-      setAppView(previousMobileNav);
-      setStatusText("Could not send your question. Your draft was restored.");
+      const message = error instanceof Error ? error.message : "Could not send your question.";
+      if (/Founder Pro|credits/i.test(message)) setAppView("settings");
+      else setAppView(previousMobileNav);
+      setStatusText(`${message} Your draft was restored.`);
     }
   };
 
@@ -3341,6 +3454,34 @@ export default function Home() {
     setLoginEmail(normalized.user?.email ?? loginEmail);
   };
 
+  const continueWithGoogle = async () => {
+    setAuthBusy(true);
+    try {
+      const payload = await fetchJson<{ url: string }>("/api/auth", {
+        method: "POST",
+        body: JSON.stringify({ action: "oauth", provider: "google" }),
+      });
+      window.location.assign(payload.url);
+    } catch (error) {
+      setStatusText(error instanceof Error ? error.message : "Google sign-in is unavailable.");
+      setAuthBusy(false);
+    }
+  };
+
+  const openBilling = async (action: "checkout" | "portal") => {
+    setBillingBusy(true);
+    try {
+      const payload = await fetchJson<{ url: string }>("/api/billing", {
+        method: "POST",
+        body: JSON.stringify({ action }),
+      });
+      window.location.assign(payload.url);
+    } catch (error) {
+      setStatusText(error instanceof Error ? error.message : "Billing is temporarily unavailable.");
+      setBillingBusy(false);
+    }
+  };
+
   const submitAuth = async () => {
     const email = loginEmail.trim();
     if (!email || loginPassword.length < 8) {
@@ -3384,6 +3525,7 @@ export default function Home() {
         setLoginPasswordConfirm("");
         setStatusText("Signed in. Your current chat history is now linked to this account.");
         await refreshCurrentSession();
+        await refreshBilling();
         await refreshChatSessions(true);
       }
     } catch (error) {
@@ -3465,6 +3607,7 @@ export default function Home() {
       window.history.replaceState({}, "", `${nextUrl.pathname}${nextUrl.search}${nextUrl.hash}`);
       setStatusText("Password updated. Your CivilMCP account is ready.");
       await refreshCurrentSession();
+      await refreshBilling();
       await refreshChatSessions(true);
     } catch (error) {
       setStatusText(error instanceof Error ? error.message : "Password could not be updated.");
@@ -3482,6 +3625,8 @@ export default function Home() {
       setLoginPassword("");
       setLoginPasswordConfirm("");
       setIsAuthenticated(false);
+      setBilling(GUEST_BILLING_STATE);
+      setBillingLoaded(true);
       setMessages([]);
       setChatSessions([]);
       setCurrentSessionId("");
@@ -3725,7 +3870,7 @@ export default function Home() {
               selectedCollection={selectedCollection}
               openDropdown={openDropdown}
               setOpenDropdown={setOpenDropdown}
-              setSelectedModel={setSelectedModel}
+              setSelectedModel={selectModel}
               setSelectedCollection={setSelectedCollection}
               copyShareLink={copyShareLink}
               exportSession={exportSession}
@@ -3782,6 +3927,7 @@ export default function Home() {
           <AccountPanel
             user={userProfile}
             authenticated={isAuthenticated}
+            billing={billing}
             authMode={authMode}
             setAuthMode={changeAuthMode}
             statusText={statusText}
@@ -3794,11 +3940,15 @@ export default function Home() {
             setPassword={setLoginPassword}
             setPasswordConfirm={setLoginPasswordConfirm}
             onAuthSubmit={() => void submitAuth()}
+            onGoogle={() => void continueWithGoogle()}
             onMagicLink={() => void sendMagicLink()}
             onForgotPassword={() => void sendPasswordRecovery()}
             onUpdatePassword={() => void updatePassword()}
             onLogout={() => void logoutChat()}
+            onCheckout={() => void openBilling("checkout")}
+            onPortal={() => void openBilling("portal")}
             isBusy={authBusy}
+            billingBusy={billingBusy}
           />
         ) : activeMobileNav === "shared" ? (
           <SharedPanel

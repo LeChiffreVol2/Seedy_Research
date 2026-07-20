@@ -111,6 +111,43 @@ class GASecurityContracts(unittest.TestCase):
         self.assertIn('.eq("user_id", feedback.userId)', store)
         self.assertIn("Feedback session does not match its trace.", store)
 
+    def test_founder_pro_entitlement_and_credit_paths_are_server_enforced(self) -> None:
+        models = source("web/lib/chat-models.ts")
+        chat = source("web/app/api/chat/route.ts")
+        billing = source("web/lib/billing.ts")
+        webhook = source("web/app/api/webhooks/stripe/route.ts")
+        migration = source("supabase/migrations/20260720160000_civil_founder_pro.sql")
+        period_guard = source("supabase/migrations/20260720163000_civil_billing_period_guards.sql")
+        self.assertIn('"gpt-5.6-terra", label: "GPT-5.6 Terra", provider: "openai", credits: 3, requiresPro: true', models)
+        self.assertIn('"gpt-5.6-sol", label: "GPT-5.6 Sol", provider: "openai", credits: 5, requiresPro: true', models)
+        self.assertIn("await reserveAnswerCredits({", chat)
+        self.assertIn("await refundAnswerCredits(userId, requestId, creditReservation.charged)", chat)
+        self.assertEqual(chat.count("onError: refundCredits"), 2)
+        self.assertIn('status: 402', chat)
+        self.assertIn('request.text()', webhook)
+        self.assertIn('verifyStripeSignature(payload', webhook)
+        self.assertIn('timingSafeEqual(received, expected)', billing)
+        self.assertIn("Math.abs(Date.now() / 1000 - seconds) > 300", billing)
+        for contract in (
+            "create table if not exists public.civil_billing_accounts",
+            "create table if not exists public.civil_credit_ledger",
+            "unique (user_id, request_id, kind)",
+            "for update",
+            "civil_consume_answer_credits",
+            "civil_refund_answer_credits",
+            "civil_sync_stripe_subscription",
+            "p_event_created_at < v_account.stripe_event_created_at",
+            "revoke all on table public.civil_credit_ledger from public, anon, authenticated",
+        ):
+            self.assertIn(contract, migration)
+        for contract in (
+            "civil_expire_billing_account",
+            "plan = 'free'",
+            "credits_included = 25",
+            "current_period_end <= clock_timestamp()",
+        ):
+            self.assertIn(contract, period_guard)
+
 
 if __name__ == "__main__":
     unittest.main(verbosity=2)
