@@ -138,6 +138,10 @@ def check_agent_bounds_and_annotations() -> Check:
         "appendMessageAnnotation(contextAnnotation)",
         "evidenceItems",
         "civilmcp_memory",
+        "civilmcp_mission",
+        "MissionArtifactSchema",
+        "uniqueValidEvidenceIds",
+        "createDataStreamResponse",
     ]
     missing = [item for item in required if item not in text]
     bounds_ok = bool(re.search(r"MAX_TOOL_CALLS\s*=\s*clampNumber\([^\n]+,\s*1,\s*8,\s*4\)", text))
@@ -260,6 +264,25 @@ def check_build_week_contract() -> Check:
         "atomic_credit_ledger": all(marker in billing_migration for marker in ("civil_credit_ledger", "for update", "civil_refund_answer_credits")),
         "expired_pro_downgrade": all(marker in billing_period_guard for marker in ("civil_expire_billing_account", "plan = 'free'", "current_period_end <= clock_timestamp()")),
         "signed_stripe_webhook": "timingSafeEqual(received, expected)" in billing,
+        "agentic_evidence_mission": all(
+            marker in chat
+            for marker in (
+                'type ChatExperience = "answer" | "mission" | "learn"',
+                "generateMissionArtifact",
+                "finalizeMissionArtifact",
+                'type: "civilmcp_mission"',
+            )
+        ),
+        "mission_product_surface": all(
+            marker in page
+            for marker in (
+                'value: "mission"',
+                'label: "Evidence Mission"',
+                "AgenticMissionCard",
+                "evidenceBriefMarkdown",
+                "openPaperDetailBySource",
+            )
+        ),
     }
     missing = [name for name, present in required.items() if not present]
     if missing:

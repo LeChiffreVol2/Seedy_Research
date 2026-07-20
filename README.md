@@ -20,6 +20,18 @@ chunk records; only evidence with active page provenance is included above.
 
 The application can search this corpus, synthesize findings across papers, open the exact evidence pages, and translate Thai paper content to English. The source PDFs and extracted corpus are intentionally not redistributed through Git; see [DATA_SOURCES.md](DATA_SOURCES.md).
 
+## Flagship: Agentic Evidence Mission
+
+With MCP on, the default run is a bounded, fully-agentic Evidence Mission:
+
+1. plan the research intent and retrieval query;
+2. search and rerank page-linked evidence under fixed tool/context budgets;
+3. compare sources and surface limited or conflicting coverage;
+4. verify exact-page provenance;
+5. publish a linked Evidence Brief with an evidence matrix, Thailand → World transfer checks, and Socratic learning checkpoints.
+
+The brief is stored in the existing chat history/share transcript and exports as portable Markdown. `Tutor Mission` emphasizes guided checkpoints; `Fast Answer` preserves the existing streaming brief. Agent activity is inspectable, but private reasoning and raw tool payloads are never exposed. See [docs/AGENTIC_EVIDENCE_MISSIONS.md](docs/AGENTIC_EVIDENCE_MISSIONS.md).
+
 ## Model behavior
 
 - `gpt-5.6-luna` is the default for answers, retrieval planning, memory compaction, and paper translation.
@@ -43,8 +55,8 @@ question
   -> GPT-5.6 Luna retrieval plan
   -> read-only MCP retrieval tools
   -> bounded evidence packet with exact pages
-  -> selected answer model
-  -> cited answer + trace/feedback metadata
+  -> selected answer model / structured Evidence Brief
+  -> cited answer + artifact + trace/feedback metadata
 ```
 
 - `web/`: Next.js research feed, chat, paper detail, translation, history, and feedback.

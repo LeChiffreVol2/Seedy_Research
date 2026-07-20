@@ -54,9 +54,10 @@ import {
 } from "@/lib/chat-models";
 
 type Mode = "baseline" | "mcp";
+type ChatExperience = "answer" | "mission" | "learn";
 type CollectionFilter = "" | "ce_project" | "ncce";
 type SyncState = "loading" | "saving" | "saved" | "error";
-type OpenDropdown = "model" | "collection" | "actions" | "examples" | null;
+type OpenDropdown = "experience" | "model" | "collection" | "actions" | "examples" | null;
 type FeedFilter = "hot" | "recent" | "evidence" | "saved" | "ncce" | "ce_project";
 type MobileNavItem = "explore" | "chat" | "history" | "shared" | "settings";
 type FeedStatus = "loading" | "ready" | "error";
@@ -103,6 +104,52 @@ type CivilMemoryAnnotation = {
   contextFillRatio?: number;
   compactedMessageCount?: number;
   recentMessageCount?: number;
+};
+
+type MissionVerdict = "supported" | "mixed" | "conflicting" | "insufficient";
+
+type CivilMissionArtifact = {
+  version: "civilmcp-evidence-brief-v1";
+  question: string;
+  experience: "mission" | "learn";
+  title: string;
+  executiveSummary: string;
+  verdict: { status: MissionVerdict; rationale: string };
+  matrix: Array<{
+    finding: string;
+    interpretation: string;
+    methodOrContext: string;
+    limitation: string;
+    evidenceIds: string[];
+  }>;
+  worldBridge: {
+    transferableSignals: string[];
+    thaiContext: string[];
+    validateNext: string[];
+  };
+  learning: {
+    objective: string;
+    checkpoints: Array<{ question: string; hint: string; evidenceIds: string[] }>;
+  };
+  trust: {
+    evidenceCount: number;
+    sourceCount: number;
+    exactPageCount: number;
+    pageCoveragePercent: number;
+  };
+  agentRun: {
+    bounded: true;
+    toolCalls: number;
+    toolCallLimit: number;
+    stepLimit: number;
+    stages: Array<{ name: string; detail: string; status: "complete" | "limited" }>;
+  };
+};
+
+type CivilMissionAnnotation = {
+  type: "civilmcp_mission";
+  traceId?: string;
+  artifact: CivilMissionArtifact;
 };
 
 type SessionPayload = {
@@ -268,6 +315,22 @@ const QUICK_PROMPTS = [
   "Compare NCCE29_TRL40 and NCCE29_TRL42. What truck-crash and road-system factors lead to serious injury or death, where do findings agree or differ, and which findings are site-specific? Cite exact pages.",
   "Compare NCCE25_MAT06, NCCE25_MAT13, and NCCE25_MAT18. Contrast materials, test methods, performance measures, and limitations with exact-page citations.",
   "Use the strongest evidence as E1, then explain what a follow-up study should verify.",
+  "Run an Evidence Mission on flood-resilient infrastructure in Thailand: compare methods and findings, identify what may transfer internationally, and give me learning checkpoints with exact-page evidence.",
+];
+
+const EXPERIENCE_OPTIONS: Array<MenuOption<ChatExperience>> = [
+  {
+    value: "mission",
+    label: "Evidence Mission",
+    description: "Plan, search, compare, verify, and publish a linked evidence brief",
+    badge: "Flagship",
+  },
+  {
+    value: "learn",
+    label: "Tutor Mission",
+    description: "Investigate the evidence, then learn through Socratic checkpoints",
+  },
+  { value: "answer", label: "Fast Answer", description: "Stream the standard cited research brief" },
 ];
 
 const COLLECTION_OPTIONS: Array<MenuOption<CollectionFilter>> = [
@@ -296,6 +359,7 @@ const MAIN_NAV_ITEMS: NavItem[] = [
 const ACTION_LABELS = {
   share: "Copy share link",
   export: "Export JSON",
+  brief: "Export evidence brief",
   clear: "Clear chat",
 } as const;
 
@@ -388,6 +452,19 @@ function getCivilMemoryAnnotation(message: UIMessage): CivilMemoryAnnotation | n
   return found ?? null;
 }
 
+function getCivilMissionAnnotation(message: UIMessage): CivilMissionAnnotation | null {
+  const annotations = (message as unknown as { annotations?: unknown }).annotations;
+  if (!Array.isArray(annotations)) return null;
+  const found = annotations.find(
+    (annotation): annotation is CivilMissionAnnotation =>
+      Boolean(annotation) &&
+      typeof annotation === "object" &&
+      (annotation as { type?: unknown }).type === "civilmcp_mission" &&
+      Boolean((annotation as { artifact?: unknown }).artifact),
+  );
+  return found ?? null;
+}
+
 function citedEvidenceIds(markdown: string): string[] {
   const ids = new Set<string>();
   for (const match of markdown.matchAll(/\[(E\d+)\]/g)) {
@@ -399,6 +476,79 @@ function citedEvidenceIds(markdown: string): string[] {
 function pageLabel(item: CivilEvidenceItem): string {
   if (item.pageStart == null || item.pageEnd == null) return "";
   return item.pageStart === item.pageEnd ? `p.${item.pageStart}` : `p.${item.pageStart}-${item.pageEnd}`;
+}
+
+function missionVerdictLabel(status: MissionVerdict): string {
+  return {
+    supported: "Supported",
+    mixed: "Mixed evidence",
+    conflicting: "Conflicting evidence",
+    insufficient: "Insufficient evidence",
+  }[status];
+}
+
+function evidenceBriefMarkdown(annotation: CivilMissionAnnotation, evidenceItems: CivilEvidenceItem[] = []): string {
+  const artifact = annotation.artifact;
+  const lines = [
+    `# ${artifact.title}`,
+    "",
+    `> ${artifact.version} · ${new Date().toISOString()}`,
+    "",
+    `**Research question:** ${artifact.question}`,
+    "",
+    "## Executive summary",
+    "",
+    artifact.executiveSummary,
+    "",
+    `## Evidence verdict — ${missionVerdictLabel(artifact.verdict.status)}`,
+    "",
+    artifact.verdict.rationale,
+    "",
+    "## Evidence matrix",
+    "",
+    "| Finding | Interpretation | Method / context | Limitation | Evidence |",
+    "| --- | --- | --- | --- | --- |",
+    ...artifact.matrix.map(
+      (row) =>
+        `| ${row.finding.replaceAll("|", "/")} | ${row.interpretation.replaceAll("|", "/")} | ${row.methodOrContext.replaceAll("|", "/")} | ${row.limitation.replaceAll("|", "/")} | ${row.evidenceIds.map((id) => `[${id}]`).join(", ")} |`,
+    ),
+    "",
+    "## Thailand → World bridge",
+    "",
+    "### Transferable signals",
+    ...artifact.worldBridge.transferableSignals.map((item) => `- ${item}`),
+    "",
+    "### Thai context to preserve",
+    ...artifact.worldBridge.thaiContext.map((item) => `- ${item}`),
+    "",
+    "### Validate before transfer",
+    ...artifact.worldBridge.validateNext.map((item) => `- ${item}`),
+    "",
+    "## Learning checkpoints",
+    "",
+    artifact.learning.objective,
+    "",
+    ...artifact.learning.checkpoints.flatMap((checkpoint, index) => [
+      `${index + 1}. ${checkpoint.question} ${checkpoint.evidenceIds.map((id) => `[${id}]`).join(" ")}`,
+      `   - Hint: ${checkpoint.hint}`,
+    ]),
+    "",
+    "## Trust and provenance",
+    "",
+    `- Evidence packets: ${artifact.trust.evidenceCount}`,
+    `- Unique paper sources: ${artifact.trust.sourceCount}`,
+    `- Exact-page coverage: ${artifact.trust.exactPageCount}/${artifact.trust.evidenceCount} (${artifact.trust.pageCoveragePercent}%)`,
+    `- Bounded run: ${artifact.agentRun.toolCalls}/${artifact.agentRun.toolCallLimit} tool calls, step limit ${artifact.agentRun.stepLimit}`,
+    "",
+    "## Evidence sources",
+    "",
+    ...(evidenceItems.length
+      ? evidenceItems.map((item) => `- [${item.evidenceId}] ${item.source}${pageLabel(item) ? ` · ${pageLabel(item)}` : ""}${item.sectionTitle ? ` · ${item.sectionTitle}` : ""}`)
+      : ["- See the linked CivilMCP session for source packets and exact-page evidence."]),
+    "",
+    "_Research evidence, not professional engineering advice._",
+  ];
+  return lines.join("\n");
 }
 
 function cardKey(card: ResearchCardData): string {
@@ -821,7 +971,9 @@ function ActionsMenu({
   setOpenDropdown,
   copyShareLink,
   exportSession,
+  exportEvidenceBrief,
   clearConversation,
+  canExportEvidenceBrief,
   isReady,
   isLoading,
 }: {
@@ -829,7 +981,9 @@ function ActionsMenu({
   setOpenDropdown: (dropdown: OpenDropdown) => void;
   copyShareLink: () => void;
   exportSession: () => void;
+  exportEvidenceBrief: () => void;
   clearConversation: () => void;
+  canExportEvidenceBrief: boolean;
   isReady: boolean;
   isLoading: boolean;
 }) {
@@ -855,6 +1009,13 @@ function ActionsMenu({
   }> = [
     { key: "share", icon: Copy, label: ACTION_LABELS.share, onClick: copyShareLink, disabled: !isReady || isLoading },
     { key: "export", icon: Download, label: ACTION_LABELS.export, onClick: exportSession, disabled: !isReady },
+    {
+      key: "brief",
+      icon: FileText,
+      label: ACTION_LABELS.brief,
+      onClick: exportEvidenceBrief,
+      disabled: !isReady || !canExportEvidenceBrief,
+    },
     { key: "clear", icon: Trash2, label: ACTION_LABELS.clear, onClick: clearConversation, disabled: isLoading, danger: true },
   ];
   const closeActions = () => {
@@ -983,13 +1144,27 @@ function PromptMenu({
   );
 }
 
-function EvidenceCards({ annotation, markdown }: { annotation: CivilMcpAnnotation | null; markdown: string }) {
+function EvidenceCards({
+  annotation,
+  markdown,
+  onOpenEvidence,
+}: {
+  annotation: CivilMcpAnnotation | null;
+  markdown: string;
+  onOpenEvidence: (source: string) => void;
+}) {
   const evidenceItems = annotation?.evidenceItems ?? [];
   if (evidenceItems.length) {
     return (
       <div className="evidenceGrid" aria-label="Evidence citations">
         {evidenceItems.map((item) => (
-          <article key={item.evidenceId} className="evidenceCard">
+          <button
+            key={item.evidenceId}
+            type="button"
+            className="evidenceCard"
+            onClick={() => onOpenEvidence(item.source)}
+            aria-label={`Open ${item.evidenceId} in ${item.source}${pageLabel(item) ? ` at ${pageLabel(item)}` : ""}`}
+          >
             <div className="evidenceTopline">
               <span className="evidenceId">[{item.evidenceId}]</span>
               <span className="evidenceSource">{item.source}</span>
@@ -1001,7 +1176,8 @@ function EvidenceCards({ annotation, markdown }: { annotation: CivilMcpAnnotatio
             </div>
             {item.sectionTitle ? <p className="evidenceSection">{item.sectionTitle}</p> : null}
             {item.snippet ? <p className="evidenceSnippet">{item.snippet}</p> : null}
-          </article>
+            <span className="evidenceOpen">Open paper evidence</span>
+          </button>
         ))}
       </div>
     );
@@ -1016,6 +1192,129 @@ function EvidenceCards({ annotation, markdown }: { annotation: CivilMcpAnnotatio
         <span key={id}>[{id}] cited in answer</span>
       ))}
     </div>
+  );
+}
+
+function AgenticMissionCard({
+  annotation,
+  onAsk,
+  onExport,
+}: {
+  annotation: CivilMissionAnnotation;
+  onAsk: (prompt: string) => void;
+  onExport: () => void;
+}) {
+  const artifact = annotation.artifact;
+  const verdictLabel = missionVerdictLabel(artifact.verdict.status);
+  return (
+    <section className="missionArtifact" aria-label="Agentic Evidence Mission">
+      <div className="missionHeader">
+        <div>
+          <span className="missionEyebrow">Linked Evidence Brief</span>
+          <h3>{artifact.title}</h3>
+        </div>
+        <span className={`missionVerdict ${artifact.verdict.status}`}>{verdictLabel}</span>
+      </div>
+
+      <div className="missionTrust" aria-label="Evidence trust metrics">
+        <span><strong>{artifact.trust.evidenceCount}</strong> evidence packets</span>
+        <span><strong>{artifact.trust.sourceCount}</strong> sources</span>
+        <span><strong>{artifact.trust.pageCoveragePercent}%</strong> exact-page coverage</span>
+        <span><strong>{artifact.agentRun.toolCalls}/{artifact.agentRun.toolCallLimit}</strong> bounded tool calls</span>
+      </div>
+
+      <section className="missionSection">
+        <div className="missionSectionHeading">
+          <div>
+            <span>Evidence matrix</span>
+            <p>Findings stay linked to the packets used to support them.</p>
+          </div>
+        </div>
+        <div className="missionMatrix">
+          {artifact.matrix.map((row, index) => (
+            <article key={`${row.finding}-${index}`} className="missionMatrixRow">
+              <div className="missionMatrixFinding">
+                <span className="missionRowIndex">{String(index + 1).padStart(2, "0")}</span>
+                <strong>{row.finding}</strong>
+                <div className="missionEvidenceIds">
+                  {row.evidenceIds.map((id) => <span key={id}>[{id}]</span>)}
+                </div>
+              </div>
+              <dl>
+                <div><dt>Interpretation</dt><dd>{row.interpretation}</dd></div>
+                <div><dt>Method / context</dt><dd>{row.methodOrContext}</dd></div>
+                <div><dt>Limitation</dt><dd>{row.limitation}</dd></div>
+              </dl>
+            </article>
+          ))}
+        </div>
+      </section>
+
+      <section className="missionSection">
+        <div className="missionSectionHeading">
+          <div>
+            <span>Thailand → World bridge</span>
+            <p>Transfer the question, not an untested local conclusion.</p>
+          </div>
+        </div>
+        <div className="worldBridgeGrid">
+          <article>
+            <strong>Transferable signals</strong>
+            <ul>{artifact.worldBridge.transferableSignals.map((item) => <li key={item}>{item}</li>)}</ul>
+          </article>
+          <article>
+            <strong>Thai context to preserve</strong>
+            <ul>{artifact.worldBridge.thaiContext.map((item) => <li key={item}>{item}</li>)}</ul>
+          </article>
+          <article>
+            <strong>Validate before transfer</strong>
+            <ul>{artifact.worldBridge.validateNext.map((item) => <li key={item}>{item}</li>)}</ul>
+          </article>
+        </div>
+      </section>
+
+      <section className="missionSection learningMission">
+        <div className="missionSectionHeading">
+          <div>
+            <span>Learn from the evidence</span>
+            <p>{artifact.learning.objective}</p>
+          </div>
+        </div>
+        <div className="learningCheckpoints">
+          {artifact.learning.checkpoints.map((checkpoint, index) => (
+            <button key={`${checkpoint.question}-${index}`} type="button" onClick={() => onAsk(checkpoint.question)}>
+              <span>Checkpoint {index + 1}</span>
+              <strong>{checkpoint.question}</strong>
+              <small>{checkpoint.hint}</small>
+              <em>{checkpoint.evidenceIds.map((id) => `[${id}]`).join(" ")}</em>
+            </button>
+          ))}
+        </div>
+      </section>
+
+      <details className="agentRunTrace">
+        <summary>
+          <span>Inspect agent run</span>
+          <small>bounded · step limit {artifact.agentRun.stepLimit}</small>
+        </summary>
+        <ol>
+          {artifact.agentRun.stages.map((stage) => (
+            <li key={stage.name} className={stage.status}>
+              <span>{stage.name}</span>
+              <small>{stage.detail}</small>
+            </li>
+          ))}
+        </ol>
+      </details>
+
+      <div className="missionActions">
+        <button type="button" className="cardAction" onClick={onExport}>
+          <Download size={16} strokeWidth={2.2} aria-hidden />
+          <span>Export Evidence Brief</span>
+        </button>
+        <span>Saved with this chat and share link</span>
+      </div>
+    </section>
   );
 }
 
@@ -1119,7 +1418,21 @@ function AnswerFeedback({
   );
 }
 
-function MessageRenderer({ message, sessionId, question }: { message: UIMessage; sessionId: string; question?: string }) {
+function MessageRenderer({
+  message,
+  sessionId,
+  question,
+  onAsk,
+  onOpenEvidence,
+  onExportEvidenceBrief,
+}: {
+  message: UIMessage;
+  sessionId: string;
+  question?: string;
+  onAsk: (prompt: string) => void;
+  onOpenEvidence: (source: string) => void;
+  onExportEvidenceBrief: (annotation: CivilMissionAnnotation) => void;
+}) {
   const text = messageText(message);
   if (message.role === "user") {
     return <p className="userText">{text}</p>;
@@ -1129,14 +1442,22 @@ function MessageRenderer({ message, sessionId, question }: { message: UIMessage;
   const traceAnnotation = getCivilTraceAnnotation(message);
   const traceId = annotation?.traceId ?? traceAnnotation?.traceId;
   const memoryAnnotation = getCivilMemoryAnnotation(message);
+  const missionAnnotation = getCivilMissionAnnotation(message);
   const shouldShowEvidence = text.trim().length > 0;
   return (
     <>
       <div className="markdownBody">
         <ReactMarkdown remarkPlugins={[remarkGfm]}>{text}</ReactMarkdown>
       </div>
+      {missionAnnotation ? (
+        <AgenticMissionCard
+          annotation={missionAnnotation}
+          onAsk={onAsk}
+          onExport={() => onExportEvidenceBrief(missionAnnotation)}
+        />
+      ) : null}
       <MemoryNotice annotation={memoryAnnotation} />
-      {shouldShowEvidence ? <EvidenceCards annotation={annotation} markdown={text} /> : null}
+      {shouldShowEvidence ? <EvidenceCards annotation={annotation} markdown={text} onOpenEvidence={onOpenEvidence} /> : null}
       {shouldShowEvidence ? (
         <AnswerFeedback message={message} traceId={traceId} sessionId={sessionId} question={question} />
       ) : null}
@@ -1305,6 +1626,8 @@ function SearchComposer({
   onKeyDown,
   useMcp,
   setUseMcp,
+  experience,
+  setExperience,
   selectedModel,
   modelOptions,
   selectedCollection,
@@ -1314,7 +1637,9 @@ function SearchComposer({
   setSelectedCollection,
   copyShareLink,
   exportSession,
+  exportEvidenceBrief,
   clearConversation,
+  canExportEvidenceBrief,
   isReady,
   isLoading,
 }: {
@@ -1325,6 +1650,8 @@ function SearchComposer({
   onKeyDown: (event: KeyboardEvent<HTMLTextAreaElement>) => void;
   useMcp: boolean;
   setUseMcp: (updater: (prev: boolean) => boolean) => void;
+  experience: ChatExperience;
+  setExperience: (value: ChatExperience) => void;
   selectedModel: ChatModel;
   modelOptions: Array<MenuOption<ChatModel>>;
   selectedCollection: CollectionFilter;
@@ -1334,7 +1661,9 @@ function SearchComposer({
   setSelectedCollection: (value: CollectionFilter) => void;
   copyShareLink: () => void;
   exportSession: () => void;
+  exportEvidenceBrief: () => void;
   clearConversation: () => void;
+  canExportEvidenceBrief: boolean;
   isReady: boolean;
   isLoading: boolean;
 }) {
@@ -1360,6 +1689,19 @@ function SearchComposer({
       <div className="composerToolbar">
         <PromptMenu openDropdown={openDropdown} setOpenDropdown={setOpenDropdown} setDraft={setDraft} />
         <ModeToggle useMcp={useMcp} setUseMcp={setUseMcp} />
+        {useMcp ? (
+          <GlassSelect
+            id="experience"
+            label="Run"
+            icon={Gauge}
+            className="experienceControl"
+            value={experience}
+            options={EXPERIENCE_OPTIONS}
+            openDropdown={openDropdown}
+            setOpenDropdown={setOpenDropdown}
+            onChange={setExperience}
+          />
+        ) : null}
         <GlassSelect
           id="model"
           label="Model"
@@ -1387,7 +1729,9 @@ function SearchComposer({
           setOpenDropdown={setOpenDropdown}
           copyShareLink={copyShareLink}
           exportSession={exportSession}
+          exportEvidenceBrief={exportEvidenceBrief}
           clearConversation={clearConversation}
+          canExportEvidenceBrief={canExportEvidenceBrief}
           isReady={isReady}
           isLoading={isLoading}
         />
@@ -1987,7 +2331,19 @@ function PaperDetailDrawer({
   );
 }
 
-function ConversationFeed({ messages, sessionId }: { messages: UIMessage[]; sessionId: string }) {
+function ConversationFeed({
+  messages,
+  sessionId,
+  onAsk,
+  onOpenEvidence,
+  onExportEvidenceBrief,
+}: {
+  messages: UIMessage[];
+  sessionId: string;
+  onAsk: (prompt: string) => void;
+  onOpenEvidence: (source: string) => void;
+  onExportEvidenceBrief: (annotation: CivilMissionAnnotation) => void;
+}) {
   return (
     <section className="feedStack conversationFeed" aria-label="Conversation">
       {messages.map((message, index) => {
@@ -2007,6 +2363,9 @@ function ConversationFeed({ messages, sessionId }: { messages: UIMessage[]; sess
               message={message}
               sessionId={sessionId}
               question={previousQuestion ? messageText(previousQuestion) : undefined}
+              onAsk={onAsk}
+              onOpenEvidence={onOpenEvidence}
+              onExportEvidenceBrief={onExportEvidenceBrief}
             />
           </article>
         );
@@ -2022,6 +2381,9 @@ function ChatWorkspace({
   isLoading,
   error,
   onNewChat,
+  onAsk,
+  onOpenEvidence,
+  onExportEvidenceBrief,
 }: {
   messages: UIMessage[];
   sessionId: string;
@@ -2029,6 +2391,9 @@ function ChatWorkspace({
   isLoading: boolean;
   error?: Error;
   onNewChat: () => void;
+  onAsk: (prompt: string) => void;
+  onOpenEvidence: (source: string) => void;
+  onExportEvidenceBrief: (annotation: CivilMissionAnnotation) => void;
 }) {
   return (
     <section className="workspacePanel" aria-label="Chat workspace">
@@ -2045,7 +2410,13 @@ function ChatWorkspace({
       </div>
 
       {messages.length ? (
-        <ConversationFeed messages={messages} sessionId={sessionId} />
+        <ConversationFeed
+          messages={messages}
+          sessionId={sessionId}
+          onAsk={onAsk}
+          onOpenEvidence={onOpenEvidence}
+          onExportEvidenceBrief={onExportEvidenceBrief}
+        />
       ) : (
         <article className="feedStateCard chatEmptyState">
           <h2>Start a new research conversation</h2>
@@ -2596,6 +2967,7 @@ export default function Home() {
   const [useMcp, setUseMcp] = useState(true);
   const [selectedModel, setSelectedModel] = useState<ChatModel>(DEFAULT_CHAT_MODEL);
   const [selectedCollection, setSelectedCollection] = useState<CollectionFilter>("");
+  const [selectedExperience, setSelectedExperience] = useState<ChatExperience>("mission");
   const [draft, setDraft] = useState("");
   const [isReady, setIsReady] = useState(false);
   const [syncState, setSyncState] = useState<SyncState>("loading");
@@ -2668,6 +3040,13 @@ export default function Home() {
     api: "/api/chat",
     id: "civilmcp-session",
   });
+  const latestMissionAnnotation = useMemo(() => {
+    for (let index = messages.length - 1; index >= 0; index -= 1) {
+      const annotation = getCivilMissionAnnotation(messages[index]);
+      if (annotation) return annotation;
+    }
+    return null;
+  }, [messages]);
 
   const refreshBilling = useCallback(async () => {
     try {
@@ -3121,7 +3500,12 @@ export default function Home() {
     return normalized.sessionId;
   };
 
-  const submitPrompt = async (text: string, paperAnchor?: PaperAnchor, modeOverride?: Mode) => {
+  const submitPrompt = async (
+    text: string,
+    paperAnchor?: PaperAnchor,
+    modeOverride?: Mode,
+    experienceOverride?: ChatExperience,
+  ) => {
     const trimmed = text.trim();
     if (!trimmed || !isReady || isLoading) return;
     const previousMobileNav = activeMobileNav;
@@ -3130,10 +3514,18 @@ export default function Home() {
     setAppView("chat");
     try {
       const writableSessionId = await ensureWritableSession();
+      const requestMode = modeOverride ?? mode;
       await append(
         { role: "user", content: trimmed },
         {
-          body: { mode: modeOverride ?? mode, model: selectedModel, collection: selectedCollection, sessionId: writableSessionId, paperAnchor },
+          body: {
+            mode: requestMode,
+            experience: requestMode === "mcp" ? experienceOverride ?? selectedExperience : "answer",
+            model: selectedModel,
+            collection: selectedCollection,
+            sessionId: writableSessionId,
+            paperAnchor,
+          },
         },
       );
       void refreshBilling();
@@ -3638,19 +4030,23 @@ export default function Home() {
     }
   };
 
-  const openPaperDetail = async (card: ResearchCardData) => {
+  const openPaperDetailBySource = async (source: string, seedCard?: ResearchCardData) => {
     const requestId = detailRequestIdRef.current + 1;
     detailRequestIdRef.current = requestId;
-    setPaperDetail({
-      document: card,
-      sections: [],
-      evidence: [],
-      counts: { sections: 0, chunks: card.evidenceCount },
-    });
+    setPaperDetail(
+      seedCard
+        ? {
+            document: seedCard,
+            sections: [],
+            evidence: [],
+            counts: { sections: 0, chunks: seedCard.evidenceCount },
+          }
+        : null,
+    );
     setPaperDetailStatus("loading");
     setPaperDetailError("");
     try {
-      const detail = await fetchJson<PaperDetailData>(`/api/papers/${encodeURIComponent(card.source)}`);
+      const detail = await fetchJson<PaperDetailData>(`/api/papers/${encodeURIComponent(source)}`);
       if (detailRequestIdRef.current !== requestId) return;
       setPaperDetail(detail);
       setPaperDetailStatus("ready");
@@ -3662,6 +4058,10 @@ export default function Home() {
       setPaperDetailStatus("error");
       setPaperDetailError(error instanceof Error ? error.message : "Failed to load paper detail.");
     }
+  };
+
+  const openPaperDetail = async (card: ResearchCardData) => {
+    await openPaperDetailBySource(card.source, card);
   };
 
   const loadMoreFeed = async () => {
@@ -3726,6 +4126,23 @@ export default function Home() {
     anchor.click();
     URL.revokeObjectURL(url);
     setStatusText("Session exported as JSON");
+  };
+
+  const exportEvidenceBrief = (annotation: CivilMissionAnnotation | null = latestMissionAnnotation) => {
+    if (!annotation) {
+      setStatusText("Run an Evidence Mission before exporting a linked brief.");
+      return;
+    }
+    const sourceMessage = messages.find((message) => getCivilMissionAnnotation(message)?.traceId === annotation.traceId);
+    const evidenceItems = sourceMessage ? getCivilMcpAnnotation(sourceMessage)?.evidenceItems ?? [] : [];
+    const blob = new Blob([evidenceBriefMarkdown(annotation, evidenceItems)], { type: "text/markdown;charset=utf-8" });
+    const url = URL.createObjectURL(blob);
+    const anchor = document.createElement("a");
+    anchor.href = url;
+    anchor.download = `civilmcp-evidence-brief-${Date.now()}.md`;
+    anchor.click();
+    URL.revokeObjectURL(url);
+    setStatusText("Evidence Brief exported as Markdown");
   };
 
   const createShareLink = async (copyToClipboard: boolean) => {
@@ -3854,6 +4271,7 @@ export default function Home() {
                 <span><strong>{(feedTotalChunks || 48_370).toLocaleString("en-US")}</strong> page-linked chunks</span>
                 <span>Thai + English</span>
                 <span>Exact page citations</span>
+                <span>Agentic Evidence Missions</span>
                 <span className="modelProof">Powered by GPT-5.6 Luna</span>
               </div>
             ) : null}
@@ -3865,6 +4283,8 @@ export default function Home() {
               onKeyDown={onComposerKeyDown}
               useMcp={useMcp}
               setUseMcp={setUseMcp}
+              experience={selectedExperience}
+              setExperience={setSelectedExperience}
               selectedModel={selectedModel}
               modelOptions={modelOptions}
               selectedCollection={selectedCollection}
@@ -3874,7 +4294,9 @@ export default function Home() {
               setSelectedCollection={setSelectedCollection}
               copyShareLink={copyShareLink}
               exportSession={exportSession}
+              exportEvidenceBrief={() => exportEvidenceBrief()}
               clearConversation={clearConversation}
+              canExportEvidenceBrief={Boolean(latestMissionAnnotation)}
               isReady={isReady}
               isLoading={isLoading}
             />
@@ -3986,6 +4408,9 @@ export default function Home() {
             isLoading={isLoading}
             error={chatError}
             onNewChat={() => void createNewChat()}
+            onAsk={(prompt) => void submitPrompt(prompt, undefined, "mcp", "learn")}
+            onOpenEvidence={(source) => void openPaperDetailBySource(source)}
+            onExportEvidenceBrief={exportEvidenceBrief}
           />
         )}
       </AppShell>

@@ -14,8 +14,15 @@ user question
 -> MCP retrieval tools
 -> evidence packet builder + dedupe + context budget
 -> selected answer model
--> markdown answer + civilmcp_context annotations
+-> Fast Answer or structured Agentic Evidence Mission
+-> markdown answer + context/mission annotations
 ```
+
+## Agentic Evidence Mission
+
+`experience=mission|learn` reuses the same bounded retrieval loop and produces a `civilmcp_mission` message annotation. The artifact contains an evidence verdict, linked matrix rows, transfer checks, learning checkpoints, trust metrics, and an inspectable stage summary. Evidence IDs are allow-listed against retrieved packets before publication; invalid model-proposed IDs are removed and weak/failed structured output falls back to a conservative deterministic brief.
+
+The artifact is transcript data, so the existing history and share paths persist it without a new table. The browser can export it as Markdown. `experience=answer` keeps the existing streaming response path. No private chain of thought, raw MCP payload, API key, or similarity score is exposed.
 
 ## Retrieval Substrate
 - Embeddings: `text-embedding-3-small` with `EMBEDDING_DIMENSIONS=768`.

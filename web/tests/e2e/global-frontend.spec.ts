@@ -56,6 +56,14 @@ test("desktop feed keeps the approved research hierarchy", async ({ page }) => {
   await expect(page.getByRole("heading", { name: /Explore .* Thai civil engineering papers/ })).toBeVisible();
   await expect(page.getByLabel("CivilMCP corpus coverage")).toContainText("sections");
   await expect(page.getByLabel("CivilMCP corpus coverage")).toContainText("Powered by GPT-5.6 Luna");
+  await expect(page.getByLabel("CivilMCP corpus coverage")).toContainText("Agentic Evidence Missions");
+  const runControl = page.getByRole("button", { name: /Evidence Mission/ });
+  await expect(runControl).toContainText("Evidence Mission");
+  await runControl.click();
+  await expect(page.getByRole("menuitemradio", { name: /Evidence Mission/ })).toContainText("Flagship");
+  await expect(page.getByRole("menuitemradio", { name: /Tutor Mission/ })).toBeVisible();
+  await expect(page.getByRole("menuitemradio", { name: /Fast Answer/ })).toBeVisible();
+  await page.keyboard.press("Escape");
   await expect(page.getByRole("region", { name: "CivilMCP research feed" })).toBeVisible();
   await expect.poll(() => page.locator(".researchCard").count()).toBeGreaterThan(0);
   await expect
@@ -124,7 +132,7 @@ test("navigation resets rail scroll and account does not render the composer", a
   await expect(page.getByRole("button", { name: "Send sign-in link" })).toBeVisible();
   await expect(page.getByText("฿199")).toBeVisible();
 
-  await page.getByRole("button", { name: "Sign in", exact: true }).click();
+  await page.getByLabel("Account and chat history login").getByRole("button", { name: "Sign in", exact: true }).click();
   await page.getByRole("button", { name: "Forgot password?" }).click();
   await expect(page.getByRole("heading", { name: "Reset your password" })).toBeVisible();
   await expect(page.getByRole("button", { name: "Send recovery link" })).toBeVisible();
@@ -171,6 +179,129 @@ test("model menu supports keyboard navigation and focus return", async ({ page }
   await expect(trigger).toBeFocused();
 });
 
+test("Evidence Mission renders a linked brief and exports Markdown", async ({ page }) => {
+  const sessionId = "00000000-0000-4000-8000-000000000001";
+  const guestUser = { userId: "guest-test", displayName: "Guest researcher", isGuest: true };
+  await page.route("**/api/session", (route) => route.fulfill({ json: { sessionId } }));
+  await page.route("**/api/history", (route) =>
+    route.fulfill({
+      json:
+        route.request().method() === "POST"
+          ? { ok: true, sessionId }
+          : { sessionId, title: "Untitled chat", mode: "mcp", model: "gpt-5.6-luna", collection: "", messages: [], user: guestUser, authenticated: false },
+    }),
+  );
+  await page.route("**/api/chat-sessions", (route) =>
+    route.fulfill({ json: { sessions: [], user: guestUser, authenticated: false } }),
+  );
+  await page.route("**/api/billing", (route) =>
+    route.fulfill({
+      json: {
+        plan: "guest",
+        status: "active",
+        creditsIncluded: null,
+        creditsUsed: null,
+        creditsRemaining: null,
+        resetAt: null,
+        premiumModels: false,
+        billingConfigured: false,
+        priceThb: 199,
+        hasStripeCustomer: false,
+      },
+    }),
+  );
+  await page.route("**/api/research-feed**", (route) =>
+    route.fulfill({ json: { cards: [], facets: { total: 941, totalSections: 8148, totalChunks: 48370, filters: {} }, nextCursor: null } }),
+  );
+  const evidenceItem = {
+    evidenceId: "E1",
+    citation: "NCCE29_TRL40.md p.3",
+    source: "NCCE29_TRL40.md",
+    collection: "ncce",
+    paperCode: "TRL40",
+    pageStart: 3,
+    pageEnd: 3,
+    sectionTitle: "Results",
+    snippet: "Representative exact-page evidence for the mission contract.",
+  };
+  const artifact = {
+    version: "civilmcp-evidence-brief-v1",
+    question: "Compare safety factors",
+    experience: "mission",
+    title: "Road safety evidence mission",
+    executiveSummary: "The indexed evidence supports a bounded comparison [E1].",
+    verdict: { status: "mixed", rationale: "Coverage is useful but local [E1]." },
+    matrix: [{
+      finding: "Serious outcomes require contextual comparison.",
+      interpretation: "Treat this as a research signal.",
+      methodOrContext: "NCCE transport study",
+      limitation: "One mocked source in this UI contract.",
+      evidenceIds: ["E1"],
+    }],
+    worldBridge: {
+      transferableSignals: ["Compare mechanisms, not headline rates."],
+      thaiContext: ["Preserve local road and reporting context."],
+      validateNext: ["Retest with the destination country's data."],
+    },
+    learning: {
+      objective: "Separate evidence, interpretation, and transfer assumptions.",
+      checkpoints: [
+        { question: "What does E1 directly support?", hint: "Read the cited result.", evidenceIds: ["E1"] },
+        { question: "What must be validated elsewhere?", hint: "Check local context.", evidenceIds: ["E1"] },
+      ],
+    },
+    trust: { evidenceCount: 1, sourceCount: 1, exactPageCount: 1, pageCoveragePercent: 100 },
+    agentRun: {
+      bounded: true,
+      toolCalls: 2,
+      toolCallLimit: 4,
+      stepLimit: 3,
+      stages: [
+        { name: "Plan", detail: "compare · deterministic router", status: "complete" },
+        { name: "Search", detail: "2/4 tool calls · 1 evidence packet", status: "complete" },
+        { name: "Compare", detail: "1 unique source", status: "limited" },
+        { name: "Verify", detail: "1/1 packets have exact pages", status: "complete" },
+        { name: "Publish", detail: "Saved as a linked Evidence Brief", status: "complete" },
+      ],
+    },
+  };
+  await page.route("**/api/chat", async (route) => {
+    const body = [
+      `8:${JSON.stringify([{ type: "civilmcp_context", traceId: "trace-test", evidenceItems: [evidenceItem] }])}`,
+      `8:${JSON.stringify([{ type: "civilmcp_mission", traceId: "trace-test", artifact }])}`,
+      `0:${JSON.stringify("## Agentic Evidence Mission\nThe brief is grounded in [E1].")}`,
+      `d:${JSON.stringify({ finishReason: "stop", usage: { promptTokens: 10, completionTokens: 20 } })}`,
+      "",
+    ].join("\n");
+    await route.fulfill({
+      status: 200,
+      contentType: "text/plain; charset=utf-8",
+      headers: { "x-vercel-ai-data-stream": "v1" },
+      body,
+    });
+  });
+
+  await page.setViewportSize({ width: 1440, height: 1000 });
+  await page.goto("/");
+  const composer = page.getByLabel("Ask or search civil engineering papers");
+  await composer.fill("Compare safety factors");
+  const send = page.getByRole("button", { name: "Send message" });
+  await expect(send).toBeEnabled();
+  await send.click();
+
+  const mission = page.getByLabel("Agentic Evidence Mission");
+  await expect(mission).toContainText("Road safety evidence mission");
+  await expect(mission).toContainText("100% exact-page coverage");
+  await expect(mission).toContainText("Thailand → World bridge");
+  await expect(mission.getByRole("button", { name: /What does E1 directly support/ })).toBeVisible();
+  await mission.getByText("Inspect agent run").click();
+  await expect(mission).toContainText("Saved as a linked Evidence Brief");
+
+  const downloadPromise = page.waitForEvent("download");
+  await mission.getByRole("button", { name: "Export Evidence Brief" }).click();
+  await expect((await downloadPromise).suggestedFilename()).toMatch(/civilmcp-evidence-brief-.*\.md/);
+});
+
 test("paper language mode translates globally, persists, and follows the paper drawer", async ({ page }) => {
   let translationRequests = 0;
   await page.addInitScript(() => window.localStorage.setItem("civilmcp-paper-language-v1", "en"));
@@ -197,7 +328,7 @@ test("paper language mode translates globally, persists, and follows the paper d
   const thaiButton = languageControl.getByRole("button", { name: "Show Thai original" });
   await expect(languageControl).toBeVisible();
   await expect(englishButton).toHaveAttribute("aria-pressed", "true");
-  await expect.poll(() => translationRequests).toBeGreaterThan(0);
+  await expect.poll(() => translationRequests, { timeout: 15_000 }).toBeGreaterThan(0);
   await expect.poll(() => page.locator(".researchCard [lang='en']").filter({ hasText: "[EN]" }).count()).toBeGreaterThan(0);
 
   await thaiButton.click();

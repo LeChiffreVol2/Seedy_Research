@@ -27,6 +27,7 @@ All competition commits are created after July 13 with their real timestamps. No
 | Civil and City release gates coupled | Separate CivilMCP and CityMCP app, harness, CI, and release scopes |
 | Feed-level citations | Public Research Preview positioning, exact-page demo prompts, feedback, and release evidence |
 | Paper-code queries relied on semantic similarity | Bounded exact-paper retrieval followed by full-candidate reranking before the 8-chunk context limit |
+| One-shot cited answers | Bounded Agentic Evidence Missions with inspectable run stages, linked matrices, transfer checks, tutor checkpoints, and Markdown export |
 
 ## GPT-5.6 use
 
@@ -41,6 +42,17 @@ GPT-5.6 Luna is the default model for:
 GPT-5.6 Terra and Sol remain selectable answer models. DeepSeek Flash and Pro are optional answer providers and are not required for the default path.
 
 The implementation keeps the existing Chat Completions-compatible AI SDK integration and uses low reasoning effort for latency-sensitive Luna calls. Retrieval budgets remain bounded independently of the model context window.
+
+## Agentic education extension
+
+The flagship experience is fully agentic within explicit product limits, not autonomous without bounds. CivilMCP can plan, retrieve iteratively, compare sources, verify page coverage, and publish a durable artifact. `MAX_AGENT_STEPS`, `MAX_TOOL_CALLS`, `MAX_CONTEXT_CHUNKS`, and `MAX_CONTEXT_TOKENS` remain hard server-side limits.
+
+Two product references informed the extension without adding their code or frameworks:
+
+- [Tau](https://twotimespi.dev/) inspired the inspectable agent-run and learning checkpoints: users can see the useful stages and evidence, never private reasoning.
+- [OpenWiki](https://github.com/langchain-ai/openwiki) inspired the durable, linked Evidence Brief: the artifact lives with history/share and exports as Markdown instead of disappearing as a one-shot answer.
+
+The existing AI SDK, MCP retrieval layer, Supabase transcript, and visual system remain in place.
 
 ## Dataset contribution
 

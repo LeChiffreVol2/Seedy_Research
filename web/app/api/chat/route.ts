@@ -1,5 +1,13 @@
 import { createOpenAI, openai } from "@ai-sdk/openai";
-import { convertToCoreMessages, generateObject, generateText, streamText, StreamData } from "ai";
+import {
+  convertToCoreMessages,
+  createDataStreamResponse,
+  formatDataStreamPart,
+  generateObject,
+  generateText,
+  streamText,
+  StreamData,
+} from "ai";
 import type { UIMessage } from "ai";
 import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
@@ -69,9 +77,11 @@ const OPENAI_ANSWER_MIN_TOKENS = 2400;
 
 type Intent = "simple_lookup" | "compare" | "summarize" | "methodology" | "citation_search";
 type CollectionFilter = "" | "ce_project" | "ncce";
+type ChatExperience = "answer" | "mission" | "learn";
 type ChatBody = {
   messages: UIMessage[];
   mode?: "baseline" | "mcp";
+  experience?: ChatExperience;
   model?: string;
   collection?: string;
   sessionId?: string;
@@ -244,6 +254,65 @@ type TraceTimings = {
   contextLatencyMs?: number | null;
   answerLatencyMs?: number | null;
   totalLatencyMs?: number | null;
+};
+
+const MissionArtifactSchema = z.object({
+  title: z.string().min(1).max(120),
+  executiveSummary: z.string().min(1).max(900),
+  verdict: z.object({
+    status: z.enum(["supported", "mixed", "conflicting", "insufficient"]),
+    rationale: z.string().min(1).max(600),
+  }),
+  matrix: z
+    .array(
+      z.object({
+        finding: z.string().min(1).max(360),
+        interpretation: z.string().min(1).max(360),
+        methodOrContext: z.string().min(1).max(260),
+        limitation: z.string().min(1).max(260),
+        evidenceIds: z.array(z.string().regex(/^E\d+$/)).min(1).max(4),
+      }),
+    )
+    .min(1)
+    .max(6),
+  worldBridge: z.object({
+    transferableSignals: z.array(z.string().min(1).max(240)).min(1).max(4),
+    thaiContext: z.array(z.string().min(1).max(240)).min(1).max(4),
+    validateNext: z.array(z.string().min(1).max(240)).min(1).max(4),
+  }),
+  learning: z.object({
+    objective: z.string().min(1).max(320),
+    checkpoints: z
+      .array(
+        z.object({
+          question: z.string().min(1).max(280),
+          hint: z.string().min(1).max(280),
+          evidenceIds: z.array(z.string().regex(/^E\d+$/)).min(1).max(3),
+        }),
+      )
+      .min(2)
+      .max(4),
+  }),
+});
+
+type MissionArtifactCore = z.infer<typeof MissionArtifactSchema>;
+type MissionArtifact = MissionArtifactCore & {
+  version: "civilmcp-evidence-brief-v1";
+  question: string;
+  experience: Exclude<ChatExperience, "answer">;
+  trust: {
+    evidenceCount: number;
+    sourceCount: number;
+    exactPageCount: number;
+    pageCoveragePercent: number;
+  };
+  agentRun: {
+    bounded: true;
+    toolCalls: number;
+    toolCallLimit: number;
+    stepLimit: number;
+    stages: Array<{ name: string; detail: string; status: "complete" | "limited" }>;
+  };
 };
 
 const RouterPlanSchema = z.object({
@@ -435,6 +504,9 @@ function validateChatBody(body: ChatBody): string | null {
   }
   if (body.sessionId && !isValidSessionId(body.sessionId)) {
     return "sessionId must be a UUID.";
+  }
+  if (body.experience && !["answer", "mission", "learn"].includes(body.experience)) {
+    return "experience must be answer, mission, or learn.";
   }
   return null;
 }
@@ -1823,6 +1895,257 @@ function buildFallbackResearchBrief(question: string, builtContext: BuiltContext
   ].join("\n");
 }
 
+function sanitizeMissionText(value: string, validEvidenceIds: Set<string>): string {
+  return value
+    .replace(/\[(E\d+)\]/g, (marker, evidenceId: string) => (validEvidenceIds.has(evidenceId) ? marker : ""))
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function uniqueValidEvidenceIds(values: string[], validEvidenceIds: Set<string>, limit = 4): string[] {
+  return [...new Set(values.filter((value) => validEvidenceIds.has(value)))].slice(0, limit);
+}
+
+function fallbackMissionCore(question: string, builtContext: BuiltContext): MissionArtifactCore {
+  const evidence = builtContext.evidenceItems.slice(0, MAX_EVIDENCE_ITEMS);
+  const firstEvidenceId = evidence[0]?.evidenceId;
+  const hasCoverage = evidence.length >= 2;
+  const fallbackIds = firstEvidenceId ? [firstEvidenceId] : [];
+  return {
+    title: `Evidence mission: ${cleanEvidenceText(question, 88) || "Civil engineering research"}`,
+    executiveSummary: evidence.length
+      ? `หลักฐานที่ค้นได้ให้จุดเริ่มต้นสำหรับคำถามนี้ แต่ควรตรวจบริบทและข้อจำกัดของแต่ละ paper ก่อนนำไปใช้${firstEvidenceId ? ` [${firstEvidenceId}]` : ""}`
+      : "หลักฐานในคลังยังไม่พอสำหรับสร้าง evidence mission ที่ตรวจสอบได้",
+    verdict: {
+      status: hasCoverage ? "mixed" : "insufficient",
+      rationale: hasCoverage
+        ? "ระบบพบหลักฐานมากกว่าหนึ่งรายการ แต่ยังต้องอ่านบริบทของแต่ละ paper เพื่อยืนยันความสอดคล้องของข้อค้นพบ"
+        : "จำนวนหลักฐานที่ผ่าน retrieval ยังไม่พอสำหรับข้อสรุปที่มั่นใจ",
+    },
+    matrix: evidence.length
+      ? evidence.slice(0, 4).map((item) => ({
+          finding: cleanEvidenceText(item.snippet, 260),
+          interpretation: "ใช้เป็นหลักฐานตั้งต้นและตรวจความหมายกับหน้าต้นฉบับก่อนสรุปข้าม paper",
+          methodOrContext: item.sectionTitle || item.collection || "Indexed evidence packet",
+          limitation: "Evidence packet ไม่แทนการอ่าน paper ทั้งฉบับ",
+          evidenceIds: [item.evidenceId],
+        }))
+      : [
+          {
+            finding: "ยังไม่มี evidence packet ที่เพียงพอ",
+            interpretation: "ยังไม่ควรสรุปเชิงวิศวกรรม",
+            methodOrContext: "Bounded retrieval",
+            limitation: "ปรับ query, discipline หรือ collection แล้วลองใหม่",
+            evidenceIds: [],
+          },
+        ],
+    worldBridge: {
+      transferableSignals: ["แยกข้อค้นพบที่อาจทดสอบซ้ำได้ออกจากบริบทเฉพาะพื้นที่"],
+      thaiContext: ["ผลจากคลังไทยอาจขึ้นกับมาตรฐาน วัสดุ ภูมิอากาศ พฤติกรรม หรือข้อมูลท้องถิ่น"],
+      validateNext: ["ทดสอบกับมาตรฐานและ dataset ของประเทศเป้าหมายก่อนนำไปใช้"],
+    },
+    learning: {
+      objective: "อธิบายได้ว่าหลักฐานใดสนับสนุนคำตอบ และส่วนใดยังเป็นข้อจำกัดหรือ inference",
+      checkpoints: [
+        {
+          question: "หลักฐานชิ้นใดตอบคำถามโดยตรงที่สุด และเพราะอะไร?",
+          hint: "ดูความตรงของประเด็น วิธีวิจัย และหน้าที่อ้าง",
+          evidenceIds: fallbackIds,
+        },
+        {
+          question: "ต้องตรวจอะไรเพิ่มก่อนนำผลนี้ไปใช้กับบริบทอื่น?",
+          hint: "แยกความแตกต่างด้านพื้นที่ มาตรฐาน วัสดุ และข้อมูล",
+          evidenceIds: evidence[1]?.evidenceId ? [evidence[1].evidenceId] : fallbackIds,
+        },
+      ],
+    },
+  };
+}
+
+function finalizeMissionArtifact(
+  core: MissionArtifactCore,
+  question: string,
+  experience: Exclude<ChatExperience, "answer">,
+  builtContext: BuiltContext,
+): MissionArtifact {
+  const evidenceItems = builtContext.evidenceItems;
+  const validEvidenceIds = new Set(evidenceItems.map((item) => item.evidenceId));
+  const fallback = fallbackMissionCore(question, builtContext);
+  const cleanMatrix = core.matrix
+    .map((row) => ({
+      finding: sanitizeMissionText(row.finding, validEvidenceIds),
+      interpretation: sanitizeMissionText(row.interpretation, validEvidenceIds),
+      methodOrContext: sanitizeMissionText(row.methodOrContext, validEvidenceIds),
+      limitation: sanitizeMissionText(row.limitation, validEvidenceIds),
+      evidenceIds: uniqueValidEvidenceIds(row.evidenceIds, validEvidenceIds),
+    }))
+    .filter((row) => row.finding && row.evidenceIds.length)
+    .slice(0, 6);
+  const exactPageCount = evidenceItems.filter((item) => item.pageStart != null && item.pageEnd != null).length;
+  const sourceCount = new Set(evidenceItems.map((item) => item.source)).size;
+  const noEvidence = evidenceItems.length === 0;
+  const unsafeConflict = core.verdict.status === "conflicting" && sourceCount < 2;
+  const verdictStatus = noEvidence ? "insufficient" : unsafeConflict ? "insufficient" : core.verdict.status;
+  const transferableSignals = core.worldBridge.transferableSignals
+    .map((item) => sanitizeMissionText(item, validEvidenceIds))
+    .filter(Boolean)
+    .slice(0, 4);
+  const thaiContext = core.worldBridge.thaiContext
+    .map((item) => sanitizeMissionText(item, validEvidenceIds))
+    .filter(Boolean)
+    .slice(0, 4);
+  const validateNext = core.worldBridge.validateNext
+    .map((item) => sanitizeMissionText(item, validEvidenceIds))
+    .filter(Boolean)
+    .slice(0, 4);
+  const learningCheckpoints = core.learning.checkpoints
+    .map((checkpoint) => ({
+      question: sanitizeMissionText(checkpoint.question, validEvidenceIds),
+      hint: sanitizeMissionText(checkpoint.hint, validEvidenceIds),
+      evidenceIds: uniqueValidEvidenceIds(checkpoint.evidenceIds, validEvidenceIds, 3),
+    }))
+    .filter((checkpoint) => checkpoint.question && checkpoint.evidenceIds.length)
+    .slice(0, 4);
+
+  return {
+    version: "civilmcp-evidence-brief-v1",
+    question: cleanEvidenceText(question, 600),
+    experience,
+    title: sanitizeMissionText(core.title, validEvidenceIds) || fallback.title,
+    executiveSummary: sanitizeMissionText(core.executiveSummary, validEvidenceIds) || fallback.executiveSummary,
+    verdict: {
+      status: verdictStatus,
+      rationale: sanitizeMissionText(core.verdict.rationale, validEvidenceIds) || fallback.verdict.rationale,
+    },
+    matrix: cleanMatrix.length ? cleanMatrix : fallback.matrix,
+    worldBridge: {
+      transferableSignals: transferableSignals.length ? transferableSignals : fallback.worldBridge.transferableSignals,
+      thaiContext: thaiContext.length ? thaiContext : fallback.worldBridge.thaiContext,
+      validateNext: validateNext.length ? validateNext : fallback.worldBridge.validateNext,
+    },
+    learning: {
+      objective: sanitizeMissionText(core.learning.objective, validEvidenceIds) || fallback.learning.objective,
+      checkpoints: learningCheckpoints.length >= 2 ? learningCheckpoints : fallback.learning.checkpoints,
+    },
+    trust: {
+      evidenceCount: evidenceItems.length,
+      sourceCount,
+      exactPageCount,
+      pageCoveragePercent: evidenceItems.length ? Math.round((exactPageCount / evidenceItems.length) * 100) : 0,
+    },
+    agentRun: {
+      bounded: true,
+      toolCalls: builtContext.toolCalls,
+      toolCallLimit: MAX_TOOL_CALLS,
+      stepLimit: MAX_AGENT_STEPS,
+      stages: [
+        {
+          name: "Plan",
+          detail: `${builtContext.plan?.intent ?? "simple_lookup"} · ${builtContext.router.source} router`,
+          status: "complete",
+        },
+        {
+          name: "Search",
+          detail: `${builtContext.toolCalls}/${MAX_TOOL_CALLS} tool calls · ${evidenceItems.length} evidence packets`,
+          status: evidenceItems.length ? "complete" : "limited",
+        },
+        {
+          name: "Compare",
+          detail: `${sourceCount} unique source${sourceCount === 1 ? "" : "s"}`,
+          status: sourceCount >= 2 || builtContext.plan?.intent !== "compare" ? "complete" : "limited",
+        },
+        {
+          name: "Verify",
+          detail: `${exactPageCount}/${evidenceItems.length} packets have exact pages`,
+          status: evidenceItems.length > 0 && exactPageCount === evidenceItems.length ? "complete" : "limited",
+        },
+        { name: "Publish", detail: "Saved as a linked Evidence Brief", status: "complete" },
+      ],
+    },
+  };
+}
+
+async function generateMissionArtifact(
+  question: string,
+  experience: Exclude<ChatExperience, "answer">,
+  builtContext: BuiltContext,
+  languageModel: ReturnType<typeof resolveLanguageModel>,
+  selectedModel: ChatModel,
+): Promise<{ artifact: MissionArtifact; usage: Record<string, unknown> | null; usedFallback: boolean }> {
+  const fallback = fallbackMissionCore(question, builtContext);
+  if (!builtContext.evidenceItems.length) {
+    return {
+      artifact: finalizeMissionArtifact(fallback, question, experience, builtContext),
+      usage: null,
+      usedFallback: true,
+    };
+  }
+
+  try {
+    const result = await generateObject({
+      model: languageModel,
+      schema: MissionArtifactSchema,
+      system: [
+        "You are CivilMCP's bounded Evidence Mission synthesizer.",
+        "Use only the supplied evidence packets for factual claims. Never invent a paper, page, method, result, or E-number.",
+        "Write Thai unless the user explicitly requested another language.",
+        "Distinguish finding from interpretation. Use 'insufficient' when coverage is too weak.",
+        "Use 'conflicting' only when at least two supplied sources materially disagree; otherwise prefer mixed or supported.",
+        "World bridge means: identify what may transfer, what is Thai-context-specific, and what must be validated elsewhere. Do not invent international evidence.",
+        experience === "learn"
+          ? "Make checkpoints Socratic: help the learner inspect evidence before revealing a broad conclusion."
+          : "Make the brief decision-useful while keeping every conclusion auditable.",
+      ].join("\n"),
+      prompt: [
+        `Research question: ${question}`,
+        `Retrieval intent: ${builtContext.plan?.intent ?? "simple_lookup"}`,
+        "Create one linked evidence brief with a compact evidence matrix, conservative verdict, Thailand-to-world transfer checks, and 2-4 learning checkpoints.",
+        "Every matrix row and checkpoint must cite only valid evidence IDs from the packets below.",
+        buildEvidenceContext(builtContext.evidenceItems),
+      ].join("\n\n"),
+      ...answerGenerationOptions(selectedModel),
+    });
+    return {
+      artifact: finalizeMissionArtifact(result.object, question, experience, builtContext),
+      usage: normalizeUsage(result.usage ?? null),
+      usedFallback: false,
+    };
+  } catch {
+    return {
+      artifact: finalizeMissionArtifact(fallback, question, experience, builtContext),
+      usage: null,
+      usedFallback: true,
+    };
+  }
+}
+
+function missionVerdictLabel(status: MissionArtifact["verdict"]["status"]): string {
+  return {
+    supported: "Supported",
+    mixed: "Mixed",
+    conflicting: "Conflicting",
+    insufficient: "Insufficient",
+  }[status];
+}
+
+function buildMissionMarkdown(artifact: MissionArtifact): string {
+  const firstEvidenceId = artifact.matrix.flatMap((row) => row.evidenceIds)[0];
+  const summary = citationMarkers(artifact.executiveSummary).length || !firstEvidenceId
+    ? artifact.executiveSummary
+    : `${artifact.executiveSummary} [${firstEvidenceId}]`;
+  const rationale = citationMarkers(artifact.verdict.rationale).length || !firstEvidenceId
+    ? artifact.verdict.rationale
+    : `${artifact.verdict.rationale} [${firstEvidenceId}]`;
+  return [
+    "## Agentic Evidence Mission",
+    summary,
+    "",
+    `**Evidence verdict — ${missionVerdictLabel(artifact.verdict.status)}:** ${rationale}`,
+    "",
+    "CivilMCP วางแผน ค้น เปรียบเทียบ และตรวจ page provenance ภายใต้งบ tool/step ที่จำกัดแล้ว โครงสร้างหลักฐาน, Thailand → World bridge และ learning checkpoints อยู่ใน Evidence Brief ด้านล่าง",
+  ].join("\n");
+}
+
 function buildContextAnnotation(builtContext: BuiltContext, conversation: ConversationContext | undefined, traceId: string) {
   return {
     type: "civilmcp_context",
@@ -2255,6 +2578,7 @@ export async function POST(request: NextRequest) {
   const {
     messages,
     mode = "mcp",
+    experience = "answer",
     model,
     collection,
     sessionId,
@@ -2507,6 +2831,94 @@ export async function POST(request: NextRequest) {
       timings,
       memory: memoryPreparation.memory,
     }, { headers: rateLimitHeaders(rate) }));
+  }
+
+  if (experience !== "answer") {
+    const answerStarted = performance.now();
+    const missionResult = await generateMissionArtifact(
+      latestUserForTrace,
+      experience,
+      builtContext,
+      languageModel,
+      selectedModel,
+    );
+    const answer = buildMissionMarkdown(missionResult.artifact);
+    const usage = missionResult.usage;
+    const timings: TraceTimings = {
+      contextLatencyMs: builtContext.contextLatencyMs ?? null,
+      answerLatencyMs: roundLatencyMs(performance.now() - answerStarted),
+      totalLatencyMs: roundLatencyMs(performance.now() - totalStarted),
+    };
+    const missionStats = {
+      ...contextStats,
+      experience,
+      artifactVersion: missionResult.artifact.version,
+      artifactVerdict: missionResult.artifact.verdict.status,
+      artifactFallback: missionResult.usedFallback,
+      citationMarkers: citationMarkers(answer),
+    };
+    const tracePersisted = await saveChatTraceSafe({
+      traceId,
+      requestId,
+      sessionId: traceSessionId,
+      userId,
+      mode: "mcp",
+      model: selectedModel,
+      collection: collectionFilter,
+      question: latestUserForTrace,
+      answer,
+      contextStats: missionStats,
+      evidenceItems: builtContext.evidenceItems,
+      plan: builtContext.plan ? { ...builtContext.plan } : null,
+      usage,
+      timings,
+      costUsd: estimateCostUsd(selectedModel, usage),
+      status: "ok",
+      includeContent: debug,
+    });
+
+    if (debug) {
+      return finalizeResponse(Response.json({
+        traceId,
+        tracePersisted,
+        mode: builtContext.mode,
+        experience,
+        model: selectedModel,
+        answer,
+        artifact: missionResult.artifact,
+        usage,
+        contextStats: missionStats,
+        evidenceItems: builtContext.evidenceItems,
+        plan: builtContext.plan ?? null,
+        timings,
+        memory: memoryPreparation.memory,
+      }, { headers: rateLimitHeaders(rate) }));
+    }
+
+    const response = createDataStreamResponse({
+      headers: rateLimitHeaders(rate),
+      execute: (writer) => {
+        writer.writeMessageAnnotation(contextAnnotation);
+        if (memoryPreparation.memory) writer.writeMessageAnnotation(memoryPreparation.memory);
+        writer.writeMessageAnnotation({
+          type: "civilmcp_mission",
+          traceId,
+          artifact: missionResult.artifact,
+        });
+        writer.write(formatDataStreamPart("text", answer));
+        writer.write(
+          formatDataStreamPart("finish_message", {
+            finishReason: "stop",
+            usage: {
+              promptTokens: usageNumber(usage, ["promptTokens", "inputTokens", "prompt_tokens", "input_tokens"]),
+              completionTokens: usageNumber(usage, ["completionTokens", "outputTokens", "completion_tokens", "output_tokens"]),
+            },
+          }),
+        );
+      },
+      onError: () => "CivilMCP could not publish the Evidence Brief.",
+    });
+    return finalizeResponse(response);
   }
 
   if (debug) {

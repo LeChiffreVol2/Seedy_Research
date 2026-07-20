@@ -71,7 +71,7 @@ class GASecurityContracts(unittest.TestCase):
         route = source("web/app/api/chat/route.ts")
         self.assertIn("OPENAI_ANSWER_MIN_TOKENS = 2400", route)
         self.assertIn('providerOptions: { openai: { reasoningEffort: "low" } }', route)
-        self.assertEqual(route.count("...answerGenerationOptions(selectedModel)"), 4)
+        self.assertEqual(route.count("...answerGenerationOptions(selectedModel)"), 5)
 
     def test_shared_sessions_require_expiry_and_revocation_checks(self) -> None:
         store = source("web/lib/chat-store.ts")
@@ -147,6 +147,20 @@ class GASecurityContracts(unittest.TestCase):
             "current_period_end <= clock_timestamp()",
         ):
             self.assertIn(contract, period_guard)
+
+    def test_agentic_evidence_mission_is_bounded_and_citation_allowlisted(self) -> None:
+        chat = source("web/app/api/chat/route.ts")
+        page = source("web/app/page.tsx")
+        self.assertIn('type ChatExperience = "answer" | "mission" | "learn"', chat)
+        self.assertIn("uniqueValidEvidenceIds", chat)
+        self.assertIn('core.verdict.status === "conflicting" && sourceCount < 2', chat)
+        self.assertIn('noEvidence ? "insufficient"', chat)
+        self.assertIn("MAX_TOOL_CALLS", chat)
+        self.assertIn("MAX_AGENT_STEPS", chat)
+        self.assertIn('type: "civilmcp_mission"', chat)
+        self.assertIn("createDataStreamResponse", chat)
+        self.assertIn("getCivilMissionAnnotation", page)
+        self.assertIn("evidenceBriefMarkdown", page)
 
 
 if __name__ == "__main__":
