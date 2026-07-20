@@ -72,12 +72,12 @@ def evaluate_question(web_url: str, env: dict[str, str], question: dict[str, Any
     collection = question.get("collection", "")
     body = {
         "mode": "mcp",
-        "model": env.get("MODEL", "gpt-5-mini-2025-08-07"),
+        "model": env.get("MODEL", "gpt-5.6-luna"),
         "collection": collection,
         "debug": True,
         "contextOnly": context_only,
-        "routerProvider": env.get("ROUTER_PROVIDER", "deepseek"),
-        "routerModel": env.get("ROUTER_MODEL", "deepseek-v4-flash"),
+        "routerProvider": env.get("ROUTER_PROVIDER", "openai"),
+        "routerModel": env.get("ROUTER_MODEL", "gpt-5.6-luna"),
         "messages": [{"id": f"harness-{question['id']}", "role": "user", "parts": [{"type": "text", "text": question["question"]}]}],
     }
     started = time.perf_counter()

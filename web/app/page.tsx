@@ -1,6 +1,6 @@
 "use client";
 
-import type { ButtonHTMLAttributes, FormEvent, KeyboardEvent, ReactNode } from "react";
+import type { ButtonHTMLAttributes, FormEvent, KeyboardEvent, ReactNode, Ref } from "react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useChat } from "ai/react";
 import type { UIMessage } from "ai";
@@ -17,10 +17,13 @@ import {
   Copy,
   Database,
   Download,
+  Eye,
+  EyeOff,
   FileText,
   Flame,
   Gauge,
   History,
+  Languages,
   Layers3,
   LockKeyhole,
   LogOut,
@@ -46,11 +49,12 @@ type Mode = "baseline" | "mcp";
 type CollectionFilter = "" | "ce_project" | "ncce";
 type SyncState = "loading" | "saving" | "saved" | "error";
 type OpenDropdown = "model" | "collection" | "actions" | "examples" | null;
-type FeedFilter = "hot" | "recent" | "evidence" | "ncce" | "ce_project";
+type FeedFilter = "hot" | "recent" | "evidence" | "saved" | "ncce" | "ce_project";
 type MobileNavItem = "explore" | "chat" | "history" | "shared" | "settings";
 type FeedStatus = "loading" | "ready" | "error";
 type SessionsStatus = "idle" | "loading" | "ready" | "error";
-type AuthMode = "signin" | "signup" | "magic-link";
+type AuthMode = "signin" | "signup" | "magic-link" | "forgot-password" | "recovery";
+type PaperLanguage = "th" | "en";
 
 type CivilEvidenceItem = {
   evidenceId: string;
@@ -174,7 +178,10 @@ type ResearchFeedResponse = {
   cards: ResearchCardData[];
   facets?: {
     total?: number;
+    totalSections?: number;
+    totalChunks?: number;
     collections?: Array<{ collection: string; documents: number }>;
+    filters?: Partial<Record<FeedFilter, number>>;
   };
   nextCursor?: string | null;
   generatedAt?: string;
@@ -206,6 +213,28 @@ type PaperDetailData = {
   generatedAt?: string;
 };
 
+type TranslationStatus = "idle" | "loading" | "ready" | "error";
+
+type PaperTranslationState = {
+  status: TranslationStatus;
+  showingTranslation: boolean;
+  segments: Record<string, string>;
+  updatedAt?: number;
+  error?: string;
+};
+
+type TranslationSegment = {
+  id: string;
+  text: string;
+};
+
+type PaperTranslationResponse = {
+  sourceLanguage: "th";
+  targetLanguage: "en";
+  translations: TranslationSegment[];
+  translatedAt: string;
+};
+
 type NavItem = {
   id: MobileNavItem;
   label: string;
@@ -213,22 +242,23 @@ type NavItem = {
 };
 
 const QUICK_PROMPTS = [
-  "สรุปแนวทางลดอุบัติเหตุทางแยก",
-  "เปรียบเทียบแนวทางจัดการน้ำท่วมในเขตเมือง",
-  "สรุปประเด็นวิจัยด้านขนส่งจากคลังเอกสาร",
-  "ค้นงาน NCCE ด้านโครงสร้างที่เกี่ยวกับคอนกรีต",
+  "Compare NCCE25_CEM14, NCCE25_CEM28, and NCCE25_CEM04. What delay, financial, and scheduling risks do they report? Cite exact pages and distinguish findings from inference.",
+  "Compare road-safety evidence in Y2024_TR_Article_G01 and NCCE29_TRL42. Which factors lead to serious injury or death, and where do findings agree or differ? Cite exact pages.",
+  "Compare NCCE25_MAT06, NCCE25_MAT13, and NCCE25_MAT18. Contrast materials, test methods, performance measures, and limitations with exact-page citations.",
+  "Use the strongest evidence as E1, then explain what a follow-up study should verify.",
 ];
 
 const COLLECTION_OPTIONS: Array<MenuOption<CollectionFilter>> = [
-  { value: "", label: "All", description: "ค้นจากทุกชุดเอกสาร" },
-  { value: "ce_project", label: "CE Project", description: "รายงานโครงงานวิศวกรรมโยธา" },
-  { value: "ncce", label: "NCCE", description: "บทความการประชุมวิชาการวิศวกรรมโยธา" },
+  { value: "", label: "All", description: "Search every indexed collection" },
+  { value: "ce_project", label: "CE Project", description: "Civil engineering project reports" },
+  { value: "ncce", label: "NCCE", description: "National civil engineering proceedings" },
 ];
 
 const FILTER_OPTIONS: Array<{ id: FeedFilter; label: string; icon: LucideIcon }> = [
   { id: "hot", label: "Hot", icon: Flame },
   { id: "recent", label: "Recent", icon: Clock3 },
   { id: "evidence", label: "Evidence", icon: FileText },
+  { id: "saved", label: "Saved", icon: Bookmark },
   { id: "ncce", label: "NCCE", icon: Building2 },
   { id: "ce_project", label: "CE Project", icon: Layers3 },
 ];
@@ -246,6 +276,14 @@ const ACTION_LABELS = {
   export: "Export JSON",
   clear: "Clear chat",
 } as const;
+
+const THAI_TEXT_PATTERN = /[\u0E00-\u0E7F]/;
+const TRANSLATION_CACHE_KEY = "civilmcp-paper-translations-v1";
+const PAPER_LANGUAGE_KEY = "civilmcp-paper-language-v1";
+const TRANSLATION_CACHE_TTL_MS = 7 * 24 * 60 * 60 * 1_000;
+const TRANSLATION_CACHE_MAX_PAPERS = 30;
+const TRANSLATION_BATCH_MAX_SEGMENTS = 48;
+const TRANSLATION_BATCH_MAX_CHARS = 14_000;
 
 function normalizeCollection(value: string | undefined): CollectionFilter {
   return value === "ce_project" || value === "ncce" ? value : "";
@@ -272,7 +310,7 @@ function sessionTitleFromMessages(messages: UIMessage[], fallback = "Untitled ch
 
 function formatSessionTime(value?: string | null): string {
   if (!value) return "never";
-  return new Intl.DateTimeFormat("th-TH", {
+  return new Intl.DateTimeFormat("en-US", {
     month: "short",
     day: "numeric",
     hour: "2-digit",
@@ -329,21 +367,159 @@ function pageLabel(item: CivilEvidenceItem): string {
   return item.pageStart === item.pageEnd ? `p.${item.pageStart}` : `p.${item.pageStart}-${item.pageEnd}`;
 }
 
-function compactSourceLabel(card: ResearchCardData): string {
-  if (card.paperCode) return card.paperCode;
-  const raw = card.sourcePdf || card.parentSourcePdf || card.source;
-  return raw
-    .replace(/\.(md|pdf)$/i, "")
-    .replace(/^Y(\d{4})_/, "Y$1 · ")
-    .replace(/_/g, " ")
-    .slice(0, 34);
+function cardKey(card: ResearchCardData): string {
+  return card.id || card.source;
 }
 
-function cleanSourceLabel(card: ResearchCardData): string {
-  const parts = [card.sourceLabel, compactSourceLabel(card)]
-    .filter(Boolean)
-    .filter((part, index, all) => all.indexOf(part) === index);
-  return parts.slice(0, 2).join(" · ");
+function isResearchCardData(value: unknown): value is ResearchCardData {
+  const card = value as Partial<ResearchCardData>;
+  return Boolean(card && typeof card === "object" && typeof card.id === "string" && typeof card.title === "string" && typeof card.source === "string");
+}
+
+function looksLikeFileCode(value: string): boolean {
+  return /^(Y\d{4}|NCCE\d{2})[_-]/i.test(value.trim());
+}
+
+function displayTitle(card: ResearchCardData): string {
+  if (!looksLikeFileCode(card.title)) return card.title;
+  return card.paperCode || card.title;
+}
+
+function displaySummary(card: ResearchCardData): string {
+  return card.summary.includes("ยังไม่มี summary ที่อ่านได้")
+    ? "Open the indexed outline and representative evidence, or ask CivilMCP to answer from this paper with citations."
+    : card.summary;
+}
+
+function paperTranslationSegments(card: ResearchCardData, detail?: PaperDetailData | null): TranslationSegment[] {
+  const segments: TranslationSegment[] = [];
+  const add = (id: string, text: string | null | undefined) => {
+    const cleaned = text?.trim();
+    if (cleaned && THAI_TEXT_PATTERN.test(cleaned)) segments.push({ id, text: cleaned });
+  };
+
+  add("paper.title", displayTitle(card));
+  add("paper.summary", displaySummary(card));
+  card.tags.slice(0, 8).forEach((tag, index) => add(`paper.tag.${index}`, tag));
+
+  detail?.sections.slice(0, 14).forEach((section) => {
+    add(`section.${section.id}.title`, section.title);
+    add(`section.${section.id}.snippet`, section.snippet);
+  });
+  detail?.evidence.slice(0, 8).forEach((item) => {
+    add(`evidence.${item.id}.title`, item.sectionTitle);
+    add(`evidence.${item.id}.snippet`, item.snippet);
+  });
+
+  return segments;
+}
+
+function contentLanguage(value: string): "en" | "th" {
+  return THAI_TEXT_PATTERN.test(value) ? "th" : "en";
+}
+
+function useDropdownKeyboard({
+  open,
+  onOpen,
+  onClose,
+  preferredIndex = 0,
+}: {
+  open: boolean;
+  onOpen: () => void;
+  onClose: () => void;
+  preferredIndex?: number;
+}) {
+  const triggerRef = useRef<HTMLButtonElement | null>(null);
+  const menuRef = useRef<HTMLDivElement | null>(null);
+  const pendingIndexRef = useRef(preferredIndex);
+
+  const menuItems = useCallback(
+    () =>
+      Array.from(menuRef.current?.querySelectorAll<HTMLButtonElement>("[role='menuitem'], [role='menuitemradio']") ?? []).filter(
+        (item) => !item.disabled,
+      ),
+    [],
+  );
+
+  const focusItem = useCallback(
+    (index: number) => {
+      const items = menuItems();
+      if (!items.length) return;
+      items[Math.max(0, Math.min(index, items.length - 1))]?.focus();
+    },
+    [menuItems],
+  );
+
+  useEffect(() => {
+    if (!open) return;
+    const frame = window.requestAnimationFrame(() => focusItem(pendingIndexRef.current));
+    return () => window.cancelAnimationFrame(frame);
+  }, [focusItem, open]);
+
+  const openMenu = (index = preferredIndex) => {
+    pendingIndexRef.current = index;
+    onOpen();
+  };
+
+  const closeMenu = (returnFocus = true) => {
+    onClose();
+    if (returnFocus) window.requestAnimationFrame(() => triggerRef.current?.focus());
+  };
+
+  const onTriggerKeyDown = (event: KeyboardEvent<HTMLButtonElement>) => {
+    if (event.key === "ArrowDown" || event.key === "ArrowUp") {
+      event.preventDefault();
+      openMenu(event.key === "ArrowUp" ? Number.MAX_SAFE_INTEGER : preferredIndex);
+    }
+  };
+
+  const onMenuKeyDown = (event: KeyboardEvent<HTMLDivElement>) => {
+    const items = menuItems();
+    const currentIndex = items.indexOf(document.activeElement as HTMLButtonElement);
+    if (event.key === "Escape") {
+      event.preventDefault();
+      event.stopPropagation();
+      closeMenu();
+    } else if (event.key === "ArrowDown" || event.key === "ArrowUp") {
+      event.preventDefault();
+      const direction = event.key === "ArrowDown" ? 1 : -1;
+      focusItem((currentIndex + direction + items.length) % items.length);
+    } else if (event.key === "Home" || event.key === "End") {
+      event.preventDefault();
+      focusItem(event.key === "Home" ? 0 : items.length - 1);
+    } else if (event.key === "Tab") {
+      onClose();
+    }
+  };
+
+  return { triggerRef, menuRef, openMenu, closeMenu, onTriggerKeyDown, onMenuKeyDown };
+}
+
+function translatedPaperText(
+  translation: PaperTranslationState | undefined,
+  segmentId: string,
+  original: string,
+): string {
+  const translated = translation?.showingTranslation ? translation.segments[segmentId] || original : original;
+  if (!translation?.showingTranslation || segmentId !== "paper.title") return translated;
+
+  const parts = translated.split(" / ").map((part) => part.trim()).filter(Boolean);
+  if (parts.length !== 2) return translated;
+  const normalized = parts.map((part) => part.toLocaleLowerCase("en-US").replace(/[^a-z0-9]+/g, ""));
+  return normalized[0] && normalized[0] === normalized[1] ? parts[0] : translated;
+}
+
+function translationCacheEntry(value: unknown): Pick<PaperTranslationState, "segments" | "updatedAt"> | null {
+  if (!value || typeof value !== "object") return null;
+  const candidate = value as { segments?: unknown; updatedAt?: unknown };
+  if (!candidate.segments || typeof candidate.segments !== "object" || typeof candidate.updatedAt !== "number") return null;
+
+  const segments = Object.fromEntries(
+    Object.entries(candidate.segments).filter(
+      (entry): entry is [string, string] => typeof entry[0] === "string" && typeof entry[1] === "string" && Boolean(entry[1].trim()),
+    ),
+  );
+  return Object.keys(segments).length ? { segments, updatedAt: candidate.updatedAt } : null;
 }
 
 function ClientLiquidLayer({
@@ -396,12 +572,13 @@ function GlassButton({
   className = "",
   active = false,
   disabled = false,
+  buttonRef,
   ...buttonProps
-}: ButtonHTMLAttributes<HTMLButtonElement> & { active?: boolean }) {
+}: ButtonHTMLAttributes<HTMLButtonElement> & { active?: boolean; buttonRef?: Ref<HTMLButtonElement> }) {
   return (
     <span className={`glassWrap ${active ? "active" : ""} ${disabled ? "disabled" : ""} ${className}`}>
       <ClientLiquidLayer />
-      <button {...buttonProps} type={buttonProps.type ?? "button"} disabled={disabled} className="glassButton">
+      <button ref={buttonRef} {...buttonProps} type={buttonProps.type ?? "button"} disabled={disabled} className="glassButton">
         {children}
       </button>
     </span>
@@ -412,21 +589,40 @@ function Chevron({ open }: { open: boolean }) {
   return <ChevronDown className={`chevronIcon ${open ? "open" : ""}`} aria-hidden />;
 }
 
-function GlassDropdown({ children, align = "left" }: { children: ReactNode; align?: "left" | "right" }) {
+function GlassDropdown({
+  children,
+  align = "left",
+  onDismiss,
+}: {
+  children: ReactNode;
+  align?: "left" | "right";
+  onDismiss: () => void;
+}) {
   return (
-    <div className={`glassDropdown ${align === "right" ? "right" : ""}`}>
-      <ClientLiquidLayer
-        prominent
-        className="liquidPanelEffect"
-        cornerRadius={18}
-        displacementScale={34}
-        blurAmount={0.05}
-        saturation={136}
-        aberrationIntensity={1.2}
-        elasticity={0.12}
+    <>
+      <div
+        className="dropdownDismissLayer"
+        aria-hidden="true"
+        onPointerDown={(event) => {
+          event.preventDefault();
+          event.stopPropagation();
+          onDismiss();
+        }}
       />
-      <div className="dropdownSurface">{children}</div>
-    </div>
+      <div className={`glassDropdown ${align === "right" ? "right" : ""}`}>
+        <ClientLiquidLayer
+          prominent
+          className="liquidPanelEffect"
+          cornerRadius={18}
+          displacementScale={34}
+          blurAmount={0.05}
+          saturation={136}
+          aberrationIntensity={1.2}
+          elasticity={0.12}
+        />
+        <div className="dropdownSurface">{children}</div>
+      </div>
+    </>
   );
 }
 
@@ -453,15 +649,25 @@ function GlassSelect<T extends string>({
 }) {
   const open = openDropdown === id;
   const selected = options.find((option) => option.value === value) ?? options[0];
+  const selectedIndex = Math.max(0, options.findIndex((option) => option.value === value));
+  const menuId = `${id}-menu`;
+  const keyboard = useDropdownKeyboard({
+    open,
+    preferredIndex: selectedIndex,
+    onOpen: () => setOpenDropdown(id),
+    onClose: () => setOpenDropdown(null),
+  });
 
   return (
     <div className={`selectControl ${className}`} data-dropdown-root>
       <GlassButton
+        buttonRef={keyboard.triggerRef}
         className="selectTrigger"
-        aria-haspopup="listbox"
+        aria-haspopup="menu"
         aria-expanded={open}
-        aria-label={label}
-        onClick={() => setOpenDropdown(open ? null : id)}
+        aria-controls={open ? menuId : undefined}
+        onKeyDown={keyboard.onTriggerKeyDown}
+        onClick={() => (open ? keyboard.closeMenu(false) : keyboard.openMenu(selectedIndex))}
       >
         {Icon ? <Icon className="controlIcon" aria-hidden /> : null}
         <span className="controlLabel">{label}</span>
@@ -470,21 +676,21 @@ function GlassSelect<T extends string>({
       </GlassButton>
 
       {open ? (
-        <GlassDropdown>
+        <GlassDropdown onDismiss={() => keyboard.closeMenu()}>
           <div className="menuTitle">{label}</div>
-          <div className="menuOptions" role="listbox" aria-label={label}>
+          <div ref={keyboard.menuRef} id={menuId} className="menuOptions" role="menu" aria-label={label} onKeyDown={keyboard.onMenuKeyDown}>
             {options.map((option) => {
               const selectedOption = option.value === value;
               return (
                 <button
                   key={`${id}-${option.value || "all"}`}
                   type="button"
+                  role="menuitemradio"
                   className={`menuOption ${selectedOption ? "selected" : ""}`}
-                  role="option"
-                  aria-selected={selectedOption}
+                  aria-checked={selectedOption}
                   onClick={() => {
                     onChange(option.value);
-                    setOpenDropdown(null);
+                    keyboard.closeMenu();
                   }}
                 >
                   <span>
@@ -517,9 +723,57 @@ function ModeToggle({ useMcp, setUseMcp }: { useMcp: boolean; setUseMcp: (update
           aria-pressed={useMcp}
         >
           <span className="modeKnob" aria-hidden />
-          <span>เปิด</span>
-          <span>ปิด</span>
+          <span>On</span>
+          <span>Off</span>
         </button>
+      </span>
+    </div>
+  );
+}
+
+function PaperLanguageToggle({
+  language,
+  isTranslating,
+  onChange,
+}: {
+  language: PaperLanguage;
+  isTranslating: boolean;
+  onChange: (language: PaperLanguage) => void;
+}) {
+  return (
+    <div className="paperLanguageControl" role="group" aria-label="Paper language">
+      <span className="paperLanguageLabel">
+        <Languages size={16} strokeWidth={2.2} aria-hidden />
+        <span>Paper language</span>
+      </span>
+      <span className="paperLanguageSegments">
+        <ClientLiquidLayer cornerRadius={12} displacementScale={18} blurAmount={0.03} saturation={122} />
+        <button
+          type="button"
+          className={language === "th" ? "active" : ""}
+          aria-pressed={language === "th"}
+          aria-label="Show Thai original"
+          onClick={() => onChange("th")}
+        >
+          TH
+        </button>
+        <button
+          type="button"
+          className={language === "en" ? "active" : ""}
+          aria-pressed={language === "en"}
+          aria-label="Translate papers to English"
+          onClick={() => onChange("en")}
+        >
+          EN
+        </button>
+      </span>
+      <span className="paperLanguageState" aria-live="polite">
+        {isTranslating ? (
+          <RefreshCw className="paperLanguageBusy" size={15} strokeWidth={2.2} aria-hidden />
+        ) : (
+          <Check size={15} strokeWidth={2.4} aria-hidden />
+        )}
+        <span className="srOnly">{isTranslating ? "Translating visible papers" : "Paper language ready"}</span>
       </span>
     </div>
   );
@@ -544,6 +798,16 @@ function ActionsMenu({
 }) {
   const open = openDropdown === "actions";
   const [confirmClear, setConfirmClear] = useState(false);
+  const keyboard = useDropdownKeyboard({
+    open,
+    onOpen: () => setOpenDropdown("actions"),
+    onClose: () => setOpenDropdown(null),
+  });
+
+  useEffect(() => {
+    if (!open) setConfirmClear(false);
+  }, [open]);
+
   const actions: Array<{
     key: keyof typeof ACTION_LABELS;
     icon: LucideIcon;
@@ -554,29 +818,33 @@ function ActionsMenu({
   }> = [
     { key: "share", icon: Copy, label: ACTION_LABELS.share, onClick: copyShareLink, disabled: !isReady || isLoading },
     { key: "export", icon: Download, label: ACTION_LABELS.export, onClick: exportSession, disabled: !isReady },
-	    { key: "clear", icon: Trash2, label: ACTION_LABELS.clear, onClick: clearConversation, disabled: isLoading, danger: true },
-	  ];
+    { key: "clear", icon: Trash2, label: ACTION_LABELS.clear, onClick: clearConversation, disabled: isLoading, danger: true },
+  ];
   const closeActions = () => {
     setConfirmClear(false);
-    setOpenDropdown(null);
+    keyboard.closeMenu();
   };
 
   return (
     <div className="selectControl actionControl" data-dropdown-root>
       <GlassButton
+        buttonRef={keyboard.triggerRef}
         className="actionsTrigger"
         aria-haspopup="menu"
         aria-expanded={open}
-        onClick={() => setOpenDropdown(open ? null : "actions")}
+        aria-controls={open ? "actions-menu" : undefined}
+        aria-label="Session actions"
+        onKeyDown={keyboard.onTriggerKeyDown}
+        onClick={() => (open ? keyboard.closeMenu(false) : keyboard.openMenu())}
       >
         <SlidersHorizontal className="controlIcon" aria-hidden />
         <span className="controlValue">Actions</span>
         <Chevron open={open} />
       </GlassButton>
       {open ? (
-        <GlassDropdown align="right">
+        <GlassDropdown align="right" onDismiss={() => keyboard.closeMenu()}>
           <div className="menuTitle">Session actions</div>
-          <div className="menuOptions" role="menu" aria-label="Session actions">
+          <div ref={keyboard.menuRef} id="actions-menu" className="menuOptions" role="menu" aria-label="Session actions" onKeyDown={keyboard.onMenuKeyDown}>
             {actions.map((action) => {
               const Icon = action.icon;
               const isClear = action.key === "clear";
@@ -584,9 +852,9 @@ function ActionsMenu({
                 <div key={action.key}>
                   <button
                     type="button"
+                    role="menuitem"
                     className={`menuOption actionOption ${action.danger ? "danger" : ""}`}
                     disabled={action.disabled}
-                    role="menuitem"
                     aria-expanded={isClear ? confirmClear : undefined}
                     onClick={() => {
                       if (isClear && !confirmClear) {
@@ -606,7 +874,7 @@ function ActionsMenu({
                     </span>
                   </button>
                   {isClear && confirmClear ? (
-                    <button type="button" className="menuOption actionOption" role="menuitem" onClick={() => setConfirmClear(false)}>
+                    <button type="button" role="menuitem" className="menuOption actionOption" onClick={() => setConfirmClear(false)}>
                       <span className="menuOptionInline">
                         <X size={16} strokeWidth={2.2} aria-hidden />
                         <span className="optionLabel">Cancel</span>
@@ -633,31 +901,39 @@ function PromptMenu({
   setDraft: (prompt: string) => void;
 }) {
   const open = openDropdown === "examples";
+  const keyboard = useDropdownKeyboard({
+    open,
+    onOpen: () => setOpenDropdown("examples"),
+    onClose: () => setOpenDropdown(null),
+  });
 
   return (
     <div className="promptMenu" data-dropdown-root>
       <GlassButton
+        buttonRef={keyboard.triggerRef}
         className="promptTrigger"
         aria-haspopup="menu"
         aria-expanded={open}
+        aria-controls={open ? "prompt-menu" : undefined}
         aria-label="Prompt starters"
-        onClick={() => setOpenDropdown(open ? null : "examples")}
+        onKeyDown={keyboard.onTriggerKeyDown}
+        onClick={() => (open ? keyboard.closeMenu(false) : keyboard.openMenu())}
       >
         <Sparkles className="controlIcon" aria-hidden />
       </GlassButton>
       {open ? (
-        <GlassDropdown>
+        <GlassDropdown onDismiss={() => keyboard.closeMenu()}>
           <div className="menuTitle">Prompt examples</div>
-          <div className="menuOptions promptOptions" role="menu" aria-label="Prompt examples">
+          <div ref={keyboard.menuRef} id="prompt-menu" className="menuOptions promptOptions" role="menu" aria-label="Prompt examples" onKeyDown={keyboard.onMenuKeyDown}>
             {QUICK_PROMPTS.map((prompt) => (
               <button
                 key={prompt}
                 type="button"
-                className="menuOption promptOption"
                 role="menuitem"
+                className="menuOption promptOption"
                 onClick={() => {
                   setDraft(prompt);
-                  setOpenDropdown(null);
+                  keyboard.closeMenu();
                 }}
               >
                 <span className="optionLabel">{prompt}</span>
@@ -721,8 +997,8 @@ function MemoryNotice({ annotation }: { annotation: CivilMemoryAnnotation | null
       </summary>
       <div className="memoryDetails">
         <p>
-          ระบบสรุปบทสนทนาอัตโนมัติเพื่อลด context cost และคงความต่อเนื่องของคำถามถัดไป
-          {annotation.compactedMessageCount ? ` โดยย่อ ${annotation.compactedMessageCount} messages` : ""}.
+          CivilMCP summarizes older conversation context to preserve continuity while controlling context cost
+          {annotation.compactedMessageCount ? ` across ${annotation.compactedMessageCount} compacted messages` : ""}.
         </p>
         {annotation.runningSummary ? <p className="memorySummary">{annotation.runningSummary}</p> : null}
         <div className="memoryChips">
@@ -734,7 +1010,17 @@ function MemoryNotice({ annotation }: { annotation: CivilMemoryAnnotation | null
   );
 }
 
-function AnswerFeedback({ message, traceId, sessionId }: { message: UIMessage; traceId?: string; sessionId: string }) {
+function AnswerFeedback({
+  message,
+  traceId,
+  sessionId,
+  question,
+}: {
+  message: UIMessage;
+  traceId?: string;
+  sessionId: string;
+  question?: string;
+}) {
   const [state, setState] = useState<"idle" | "sending" | "sent" | "error">("idle");
   const [showIssues, setShowIssues] = useState(false);
 
@@ -751,6 +1037,7 @@ function AnswerFeedback({ message, traceId, sessionId }: { message: UIMessage; t
           messageId: message.id,
           rating,
           categories,
+          ...(rating === "down" ? { questionSnapshot: question, answerSnapshot: messageText(message) } : {}),
         }),
       });
       setState("sent");
@@ -795,7 +1082,7 @@ function AnswerFeedback({ message, traceId, sessionId }: { message: UIMessage; t
   );
 }
 
-function MessageRenderer({ message, sessionId }: { message: UIMessage; sessionId: string }) {
+function MessageRenderer({ message, sessionId, question }: { message: UIMessage; sessionId: string; question?: string }) {
   const text = messageText(message);
   if (message.role === "user") {
     return <p className="userText">{text}</p>;
@@ -813,7 +1100,9 @@ function MessageRenderer({ message, sessionId }: { message: UIMessage; sessionId
       </div>
       <MemoryNotice annotation={memoryAnnotation} />
       {shouldShowEvidence ? <EvidenceCards annotation={annotation} markdown={text} /> : null}
-      {shouldShowEvidence ? <AnswerFeedback message={message} traceId={traceId} sessionId={sessionId} /> : null}
+      {shouldShowEvidence ? (
+        <AnswerFeedback message={message} traceId={traceId} sessionId={sessionId} question={question} />
+      ) : null}
     </>
   );
 }
@@ -905,6 +1194,7 @@ function AppSidebar({
                 type="button"
                 className={`sidebarNavItem ${item.id === activeNav ? "selected" : ""}`}
                 aria-label={isAccountItem ? label : undefined}
+                aria-current={item.id === activeNav ? "page" : undefined}
                 onClick={() => onNavigate(item.id)}
               >
                 <Icon size={21} strokeWidth={2.1} aria-hidden />
@@ -973,6 +1263,7 @@ function MobileBottomNav({
 function SearchComposer({
   draft,
   setDraft,
+  activeNav,
   onSubmit,
   onKeyDown,
   useMcp,
@@ -992,6 +1283,7 @@ function SearchComposer({
 }: {
   draft: string;
   setDraft: (value: string) => void;
+  activeNav: MobileNavItem;
   onSubmit: (event: FormEvent<HTMLFormElement>) => void;
   onKeyDown: (event: KeyboardEvent<HTMLTextAreaElement>) => void;
   useMcp: boolean;
@@ -1009,16 +1301,25 @@ function SearchComposer({
   isReady: boolean;
   isLoading: boolean;
 }) {
+  const composerHint =
+    activeNav === "explore"
+      ? "Typing filters the paper feed. Send asks CivilMCP with evidence."
+      : "Ask CivilMCP in the current chat session.";
+
   return (
     <form onSubmit={onSubmit} className="searchComposer">
       <textarea
         value={draft}
         onChange={(event) => setDraft(event.target.value)}
         onKeyDown={onKeyDown}
-        placeholder="ถามเกี่ยวกับงานวิจัยวิศวกรรมโยธา"
-        disabled={isLoading}
+        placeholder="Ask about civil engineering research"
+        aria-label="Ask or search civil engineering papers"
+        aria-describedby="composer-intent"
         rows={3}
       />
+      <p id="composer-intent" className="srOnly">
+        {composerHint}
+      </p>
       <div className="composerToolbar">
         <PromptMenu openDropdown={openDropdown} setOpenDropdown={setOpenDropdown} setDraft={setDraft} />
         <ModeToggle useMcp={useMcp} setUseMcp={setUseMcp} />
@@ -1071,6 +1372,11 @@ function FilterBar({
   activeFilter,
   setActiveFilter,
   totalDocuments,
+  savedCount,
+  filterCounts,
+  paperLanguage,
+  isTranslating,
+  onPaperLanguageChange,
   generatedAt,
   onRefresh,
   isRefreshing,
@@ -1078,13 +1384,21 @@ function FilterBar({
   activeFilter: FeedFilter;
   setActiveFilter: (filter: FeedFilter) => void;
   totalDocuments: number;
+  savedCount: number;
+  filterCounts: Partial<Record<FeedFilter, number>>;
+  paperLanguage: PaperLanguage;
+  isTranslating: boolean;
+  onPaperLanguageChange: (language: PaperLanguage) => void;
   generatedAt: string;
   onRefresh: () => void;
   isRefreshing: boolean;
 }) {
-  const syncText = generatedAt
-    ? new Intl.DateTimeFormat("th-TH", { hour: "2-digit", minute: "2-digit" }).format(new Date(generatedAt))
-    : "pending";
+  const syncText =
+    activeFilter === "saved"
+      ? "local"
+      : generatedAt
+        ? new Intl.DateTimeFormat("en-US", { hour: "2-digit", minute: "2-digit" }).format(new Date(generatedAt))
+        : "pending";
 
   return (
     <div className="feedToolbar" aria-label="Research feed filters">
@@ -1092,6 +1406,7 @@ function FilterBar({
         {FILTER_OPTIONS.map((option) => {
           const Icon = option.icon;
           const selected = activeFilter === option.id;
+          const count = option.id === "saved" ? savedCount : filterCounts[option.id];
           return (
             <GlassButton
               key={option.id}
@@ -1102,25 +1417,36 @@ function FilterBar({
             >
               <Icon className="chipIcon" aria-hidden />
               <span>{option.label}</span>
+              {typeof count === "number" ? <small className="chipCount">{count.toLocaleString("en-US")}</small> : null}
             </GlassButton>
           );
         })}
       </div>
-      <div className="feedToolbarAside">
-        <div className="feedMeta" aria-label="Dynamic corpus status">
-          <Database size={15} strokeWidth={2.2} aria-hidden />
-          <span>{totalDocuments ? `${totalDocuments.toLocaleString("th-TH")} papers` : "Live corpus"}</span>
-          <small>updated {syncText}</small>
+      <div className="feedToolbarControls">
+        <PaperLanguageToggle language={paperLanguage} isTranslating={isTranslating} onChange={onPaperLanguageChange} />
+        <div className="feedToolbarAside">
+          <div className="feedMeta" aria-label="Dynamic corpus status">
+            <Database size={15} strokeWidth={2.2} aria-hidden />
+            <span>{activeFilter === "saved" ? `${savedCount.toLocaleString("en-US")} saved` : totalDocuments ? `${totalDocuments.toLocaleString("en-US")} papers` : "Live corpus"}</span>
+            <small>{activeFilter === "saved" ? syncText : `updated ${syncText}`}</small>
+          </div>
+          {activeFilter === "saved" ? (
+            <div className="refreshChipStatic" aria-label="Saved papers are stored locally in this browser">
+              <Bookmark className="chipIcon" aria-hidden />
+              <span>Saved locally</span>
+            </div>
+          ) : (
+            <GlassButton
+              className="refreshChip"
+              onClick={onRefresh}
+              disabled={isRefreshing}
+              aria-label={isRefreshing ? "Updating research feed" : "Refresh research feed"}
+            >
+              <RefreshCw className="chipIcon" aria-hidden />
+              <span>{isRefreshing ? "Updating feed" : "Refresh feed"}</span>
+            </GlassButton>
+          )}
         </div>
-        <GlassButton
-          className="refreshChip"
-          onClick={onRefresh}
-          disabled={isRefreshing}
-          aria-label={isRefreshing ? "Updating research feed" : "Refresh research feed"}
-        >
-          <RefreshCw className="chipIcon" aria-hidden />
-          <span>{isRefreshing ? "Updating feed" : "Refresh feed"}</span>
-        </GlassButton>
       </div>
     </div>
   );
@@ -1179,14 +1505,16 @@ function DocumentPreview({
   pageLabel,
   previewUrl,
   title,
+  onOpen,
 }: {
   variant: ResearchCardData["preview"];
   pageLabel: string;
   previewUrl?: string;
   title: string;
+  onOpen: () => void;
 }) {
   return (
-    <div className={`documentPreview ${variant}`} aria-hidden>
+    <button type="button" className={`documentPreview ${variant}`} onClick={onOpen} aria-label={`Open paper detail for ${title}`}>
       {previewUrl ? (
         <img
           className="previewImage"
@@ -1199,7 +1527,7 @@ function DocumentPreview({
           }}
         />
       ) : null}
-      <div className="previewSheet">
+      <div className="previewSheet" aria-hidden="true">
         <div className="previewTitle" />
         <div className="previewText" />
         <div className="previewText short" />
@@ -1208,56 +1536,80 @@ function DocumentPreview({
       <span className="previewBadge" title={title}>
         {pageLabel}
       </span>
-    </div>
+      <span className="previewOpen">Open detail</span>
+    </button>
   );
 }
 
 function ResearchCard({
   card,
+  bookmarked,
+  translation,
   onAsk,
   onOpen,
-  onStatus,
+  onToggleBookmark,
   disabled,
 }: {
   card: ResearchCardData;
+  bookmarked: boolean;
+  translation?: PaperTranslationState;
   onAsk: (card: ResearchCardData) => void;
   onOpen: (card: ResearchCardData) => void;
-  onStatus: (message: string) => void;
+  onToggleBookmark: (card: ResearchCardData) => void;
   disabled: boolean;
 }) {
+  const title = translatedPaperText(translation, "paper.title", displayTitle(card));
+  const summary = translatedPaperText(translation, "paper.summary", displaySummary(card));
+  const translated = Boolean(translation?.showingTranslation);
+  const collectionLabel = card.collection === "ncce" ? "NCCE" : card.collection === "ce_project" ? "CE Project" : "All collections";
+  const disciplineLabel = card.discipline?.trim();
+  const pagesLabel = card.pageStart != null
+    ? card.pageEnd === card.pageStart
+      ? `p.${card.pageStart}`
+      : `p.${card.pageStart}-${card.pageEnd}`
+    : card.pages
+      ? `${card.pages} pages`
+      : "Indexed PDF";
+
   return (
     <article className="researchCard">
       <div className="cardContent">
         <div className="cardTitleRow">
           <FileText className="cardDocIcon" aria-hidden />
           <button type="button" className="cardTitleButton" onClick={() => onOpen(card)}>
-            <h2>{card.title}</h2>
+            <h2 lang={contentLanguage(title)}>{title}</h2>
           </button>
         </div>
         <div className="paperMeta">
           <span>{card.date}</span>
-          <span>{cleanSourceLabel(card)}</span>
-          {card.collection === "ncce" ? (
-            <span>PDF preview</span>
-          ) : card.pageStart != null ? (
-            <span>{card.pageEnd === card.pageStart ? `p.${card.pageStart}` : `p.${card.pageStart}-${card.pageEnd}`}</span>
-          ) : null}
+          <span>{collectionLabel}</span>
+          {disciplineLabel ? <span>{disciplineLabel}</span> : null}
+          <span>{pagesLabel}</span>
+          <span>{card.evidenceCount} evidence</span>
+          {translated ? <span className="translatedMeta">EN translation</span> : null}
         </div>
-        <p className="paperSummary">{card.summary}</p>
+        <p className="paperSummary" lang={contentLanguage(summary)}>{summary}</p>
         <div className="tagRow" aria-label="Research tags">
-          {card.tags.map((tag) => (
-            <span key={tag}>#{tag}</span>
-          ))}
+          {card.tags.map((tag, index) => {
+            const displayTag = translatedPaperText(translation, `paper.tag.${index}`, tag);
+            return <span key={tag} lang={contentLanguage(displayTag)}>#{displayTag}</span>;
+          })}
         </div>
         <div className="cardActions">
           <button type="button" className="cardAction primary" disabled={disabled} onClick={() => onAsk(card)}>
             <MessageCircle size={17} strokeWidth={2.2} aria-hidden />
-            <span>Ask</span>
+            <span>Ask with evidence</span>
           </button>
-          <button type="button" className="cardAction" onClick={() => onStatus("Bookmarked in this browser session")}>
+          <button
+            type="button"
+            className={`cardAction iconAction ${bookmarked ? "saved" : ""}`}
+            aria-pressed={bookmarked}
+            aria-label={bookmarked ? "Remove saved paper" : "Bookmark paper"}
+            title={bookmarked ? "Saved" : "Bookmark"}
+            onClick={() => onToggleBookmark(card)}
+          >
             <Bookmark size={17} strokeWidth={2.2} aria-hidden />
-            <span>Bookmark</span>
-            <ChevronDown size={14} strokeWidth={2.4} aria-hidden />
+            <span className="srOnly">{bookmarked ? "Saved" : "Bookmark"}</span>
           </button>
           <button type="button" className="cardAction" onClick={() => onOpen(card)}>
             <Layers3 size={17} strokeWidth={2.2} aria-hidden />
@@ -1266,13 +1618,22 @@ function ResearchCard({
           </button>
         </div>
       </div>
-      <DocumentPreview variant={card.preview} pageLabel={card.pageLabel ?? "PDF preview"} previewUrl={card.previewUrl} title={card.title} />
+      <DocumentPreview
+        variant={card.preview}
+        pageLabel={card.pageLabel ?? "PDF preview"}
+        previewUrl={card.previewUrl}
+        title={card.title}
+        onOpen={() => onOpen(card)}
+      />
     </article>
   );
 }
 
 function ResearchFeed({
   cards,
+  bookmarkedCards,
+  paperTranslations,
+  activeFilter,
   status,
   error,
   query,
@@ -1280,12 +1641,15 @@ function ResearchFeed({
   isLoadingMore,
   onAsk,
   onOpen,
+  onToggleBookmark,
   onRetry,
   onLoadMore,
-  onStatus,
   disabled,
 }: {
   cards: ResearchCardData[];
+  bookmarkedCards: Record<string, ResearchCardData>;
+  paperTranslations: Record<string, PaperTranslationState>;
+  activeFilter: FeedFilter;
   status: FeedStatus;
   error: string;
   query: string;
@@ -1293,14 +1657,20 @@ function ResearchFeed({
   isLoadingMore: boolean;
   onAsk: (card: ResearchCardData) => void;
   onOpen: (card: ResearchCardData) => void;
+  onToggleBookmark: (card: ResearchCardData) => void;
   onRetry: () => void;
   onLoadMore: () => void;
-  onStatus: (message: string) => void;
   disabled: boolean;
 }) {
+  const isSavedFilter = activeFilter === "saved";
+  const savedCount = Object.keys(bookmarkedCards).length;
+
   if (status === "loading") {
     return (
-      <section className="feedStack" aria-label="CivilMCP research feed loading">
+      <section className="feedStack" aria-label="CivilMCP research feed loading" aria-busy="true">
+        <p className="srOnly" role="status">
+          Loading research feed
+        </p>
         {Array.from({ length: 4 }).map((_, index) => (
           <article key={`skeleton-${index}`} className="researchCard skeletonCard" aria-hidden>
             <div className="cardContent">
@@ -1319,9 +1689,9 @@ function ResearchFeed({
   if (status === "error") {
     return (
       <section className="feedStack" aria-label="CivilMCP research feed error">
-        <article className="feedStateCard">
-          <h2>โหลด research feed ไม่สำเร็จ</h2>
-          <p>{error || "เกิดข้อผิดพลาดจาก API หรือ Supabase"}</p>
+        <article className="feedStateCard" role="alert">
+          <h2>Research feed unavailable</h2>
+          <p>{error || "CivilMCP could not load the indexed paper collection."}</p>
           <button type="button" className="cardAction primary" onClick={onRetry}>
             Retry
           </button>
@@ -1334,11 +1704,21 @@ function ResearchFeed({
     return (
       <section className="feedStack" aria-label="CivilMCP research feed empty">
         <article className="feedStateCard">
-          <h2>ไม่พบ paper ที่ตรงกับเงื่อนไข</h2>
-          <p>{query ? `ลองปรับคำค้น "${query}" หรือเปลี่ยน collection/filter` : "ลองเปลี่ยน filter หรือ collection เพื่อดูเอกสารชุดอื่น"}</p>
-          <button type="button" className="cardAction" onClick={onRetry}>
-            Refresh feed
-          </button>
+          <h2>{isSavedFilter ? (savedCount ? "No saved papers match this search" : "No saved papers yet") : "No papers match these filters"}</h2>
+          <p>
+            {isSavedFilter
+              ? savedCount
+                ? `Try a broader search than "${query}" or change the collection.`
+                : "Bookmark papers from the feed to keep them available here."
+              : query
+                ? `Try a broader search than "${query}" or change the filters.`
+                : "Choose another filter or collection to explore more research."}
+          </p>
+          {!isSavedFilter ? (
+            <button type="button" className="cardAction" onClick={onRetry}>
+              Refresh feed
+            </button>
+          ) : null}
         </article>
       </section>
     );
@@ -1347,7 +1727,16 @@ function ResearchFeed({
   return (
     <section className="feedStack" aria-label="CivilMCP research feed">
       {cards.map((card) => (
-        <ResearchCard key={card.id} card={card} onAsk={onAsk} onOpen={onOpen} onStatus={onStatus} disabled={disabled} />
+        <ResearchCard
+          key={card.id}
+          card={card}
+          bookmarked={Boolean(bookmarkedCards[cardKey(card)])}
+          translation={paperTranslations[cardKey(card)]}
+          onAsk={onAsk}
+          onOpen={onOpen}
+          onToggleBookmark={onToggleBookmark}
+          disabled={disabled}
+        />
       ))}
       {hasMore ? (
         <article className="feedLoadMore">
@@ -1365,33 +1754,97 @@ function PaperDetailDrawer({
   detail,
   status,
   error,
+  translation,
+  paperLanguage,
   onClose,
   onAsk,
+  onPaperLanguageChange,
 }: {
   detail: PaperDetailData | null;
   status: FeedStatus;
   error: string;
+  translation?: PaperTranslationState;
+  paperLanguage: PaperLanguage;
   onClose: () => void;
   onAsk: (card: ResearchCardData) => void;
+  onPaperLanguageChange: (language: PaperLanguage) => void;
 }) {
-  if (!detail && status !== "loading" && status !== "error") return null;
-  const document = detail?.document;
+  const drawerRef = useRef<HTMLElement | null>(null);
+  const closeButtonRef = useRef<HTMLButtonElement | null>(null);
+  const isOpen = Boolean(detail) || status === "loading" || status === "error";
+
+  useEffect(() => {
+    if (!isOpen) return;
+    const previousFocus = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+    const scrollY = window.scrollY;
+    const previousBodyOverflow = document.body.style.overflow;
+    const previousBodyPosition = document.body.style.position;
+    const previousBodyTop = document.body.style.top;
+    const previousBodyWidth = document.body.style.width;
+    document.body.style.overflow = "hidden";
+    document.body.style.position = "fixed";
+    document.body.style.top = `-${scrollY}px`;
+    document.body.style.width = "100%";
+    window.requestAnimationFrame(() => closeButtonRef.current?.focus());
+    return () => {
+      document.body.style.overflow = previousBodyOverflow;
+      document.body.style.position = previousBodyPosition;
+      document.body.style.top = previousBodyTop;
+      document.body.style.width = previousBodyWidth;
+      window.scrollTo(0, scrollY);
+      previousFocus?.focus();
+    };
+  }, [isOpen]);
+
+  if (!isOpen) return null;
+  const paper = detail?.document;
+  const sourceRef = paper?.sourcePdf || paper?.parentSourcePdf || paper?.source || "";
+  const translatedTitle = paper
+    ? translatedPaperText(translation, "paper.title", displayTitle(paper))
+    : "Loading paper...";
+  const translated = Boolean(translation?.showingTranslation);
+  const translatedSummary = paper
+    ? translatedPaperText(translation, "paper.summary", displaySummary(paper))
+    : "";
 
   return (
     <div className="detailBackdrop" role="presentation" onClick={onClose}>
-      <aside className="paperDetailDrawer" role="dialog" aria-modal="true" aria-label="Paper detail" onClick={(event) => event.stopPropagation()}>
+      <aside
+        ref={drawerRef}
+        className="paperDetailDrawer"
+        role="dialog"
+        aria-modal="true"
+        aria-label="Paper detail"
+        onClick={(event) => event.stopPropagation()}
+        onKeyDown={(event) => {
+          if (event.key !== "Tab") return;
+          const focusable = Array.from(
+            drawerRef.current?.querySelectorAll<HTMLElement>("button, [href], input, textarea, select, [tabindex]:not([tabindex='-1'])") ?? [],
+          ).filter((element) => !element.hasAttribute("disabled"));
+          const first = focusable[0];
+          const last = focusable.at(-1);
+          if (!first || !last) return;
+          if (event.shiftKey && globalThis.document.activeElement === first) {
+            event.preventDefault();
+            last.focus();
+          } else if (!event.shiftKey && globalThis.document.activeElement === last) {
+            event.preventDefault();
+            first.focus();
+          }
+        }}
+      >
         <div className="detailHeader">
           <div>
             <p className="detailEyebrow">Paper detail</p>
-            <h2>{document?.title ?? "Loading paper..."}</h2>
-            {document ? (
+            <h2 lang={contentLanguage(translatedTitle)}>{translatedTitle}</h2>
+            {paper ? (
               <p className="detailMeta">
-                {document.sourceLabel} · {document.source}
-                {document.pageStart != null ? ` · ${document.pageEnd === document.pageStart ? `p.${document.pageStart}` : `p.${document.pageStart}-${document.pageEnd}`}` : ""}
+                {paper.sourceLabel} · {paper.source}
+                {paper.pageStart != null ? ` · ${paper.pageEnd === paper.pageStart ? `p.${paper.pageStart}` : `p.${paper.pageStart}-${paper.pageEnd}`}` : ""}
               </p>
             ) : null}
           </div>
-          <button type="button" className="detailClose" onClick={onClose} aria-label="Close paper detail">
+          <button ref={closeButtonRef} type="button" className="detailClose" onClick={onClose} aria-label="Close paper detail">
             <X size={19} strokeWidth={2.4} aria-hidden />
           </button>
         </div>
@@ -1404,55 +1857,90 @@ function PaperDetailDrawer({
           </div>
         ) : status === "error" ? (
           <div className="detailBody">
-            <p className="detailError">{error || "โหลด paper detail ไม่สำเร็จ"}</p>
+            <p className="detailError">{error || "Paper details could not be loaded."}</p>
           </div>
-        ) : detail && document ? (
+        ) : detail && paper ? (
           <div className="detailBody">
             <div className="detailActions">
-              <button type="button" className="cardAction primary" onClick={() => onAsk(document)}>
+              <button type="button" className="cardAction primary" onClick={() => onAsk(paper)}>
                 <MessageCircle size={17} strokeWidth={2.2} aria-hidden />
                 <span>Ask this paper</span>
               </button>
+              <PaperLanguageToggle
+                language={paperLanguage}
+                isTranslating={translation?.status === "loading"}
+                onChange={onPaperLanguageChange}
+              />
+              {sourceRef ? (
+                <button
+                  type="button"
+                  className="cardAction"
+                  onClick={() => {
+                    void navigator.clipboard?.writeText(sourceRef);
+                  }}
+                >
+                  <Copy size={17} strokeWidth={2.2} aria-hidden />
+                  <span>Copy source</span>
+                </button>
+              ) : null}
               <span>{detail.counts.sections} sections</span>
               <span>{detail.counts.chunks} chunks</span>
+              {translation?.showingTranslation ? <span className="translationStatus">Translated from Thai</span> : null}
             </div>
+
+            {paper.previewUrl ? (
+              <button type="button" className="detailPreview" onClick={() => onAsk(paper)}>
+                <img src={paper.previewUrl} alt="" loading="lazy" />
+                <span>Ask from this indexed paper</span>
+              </button>
+            ) : null}
 
             <section className="detailSection">
               <h3>Summary</h3>
-              <p>{document.summary}</p>
+              <p lang={contentLanguage(translatedSummary)}>{translatedSummary}</p>
             </section>
 
             <section className="detailSection">
               <h3>Outline</h3>
               <div className="outlineList">
-                {detail.sections.slice(0, 14).map((section) => (
-                  <article key={section.id}>
-                    <strong>
-                      {section.sectionIndex != null ? `${section.sectionIndex}. ` : ""}
-                      {section.title}
-                    </strong>
-                    <span>{section.pageStart != null ? (section.pageEnd === section.pageStart ? `p.${section.pageStart}` : `p.${section.pageStart}-${section.pageEnd}`) : "no page"}</span>
-                    {section.snippet ? <p>{section.snippet}</p> : null}
-                  </article>
-                ))}
+                {detail.sections.slice(0, 14).map((section) => {
+                  const sectionTitle = translatedPaperText(translation, `section.${section.id}.title`, section.title);
+                  const sectionSnippet = translatedPaperText(translation, `section.${section.id}.snippet`, section.snippet);
+                  return (
+                    <article key={section.id}>
+                      <strong lang={contentLanguage(sectionTitle)}>
+                        {section.sectionIndex != null ? `${section.sectionIndex}. ` : ""}
+                        {sectionTitle}
+                      </strong>
+                      <span>{section.pageStart != null ? (section.pageEnd === section.pageStart ? `p.${section.pageStart}` : `p.${section.pageStart}-${section.pageEnd}`) : "no page"}</span>
+                      {section.snippet ? <p lang={contentLanguage(sectionSnippet)}>{sectionSnippet}</p> : null}
+                    </article>
+                  );
+                })}
               </div>
             </section>
 
             <section className="detailSection">
               <h3>Representative evidence</h3>
               <div className="detailEvidenceGrid">
-                {detail.evidence.slice(0, 8).map((item) => (
-                  <article key={item.id} className="detailEvidenceCard">
-                    <div>
-                      <strong>
-                        chunk {item.chunkIndex ?? "?"}
-                        {item.pageStart != null ? ` · ${item.pageEnd === item.pageStart ? `p.${item.pageStart}` : `p.${item.pageStart}-${item.pageEnd}`}` : ""}
-                      </strong>
-                      {item.sectionTitle ? <span>{item.sectionTitle}</span> : null}
-                    </div>
-                    <p>{item.snippet}</p>
-                  </article>
-                ))}
+                {detail.evidence.slice(0, 8).map((item) => {
+                  const evidenceTitle = item.sectionTitle
+                    ? translatedPaperText(translation, `evidence.${item.id}.title`, item.sectionTitle)
+                    : "";
+                  const evidenceSnippet = translatedPaperText(translation, `evidence.${item.id}.snippet`, item.snippet);
+                  return (
+                    <article key={item.id} className="detailEvidenceCard">
+                      <div>
+                        <strong>
+                          Cited chunk {item.chunkIndex ?? "?"}
+                          {item.pageStart != null ? ` · ${item.pageEnd === item.pageStart ? `p.${item.pageStart}` : `p.${item.pageStart}-${item.pageEnd}`}` : ""}
+                        </strong>
+                        {item.sectionTitle ? <span lang={contentLanguage(evidenceTitle)}>{evidenceTitle}</span> : null}
+                      </div>
+                      <p lang={contentLanguage(evidenceSnippet)}>{evidenceSnippet}</p>
+                    </article>
+                  );
+                })}
               </div>
             </section>
           </div>
@@ -1465,8 +1953,11 @@ function PaperDetailDrawer({
 function ConversationFeed({ messages, sessionId }: { messages: UIMessage[]; sessionId: string }) {
   return (
     <section className="feedStack conversationFeed" aria-label="Conversation">
-      {messages.map((message) => {
+      {messages.map((message, index) => {
         const isUser = message.role === "user";
+        const previousQuestion = isUser
+          ? undefined
+          : [...messages.slice(0, index)].reverse().find((item) => item.role === "user");
         return (
           <article key={message.id} className={`conversationCard ${isUser ? "user" : "assistant"}`}>
             <div className="conversationHeader">
@@ -1475,7 +1966,11 @@ function ConversationFeed({ messages, sessionId }: { messages: UIMessage[]; sess
                 {isUser ? "Your question" : "CivilMCP answer"}
               </span>
             </div>
-            <MessageRenderer message={message} sessionId={sessionId} />
+            <MessageRenderer
+              message={message}
+              sessionId={sessionId}
+              question={previousQuestion ? messageText(previousQuestion) : undefined}
+            />
           </article>
         );
       })}
@@ -1504,7 +1999,7 @@ function ChatWorkspace({
         <div>
           <p className="workspaceEyebrow">Chat workspace</p>
           <h2>{title || "Untitled chat"}</h2>
-          <p>แชทแยกจาก research feed แล้ว ประวัติจะ sync ต่อ session นี้โดยเฉพาะ</p>
+          <p>Each conversation keeps its own model, collection, MCP mode, and cited evidence.</p>
         </div>
         <button type="button" className="cardAction primary" onClick={onNewChat} disabled={isLoading}>
           <Plus size={17} strokeWidth={2.2} aria-hidden />
@@ -1516,14 +2011,14 @@ function ChatWorkspace({
         <ConversationFeed messages={messages} sessionId={sessionId} />
       ) : (
         <article className="feedStateCard chatEmptyState">
-          <h2>เริ่มห้องแชทใหม่</h2>
-          <p>พิมพ์คำถามด้านบน หรือกด Ask จาก paper เพื่อเริ่มบทสนทนาที่ผูกกับหลักฐานจากคลัง CivilMCP</p>
+          <h2>Start a new research conversation</h2>
+          <p>Ask above or choose a paper to begin with evidence from the CivilMCP collection.</p>
         </article>
       )}
       {error ? (
         <article className="feedStateCard errorState" role="alert">
-          <h2>ส่งคำถามไม่สำเร็จ</h2>
-          <p>ตรวจการเชื่อมต่อหรือ backend model แล้วลองส่งอีกครั้ง</p>
+          <h2>Your question could not be sent</h2>
+          <p>Check the connection and selected model, then try again.</p>
         </article>
       ) : null}
     </section>
@@ -1533,8 +2028,10 @@ function ChatWorkspace({
 function ChatHistoryPanel({
   sessions,
   status,
+  error,
   currentSessionId,
   pendingDeleteSessionId,
+  deletingSessionId,
   onNewChat,
   onOpenSession,
   onRequestDeleteSession,
@@ -1543,8 +2040,10 @@ function ChatHistoryPanel({
 }: {
   sessions: ChatSessionSummary[];
   status: SessionsStatus;
+  error: string;
   currentSessionId: string;
   pendingDeleteSessionId: string | null;
+  deletingSessionId: string | null;
   onNewChat: () => void;
   onOpenSession: (sessionId: string) => void;
   onRequestDeleteSession: (sessionId: string) => void;
@@ -1557,7 +2056,7 @@ function ChatHistoryPanel({
         <div>
           <p className="workspaceEyebrow">Chat history</p>
           <h2>Saved conversations</h2>
-          <p>เลือกห้องแชทเดิมโดยไม่ปนกับหน้า feed หรือสร้างห้องใหม่ก่อนถามเรื่องอื่น</p>
+          <p>Resume a previous research thread or start a separate conversation.</p>
         </div>
         <button type="button" className="cardAction primary" onClick={onNewChat}>
           <Plus size={17} strokeWidth={2.2} aria-hidden />
@@ -1567,19 +2066,25 @@ function ChatHistoryPanel({
 
       {status === "loading" ? (
         <article className="feedStateCard">
-          <h2>กำลังโหลดประวัติแชท</h2>
-          <p>กำลังดึงรายการ session จาก Supabase</p>
+          <h2>Loading chat history</h2>
+          <p>Retrieving your saved research sessions.</p>
+        </article>
+      ) : status === "error" ? (
+        <article className="feedStateCard errorState" role="alert">
+          <h2>Chat history unavailable</h2>
+          <p>{error || "Check the connection and reopen History."}</p>
         </article>
       ) : sessions.length ? (
         <div className="historyList">
           {sessions.map((session) => {
             const selected = session.sessionId === currentSessionId;
             const confirmingDelete = session.sessionId === pendingDeleteSessionId;
+            const deleting = session.sessionId === deletingSessionId;
             return (
               <article key={session.sessionId} className={`historyCard ${selected ? "selected" : ""}`}>
                 <button type="button" className="historyMain" onClick={() => onOpenSession(session.sessionId)}>
                   <span className="historyTitle">{session.title}</span>
-                  <span className="historySnippet">{session.lastUserMessage || "ยังไม่มีข้อความใน session นี้"}</span>
+                  <span className="historySnippet">{session.lastUserMessage || "No messages in this session yet."}</span>
                   <span className="historyMeta">
                     {session.mode === "mcp" ? "MCP ON" : "MCP OFF"} · {session.collection || "All"} · {session.messageCount} messages ·{" "}
                     {formatSessionTime(session.updatedAt)}
@@ -1597,10 +2102,10 @@ function ChatHistoryPanel({
                 {confirmingDelete ? (
                   <div className="historyConfirm" role="alert">
                     <span>Delete this chat history?</span>
-                    <button type="button" onClick={() => onConfirmDeleteSession(session.sessionId)}>
-                      Delete
+                    <button type="button" disabled={deleting} onClick={() => onConfirmDeleteSession(session.sessionId)}>
+                      {deleting ? "Deleting..." : "Delete"}
                     </button>
-                    <button type="button" onClick={onCancelDeleteSession}>
+                    <button type="button" disabled={deleting} onClick={onCancelDeleteSession}>
                       Cancel
                     </button>
                   </div>
@@ -1611,8 +2116,8 @@ function ChatHistoryPanel({
         </div>
       ) : (
         <article className="feedStateCard">
-          <h2>ยังไม่มี chat history</h2>
-          <p>กด New chat หรือเริ่มถามคำถามด้านบน แล้ว session จะถูกบันทึกแยกให้ทันที</p>
+          <h2>No chat history yet</h2>
+          <p>Start a new chat and CivilMCP will keep it as a separate research session.</p>
         </article>
       )}
     </section>
@@ -1636,17 +2141,25 @@ function SharedPanel({
   onCopyLink: () => void;
   onExport: () => void;
 }) {
+  const canShare = messageCount > 0;
+  const shareButtonLabel = isBusy ? "Preparing..." : shareUrl ? "Copy link" : canShare ? "Create link" : "Start chat first";
+
   return (
     <section className="workspacePanel" aria-label="Share workspace">
       <div className="workspaceHeader">
         <div>
           <p className="workspaceEyebrow">Shared work</p>
           <h2>Share or export this research session</h2>
-          <p>สร้างลิงก์สำหรับ session นี้เมื่อต้องส่งต่อคำถาม คำตอบ และ evidence ให้ทีมตรวจต่อ</p>
+          <p>Create a link when teammates need to review the questions, answers, and cited evidence.</p>
         </div>
-        <button type="button" className="cardAction primary" onClick={shareUrl ? onCopyLink : onCreateLink} disabled={isBusy}>
+        <button
+          type="button"
+          className="cardAction primary"
+          onClick={shareUrl ? onCopyLink : onCreateLink}
+          disabled={isBusy || !canShare}
+        >
           <Share2 size={17} strokeWidth={2.2} aria-hidden />
-          <span>{isBusy ? "Preparing..." : shareUrl ? "Copy link" : "Create link"}</span>
+          <span>{shareButtonLabel}</span>
         </button>
       </div>
 
@@ -1668,7 +2181,7 @@ function SharedPanel({
         <article className="shareCard secondary">
           <p className="workspaceEyebrow">Portable archive</p>
           <h3>Export as JSON</h3>
-          <p>ใช้สำหรับเก็บหลักฐานการสนทนา หรือส่งต่อให้ทีม backend/debug โดยไม่ต้องเปิด public link</p>
+          <p>Keep a portable record for audit, handoff, or debugging without creating a public link.</p>
           <button type="button" className="cardAction" onClick={onExport}>
             <Download size={17} strokeWidth={2.2} aria-hidden />
             <span>Export session</span>
@@ -1688,11 +2201,15 @@ function AccountPanel({
   displayName,
   email,
   password,
+  passwordConfirm,
   setDisplayName,
   setEmail,
   setPassword,
+  setPasswordConfirm,
   onAuthSubmit,
   onMagicLink,
+  onForgotPassword,
+  onUpdatePassword,
   onLogout,
   isBusy,
 }: {
@@ -1704,46 +2221,71 @@ function AccountPanel({
   displayName: string;
   email: string;
   password: string;
+  passwordConfirm: string;
   setDisplayName: (value: string) => void;
   setEmail: (value: string) => void;
   setPassword: (value: string) => void;
+  setPasswordConfirm: (value: string) => void;
   onAuthSubmit: () => void;
   onMagicLink: () => void;
+  onForgotPassword: () => void;
+  onUpdatePassword: () => void;
   onLogout: () => void;
   isBusy: boolean;
 }) {
-  const signedIn = authenticated && user?.isGuest === false;
+  const [showPassword, setShowPassword] = useState(false);
   const isSignup = authMode === "signup";
   const isMagic = authMode === "magic-link";
+  const isForgot = authMode === "forgot-password";
+  const isRecovery = authMode === "recovery";
+  const signedIn = authenticated && user?.isGuest === false && !isRecovery;
   const authTitle = signedIn
-    ? "Workspace account active"
+    ? "Your CivilMCP account"
     : isSignup
       ? "Create your CivilMCP account"
       : isMagic
-        ? "Sign in with email"
-        : "Sign in to CivilMCP";
+        ? "Sign in with an email link"
+        : isForgot || isRecovery
+          ? "Reset your password"
+          : "Sign in to CivilMCP";
   const authSubtitle = signedIn
-    ? "Your saved chats, shared links, and research sessions are connected to this account."
+    ? "Your saved chats and research sessions stay connected across devices."
     : isSignup
-      ? "Set up a workspace for saved chats, paper-backed answers, and shared CivilMCP sessions."
+      ? "Create one account for saved chats, cited answers, and shared research sessions."
       : isMagic
-        ? "Receive a secure sign-in link and continue without entering a password."
-        : "Welcome back. Continue to your synced research workspace.";
-  const authSwitchLabel = isMagic ? "Prefer password?" : isSignup ? "Already have an account?" : "New to CivilMCP?";
-  const authSwitchAction = isMagic || isSignup ? "Sign in" : "Create account";
-  const authSwitchMode: AuthMode = isMagic || isSignup ? "signin" : "signup";
+        ? "We will send a secure, one-time sign-in link to your email."
+        : isForgot
+          ? "Enter your account email and we will send a secure recovery link."
+          : isRecovery
+            ? "Choose a new password with at least eight characters."
+            : "Continue to your synced research workspace.";
+  const authSwitchLabel = isSignup
+    ? "Already have an account?"
+    : isMagic || isForgot || isRecovery
+      ? "Prefer password sign-in?"
+      : "New to CivilMCP?";
+  const authSwitchAction = isSignup || isMagic || isForgot || isRecovery ? "Sign in" : "Create account";
+  const authSwitchMode: AuthMode = isSignup || isMagic || isForgot || isRecovery ? "signin" : "signup";
   const primaryActionLabel = isBusy
     ? "Please wait..."
     : isMagic
-      ? "Send secure sign-in link"
+      ? "Send sign-in link"
       : isSignup
-        ? "Create secure account"
-        : "Continue securely";
+        ? "Create account"
+        : isForgot
+          ? "Send recovery link"
+          : isRecovery
+            ? "Update password"
+            : "Sign in";
 
   const onSubmit = (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     if (isMagic) {
       onMagicLink();
+    } else if (isForgot) {
+      onForgotPassword();
+    } else if (isRecovery) {
+      onUpdatePassword();
     } else {
       onAuthSubmit();
     }
@@ -1774,18 +2316,19 @@ function AccountPanel({
                 <strong>{user.displayName}</strong>
                 <span>{user.email || "Verified workspace session"}</span>
               </div>
+              {statusText ? (
+                <p className="authFormStatus" role="status" aria-live="polite">
+                  {statusText}
+                </p>
+              ) : null}
             </div>
           ) : (
             <>
-              <div className="authFormHeader">
-                <p>{isSignup ? "Start a workspace" : isMagic ? "Password-free access" : "Welcome back"}</p>
-                <h3>{authTitle}</h3>
-                <div className="authSwitch">
-                  <span>{authSwitchLabel}</span>
-                  <button type="button" onClick={() => setAuthMode(authSwitchMode)}>
-                    {authSwitchAction}
-                  </button>
-                </div>
+              <div className="authSwitch authSwitchTop">
+                <span>{authSwitchLabel}</span>
+                <button type="button" onClick={() => setAuthMode(authSwitchMode)} disabled={isBusy}>
+                  {authSwitchAction}
+                </button>
               </div>
 
               {isSignup ? (
@@ -1796,30 +2339,74 @@ function AccountPanel({
                     onChange={(event) => setDisplayName(event.target.value)}
                     placeholder="CivilMCP research team"
                     autoComplete="name"
+                    disabled={isBusy}
                   />
                 </label>
               ) : null}
 
-              <label>
-                <span>Email</span>
-                <input
-                  value={email}
-                  onChange={(event) => setEmail(event.target.value)}
-                  placeholder="you@company.com"
-                  type="email"
-                  autoComplete="email"
-                />
-              </label>
-
-              {!isMagic ? (
+              {!isRecovery ? (
                 <label>
-                  <span>Password</span>
+                  <span>Email</span>
                   <input
-                    value={password}
-                    onChange={(event) => setPassword(event.target.value)}
-                    placeholder="Minimum 8 characters"
-                    type="password"
-                    autoComplete={isSignup ? "new-password" : "current-password"}
+                    value={email}
+                    onChange={(event) => setEmail(event.target.value)}
+                    placeholder="you@company.com"
+                    type="email"
+                    autoComplete="email"
+                    required
+                    disabled={isBusy}
+                  />
+                </label>
+              ) : null}
+
+              {!isMagic && !isForgot ? (
+                <div className="authField">
+                  <div className="authFieldHeader">
+                    <label htmlFor="civilmcp-password">Password</label>
+                    {authMode === "signin" ? (
+                      <button type="button" className="forgotPasswordButton" onClick={() => setAuthMode("forgot-password")} disabled={isBusy}>
+                        Forgot password?
+                      </button>
+                    ) : null}
+                  </div>
+                  <div className="passwordField">
+                    <input
+                      id="civilmcp-password"
+                      value={password}
+                      onChange={(event) => setPassword(event.target.value)}
+                      placeholder="Minimum 8 characters"
+                      type={showPassword ? "text" : "password"}
+                      autoComplete={isSignup || isRecovery ? "new-password" : "current-password"}
+                      required
+                      minLength={8}
+                      disabled={isBusy}
+                    />
+                    <button
+                      type="button"
+                      className="passwordToggle"
+                      aria-label={showPassword ? "Hide password" : "Show password"}
+                      aria-pressed={showPassword}
+                      onClick={() => setShowPassword((current) => !current)}
+                      disabled={isBusy}
+                    >
+                      {showPassword ? <EyeOff size={17} aria-hidden /> : <Eye size={17} aria-hidden />}
+                    </button>
+                  </div>
+                </div>
+              ) : null}
+
+              {isSignup || isRecovery ? (
+                <label>
+                  <span>Confirm password</span>
+                  <input
+                    value={passwordConfirm}
+                    onChange={(event) => setPasswordConfirm(event.target.value)}
+                    placeholder="Enter the password again"
+                    type={showPassword ? "text" : "password"}
+                    autoComplete="new-password"
+                    required
+                    minLength={8}
+                    disabled={isBusy}
                   />
                 </label>
               ) : null}
@@ -1830,10 +2417,10 @@ function AccountPanel({
                   className="cardAction primary"
                   disabled={isBusy}
                 >
-                  {isMagic ? <Mail size={17} strokeWidth={2.2} aria-hidden /> : <LockKeyhole size={17} strokeWidth={2.2} aria-hidden />}
+                  {isMagic || isForgot ? <Mail size={17} strokeWidth={2.2} aria-hidden /> : <LockKeyhole size={17} strokeWidth={2.2} aria-hidden />}
                   <span>{primaryActionLabel}</span>
                 </button>
-                {!isMagic ? (
+                {authMode === "signin" ? (
                   <button type="button" className="cardAction" onClick={() => setAuthMode("magic-link")} disabled={isBusy}>
                     <Mail size={17} strokeWidth={2.2} aria-hidden />
                     <span>Use email link</span>
@@ -1876,7 +2463,7 @@ function AccountPanel({
             <>
               <p className="workspaceEyebrow">Research workspace</p>
               <h3>Keep your paper-backed work connected.</h3>
-              <p className="authBenefitIntro">Sign in when you want CivilMCP to remember the sessions that matter beyond this browser.</p>
+              <p className="authBenefitIntro">Sign in to continue important research from any device.</p>
               <div className="authFeatureList">
                 <div className="authFeatureRow">
                   <History size={17} strokeWidth={2.2} aria-hidden />
@@ -1892,13 +2479,6 @@ function AccountPanel({
                     <small>Keep model, collection, and MCP mode with each session.</small>
                   </span>
                 </div>
-                <div className="authFeatureRow">
-                  <Share2 size={17} strokeWidth={2.2} aria-hidden />
-                  <span>
-                    <strong>Share-ready work</strong>
-                    <small>Return to exported or shared research threads faster.</small>
-                  </span>
-                </div>
               </div>
             </>
           )}
@@ -1910,6 +2490,7 @@ function AccountPanel({
 
 function AppShell({
   children,
+  mainRailRef,
   syncState,
   syncLabel,
   authenticated,
@@ -1920,6 +2501,7 @@ function AppShell({
   onNavigate,
 }: {
   children: ReactNode;
+  mainRailRef: Ref<HTMLDivElement>;
   syncState: SyncState;
   syncLabel: string;
   authenticated: boolean;
@@ -1940,7 +2522,7 @@ function AppShell({
         onShare={onShare}
         onNavigate={onNavigate}
       />
-      <div className="mainRail">{children}</div>
+      <div ref={mainRailRef} className="mainRail">{children}</div>
       <MobileBottomNav active={activeMobileNav} setActive={setActiveMobileNav} authenticated={authenticated} />
     </main>
   );
@@ -1966,18 +2548,30 @@ export default function Home() {
   const [chatSessionsStatus, setChatSessionsStatus] = useState<SessionsStatus>("idle");
   const [chatSessionsError, setChatSessionsError] = useState("");
   const [pendingDeleteSessionId, setPendingDeleteSessionId] = useState<string | null>(null);
+  const [deletingSessionId, setDeletingSessionId] = useState<string | null>(null);
   const [authMode, setAuthMode] = useState<AuthMode>("signin");
   const [loginName, setLoginName] = useState("");
   const [loginEmail, setLoginEmail] = useState("");
   const [loginPassword, setLoginPassword] = useState("");
+  const [loginPasswordConfirm, setLoginPasswordConfirm] = useState("");
   const [authBusy, setAuthBusy] = useState(false);
   const [shareUrl, setShareUrl] = useState("");
   const [shareBusy, setShareBusy] = useState(false);
+  const [bookmarkedCards, setBookmarkedCards] = useState<Record<string, ResearchCardData>>({});
+  const [bookmarksReady, setBookmarksReady] = useState(false);
+  const [paperTranslations, setPaperTranslations] = useState<Record<string, PaperTranslationState>>({});
+  const [translationCacheReady, setTranslationCacheReady] = useState(false);
+  const [paperLanguage, setPaperLanguage] = useState<PaperLanguage>("en");
+  const [paperLanguageReady, setPaperLanguageReady] = useState(false);
+  const [translationRefreshNonce, setTranslationRefreshNonce] = useState(0);
   const [feedCards, setFeedCards] = useState<ResearchCardData[]>([]);
   const [feedStatus, setFeedStatus] = useState<FeedStatus>("loading");
   const [feedError, setFeedError] = useState("");
   const [feedQuery, setFeedQuery] = useState("");
   const [feedTotal, setFeedTotal] = useState(0);
+  const [feedTotalSections, setFeedTotalSections] = useState(0);
+  const [feedTotalChunks, setFeedTotalChunks] = useState(0);
+  const [feedFilterCounts, setFeedFilterCounts] = useState<Partial<Record<FeedFilter, number>>>({});
   const [feedGeneratedAt, setFeedGeneratedAt] = useState("");
   const [feedNextCursor, setFeedNextCursor] = useState<string | null>(null);
   const [isFeedLoadingMore, setIsFeedLoadingMore] = useState(false);
@@ -1985,8 +2579,22 @@ export default function Home() {
   const [paperDetail, setPaperDetail] = useState<PaperDetailData | null>(null);
   const [paperDetailStatus, setPaperDetailStatus] = useState<FeedStatus>("ready");
   const [paperDetailError, setPaperDetailError] = useState("");
-  const pageRef = useRef<HTMLDivElement | null>(null);
+  const mainRailRef = useRef<HTMLDivElement | null>(null);
   const saveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const saveControllerRef = useRef<AbortController | null>(null);
+  const detailRequestIdRef = useRef(0);
+  const chatSessionRequestIdRef = useRef(0);
+  const feedKeyRef = useRef("");
+  const paperLanguageRef = useRef<PaperLanguage>("en");
+  const paperTranslationsRef = useRef<Record<string, PaperTranslationState>>({});
+  const translationInFlightRef = useRef(new Set<string>());
+  const announcePaperLanguageRef = useRef(false);
+
+  const setAppView = useCallback((item: MobileNavItem) => {
+    setActiveMobileNav(item);
+    setOpenDropdown(null);
+    window.requestAnimationFrame(() => mainRailRef.current?.scrollTo({ top: 0, behavior: "auto" }));
+  }, []);
 
   const mode: Mode = useMcp ? "mcp" : "baseline";
   const { messages, append, isLoading, setMessages, error: chatError } = useChat({
@@ -2008,7 +2616,111 @@ export default function Home() {
     [activeFeedFilter, feedQuery, selectedCollection],
   );
 
+  useEffect(() => {
+    feedKeyRef.current = `${activeFeedFilter}|${feedQuery}|${selectedCollection}`;
+  }, [activeFeedFilter, feedQuery, selectedCollection]);
+
+  useEffect(() => {
+    try {
+      const parsed = JSON.parse(window.localStorage.getItem("civilmcp-bookmarks") ?? "{}") as Record<string, unknown>;
+      if (parsed && typeof parsed === "object") {
+        setBookmarkedCards(Object.fromEntries(Object.entries(parsed).filter((entry): entry is [string, ResearchCardData] => isResearchCardData(entry[1]))));
+      }
+    } catch {
+      setBookmarkedCards({});
+    } finally {
+      setBookmarksReady(true);
+    }
+  }, []);
+
+  useEffect(() => {
+    if (!bookmarksReady) return;
+    try {
+      window.localStorage.setItem("civilmcp-bookmarks", JSON.stringify(bookmarkedCards));
+    } catch {
+      setStatusText("Saved papers could not be updated in this browser.");
+    }
+  }, [bookmarkedCards, bookmarksReady]);
+
+  useEffect(() => {
+    let nextLanguage: PaperLanguage = "en";
+    try {
+      const storedLanguage = window.localStorage.getItem(PAPER_LANGUAGE_KEY);
+      if (storedLanguage === "th" || storedLanguage === "en") {
+        nextLanguage = storedLanguage;
+      } else if (navigator.languages.some((language) => language.toLowerCase().startsWith("th"))) {
+        nextLanguage = "th";
+      }
+    } catch {
+      if (navigator.language.toLowerCase().startsWith("th")) nextLanguage = "th";
+    }
+    paperLanguageRef.current = nextLanguage;
+    setPaperLanguage(nextLanguage);
+    setPaperLanguageReady(true);
+  }, []);
+
+  useEffect(() => {
+    if (!paperLanguageReady) return;
+    paperLanguageRef.current = paperLanguage;
+    document.documentElement.dataset.paperLanguage = paperLanguage;
+    try {
+      window.localStorage.setItem(PAPER_LANGUAGE_KEY, paperLanguage);
+    } catch {
+      // The selected language still applies to the current page view.
+    }
+  }, [paperLanguage, paperLanguageReady]);
+
+  useEffect(() => {
+    try {
+      const parsed = JSON.parse(window.localStorage.getItem(TRANSLATION_CACHE_KEY) ?? "{}") as Record<string, unknown>;
+      const now = Date.now();
+      const cached = Object.fromEntries(
+        Object.entries(parsed)
+          .map(([key, value]) => [key, translationCacheEntry(value)] as const)
+          .filter(
+            (entry): entry is [string, Pick<PaperTranslationState, "segments" | "updatedAt">] =>
+              Boolean(entry[1]?.updatedAt && now - entry[1].updatedAt < TRANSLATION_CACHE_TTL_MS),
+          )
+          .map(([key, value]) => [
+            key,
+            {
+              status: "ready" as const,
+              showingTranslation: paperLanguageRef.current === "en",
+              segments: value.segments,
+              updatedAt: value.updatedAt,
+            },
+          ]),
+      );
+      setPaperTranslations(cached);
+    } catch {
+      setPaperTranslations({});
+    } finally {
+      setTranslationCacheReady(true);
+    }
+  }, []);
+
+  useEffect(() => {
+    paperTranslationsRef.current = paperTranslations;
+  }, [paperTranslations]);
+
+  useEffect(() => {
+    if (!translationCacheReady) return;
+    try {
+      const cache = Object.fromEntries(
+        Object.entries(paperTranslations)
+          .filter(([, translation]) => Object.keys(translation.segments).length > 0 && translation.updatedAt)
+          .sort(([, left], [, right]) => (right.updatedAt ?? 0) - (left.updatedAt ?? 0))
+          .slice(0, TRANSLATION_CACHE_MAX_PAPERS)
+          .map(([key, translation]) => [key, { segments: translation.segments, updatedAt: translation.updatedAt }]),
+      );
+      window.localStorage.setItem(TRANSLATION_CACHE_KEY, JSON.stringify(cache));
+    } catch {
+      // Translation still works for this page view when browser storage is unavailable.
+    }
+  }, [paperTranslations, translationCacheReady]);
+
   const closePaperDetail = useCallback(() => {
+    detailRequestIdRef.current += 1;
     setPaperDetail(null);
     setPaperDetailStatus("ready");
     setPaperDetailError("");
@@ -2042,6 +2754,7 @@ export default function Home() {
 
         const searchParams = new URLSearchParams(window.location.search);
         const shareId = searchParams.get("share")?.trim();
+        const isRecovery = searchParams.get("auth") === "recovery";
         const payload = shareId
           ? await fetchJson<SessionPayload>(`/api/history?share=${encodeURIComponent(shareId)}`)
           : await fetchJson<SessionPayload>("/api/history");
@@ -2060,11 +2773,20 @@ export default function Home() {
         setLoginEmail(normalized.user?.email ?? "");
         setIsSharedView(Boolean(shareId));
         setSyncState("saved");
+        if (isRecovery) {
+          setAppView("settings");
+          setAuthMode(normalized.authenticated ? "recovery" : "forgot-password");
+          setStatusText(
+            normalized.authenticated
+              ? "Choose a new password to finish recovering your account."
+              : "This recovery link is invalid or has expired. Request a new link.",
+          );
+        }
         void refreshChatSessions();
       } catch (error) {
         if (!cancelled) {
           setSyncState("error");
-          setStatusText(error instanceof Error ? error.message : "Failed to load session.");
+          setStatusText("Session sync is temporarily unavailable. Paper search remains available.");
         }
       } finally {
         if (!cancelled) {
@@ -2081,7 +2803,7 @@ export default function Home() {
         clearTimeout(saveTimerRef.current);
       }
     };
-  }, [refreshChatSessions, setMessages]);
+  }, [refreshChatSessions, setAppView, setMessages]);
 
   useEffect(() => {
     if (!isReady || !currentSessionId || isSharedView) return;
@@ -2089,6 +2811,9 @@ export default function Home() {
     if (saveTimerRef.current) {
       clearTimeout(saveTimerRef.current);
     }
+    saveControllerRef.current?.abort();
+    const controller = new AbortController();
+    saveControllerRef.current = controller;
 
     const nextTitle = sessionTitleFromMessages(messages, currentSessionTitle);
     setCurrentSessionTitle(nextTitle);
@@ -2096,6 +2821,7 @@ export default function Home() {
     saveTimerRef.current = setTimeout(() => {
       void fetchJson<{ ok: boolean }>("/api/history", {
         method: "POST",
+        signal: controller.signal,
         body: JSON.stringify({
           sessionId: currentSessionId,
           title: nextTitle,
@@ -2106,16 +2832,20 @@ export default function Home() {
         }),
       })
         .then(() => {
+          if (controller.signal.aborted) return;
           setSyncState("saved");
           void refreshChatSessions();
         })
-        .catch(() => setSyncState("error"));
+        .catch(() => {
+          if (!controller.signal.aborted) setSyncState("error");
+        });
     }, 450);
 
     return () => {
       if (saveTimerRef.current) {
         clearTimeout(saveTimerRef.current);
       }
+      controller.abort();
     };
   }, [currentSessionId, currentSessionTitle, isReady, isSharedView, messages, mode, refreshChatSessions, selectedCollection, selectedModel]);
 
@@ -2152,6 +2882,13 @@ export default function Home() {
 
   useEffect(() => {
     if (!isReady || activeMobileNav !== "explore") return;
+    if (activeFeedFilter === "saved") {
+      setFeedStatus("ready");
+      setFeedError("");
+      setFeedNextCursor(null);
+      setFeedGeneratedAt("");
+      return;
+    }
     let cancelled = false;
     const controller = new AbortController();
 
@@ -2166,6 +2903,9 @@ export default function Home() {
         if (cancelled) return;
         setFeedCards(payload.cards ?? []);
         setFeedTotal(payload.facets?.total ?? 0);
+        setFeedTotalSections(payload.facets?.totalSections ?? 0);
+        setFeedTotalChunks(payload.facets?.totalChunks ?? 0);
+        setFeedFilterCounts(payload.facets?.filters ?? {});
         setFeedGeneratedAt(payload.generatedAt ?? "");
         setFeedNextCursor(payload.nextCursor ?? null);
         setFeedStatus("ready");
@@ -2173,9 +2913,12 @@ export default function Home() {
         if (cancelled || controller.signal.aborted) return;
         setFeedCards([]);
         setFeedTotal(0);
+        setFeedTotalSections(0);
+        setFeedTotalChunks(0);
+        setFeedFilterCounts({});
         setFeedNextCursor(null);
         setFeedStatus("error");
-        setFeedError(error instanceof Error ? error.message : "Failed to load research feed.");
+        setFeedError("The indexed paper collection could not be loaded. Please try again.");
       }
     }
 
@@ -2184,7 +2927,7 @@ export default function Home() {
       cancelled = true;
       controller.abort();
     };
-  }, [activeMobileNav, buildFeedParams, feedRefreshNonce, isReady]);
+  }, [activeFeedFilter, activeMobileNav, buildFeedParams, feedRefreshNonce, isReady]);
 
   useEffect(() => {
     setShareUrl("");
@@ -2204,30 +2947,89 @@ export default function Home() {
       CHAT_MODELS.map((option) => ({
         value: option.id,
         label: option.label,
-        description: option.provider === "openai" ? "OpenAI reasoning model" : "DeepSeek chat model",
+        description:
+          option.id === DEFAULT_CHAT_MODEL
+            ? "Default · fast, high-volume reasoning"
+            : option.provider === "openai"
+              ? "OpenAI GPT-5.6 reasoning model"
+              : "Optional DeepSeek chat model",
       })),
     [],
   );
 
-  const visibleCards = feedCards;
+  const visibleCards = useMemo(() => {
+    if (activeFeedFilter !== "saved") return feedCards;
+    const query = feedQuery.toLowerCase();
+    return Object.values(bookmarkedCards).filter((card) => {
+      if (selectedCollection && card.collection !== selectedCollection) return false;
+      if (!query) return true;
+      return [card.title, card.summary, card.source, card.sourcePdf, card.paperCode]
+        .filter(Boolean)
+        .some((value) => String(value).toLowerCase().includes(query));
+    });
+  }, [activeFeedFilter, bookmarkedCards, feedCards, feedQuery, selectedCollection]);
+
+  const isPaperTranslationBusy = Object.values(paperTranslations).some((translation) => translation.status === "loading");
+
+  const ensureWritableSession = async () => {
+    if (!isSharedView) return currentSessionId;
+
+    const payload = await fetchJson<{
+      session: SessionPayload;
+      sessions: ChatSessionSummary[];
+      user?: ChatUserProfile | null;
+      authenticated?: boolean;
+    }>("/api/chat-sessions", {
+      method: "POST",
+      body: JSON.stringify({ action: "create" }),
+    });
+    const normalized = normalizeSessionPayload(payload.session ?? {});
+    const nextTitle = sessionTitleFromMessages(messages, currentSessionTitle);
+
+    await fetchJson<{ ok: boolean; sessionId: string }>("/api/history", {
+      method: "POST",
+      body: JSON.stringify({
+        sessionId: normalized.sessionId,
+        title: nextTitle,
+        mode,
+        model: selectedModel,
+        collection: selectedCollection,
+        messages,
+      }),
+    });
+
+    setCurrentSessionId(normalized.sessionId);
+    setCurrentSessionTitle(nextTitle);
+    setChatSessions(payload.sessions ?? []);
+    if (payload.user) setUserProfile(payload.user);
+    setIsAuthenticated(Boolean(payload.authenticated));
+    setIsSharedView(false);
+    setShareUrl("");
+    setSyncState("saved");
+    void refreshChatSessions();
+    setStatusText("Shared session copied to your workspace.");
+    return normalized.sessionId;
+  };
 
   const submitPrompt = async (text: string, paperAnchor?: PaperAnchor, modeOverride?: Mode) => {
     const trimmed = text.trim();
     if (!trimmed || !isReady || isLoading) return;
+    const previousMobileNav = activeMobileNav;
     setDraft("");
     setOpenDropdown(null);
-    setActiveMobileNav("chat");
+    setAppView("chat");
     try {
+      const writableSessionId = await ensureWritableSession();
       await append(
         { role: "user", content: trimmed },
         {
-          body: { mode: modeOverride ?? mode, model: selectedModel, collection: selectedCollection, sessionId: currentSessionId, paperAnchor },
+          body: { mode: modeOverride ?? mode, model: selectedModel, collection: selectedCollection, sessionId: writableSessionId, paperAnchor },
         },
       );
-    } catch (error) {
+    } catch {
       setDraft(trimmed);
-      setActiveMobileNav("explore");
-      setStatusText(error instanceof Error ? error.message : "Could not send your question. Your draft was restored.");
+      setAppView(previousMobileNav);
+      setStatusText("Could not send your question. Your draft was restored.");
     }
   };
 
@@ -2240,6 +3042,211 @@ export default function Home() {
     setUseMcp(true);
     void submitPrompt(card.prompt, anchor, "mcp");
   };
+
+  const toggleBookmark = (card: ResearchCardData) => {
+    const key = cardKey(card);
+    const saved = Boolean(bookmarkedCards[key]);
+    setBookmarkedCards((current) => {
+      const next = { ...current };
+      if (next[key]) {
+        delete next[key];
+      } else {
+        next[key] = card;
+      }
+      return next;
+    });
+    setStatusText(saved ? "Removed from saved papers" : "Saved paper to this browser");
+  };
+
+  const translatePapersToEnglish = useCallback(
+    async (
+      papers: Array<{ card: ResearchCardData; detail?: PaperDetailData | null }>,
+      announce = false,
+    ) => {
+      const uniquePapers = new Map<string, { card: ResearchCardData; detail?: PaperDetailData | null }>();
+      for (const paper of papers) {
+        const key = cardKey(paper.card);
+        const existing = uniquePapers.get(key);
+        if (!existing || (!existing.detail && paper.detail)) uniquePapers.set(key, paper);
+      }
+
+      type QueuedSegment = {
+        requestId: string;
+        key: string;
+        segmentId: string;
+        text: string;
+      };
+
+      const queuedSegments: QueuedSegment[] = [];
+      const readyKeys: string[] = [];
+      const pendingKeys: string[] = [];
+      let requestIndex = 0;
+
+      for (const [key, paper] of uniquePapers) {
+        if (translationInFlightRef.current.has(key)) continue;
+        const current = paperTranslationsRef.current[key];
+        const segments = paperTranslationSegments(paper.card, paper.detail);
+        const missingSegments = segments.filter((segment) => !current?.segments[segment.id]);
+        if (!missingSegments.length) {
+          if (segments.length) readyKeys.push(key);
+          continue;
+        }
+
+        translationInFlightRef.current.add(key);
+        pendingKeys.push(key);
+        for (const segment of missingSegments) {
+          queuedSegments.push({
+            requestId: `segment-${requestIndex}`,
+            key,
+            segmentId: segment.id,
+            text: segment.text,
+          });
+          requestIndex += 1;
+        }
+      }
+
+      if (readyKeys.length || pendingKeys.length) {
+        setPaperTranslations((translations) => {
+          const next = { ...translations };
+          for (const key of readyKeys) {
+            const current = next[key];
+            next[key] = {
+              status: "ready",
+              showingTranslation: paperLanguageRef.current === "en" && Boolean(Object.keys(current?.segments ?? {}).length),
+              segments: current?.segments ?? {},
+              updatedAt: current?.updatedAt,
+            };
+          }
+          for (const key of pendingKeys) {
+            const current = next[key];
+            next[key] = {
+              status: "loading",
+              showingTranslation: paperLanguageRef.current === "en" && Boolean(Object.keys(current?.segments ?? {}).length),
+              segments: current?.segments ?? {},
+              updatedAt: current?.updatedAt,
+            };
+          }
+          paperTranslationsRef.current = next;
+          return next;
+        });
+      }
+
+      if (!queuedSegments.length) {
+        if (announce) setStatusText("English paper translations are ready from this browser's cache.");
+        return;
+      }
+
+      const batches: QueuedSegment[][] = [];
+      let batch: QueuedSegment[] = [];
+      let batchChars = 0;
+      for (const segment of queuedSegments) {
+        if (
+          batch.length &&
+          (batch.length >= TRANSLATION_BATCH_MAX_SEGMENTS || batchChars + segment.text.length > TRANSLATION_BATCH_MAX_CHARS)
+        ) {
+          batches.push(batch);
+          batch = [];
+          batchChars = 0;
+        }
+        batch.push(segment);
+        batchChars += segment.text.length;
+      }
+      if (batch.length) batches.push(batch);
+
+      const translatedByPaper = new Map<string, Record<string, string>>();
+      let translatedAt = Date.now();
+
+      try {
+        for (const translationBatch of batches) {
+          const payload = await fetchJson<PaperTranslationResponse>("/api/paper-translation", {
+            method: "POST",
+            body: JSON.stringify({
+              targetLanguage: "en",
+              segments: translationBatch.map((segment) => ({ id: segment.requestId, text: segment.text })),
+            }),
+          });
+          const responseById = new Map(payload.translations.map((segment) => [segment.id, segment.text]));
+          if (responseById.size !== translationBatch.length) throw new Error("Translation response was incomplete.");
+
+          for (const segment of translationBatch) {
+            const translatedText = responseById.get(segment.requestId)?.trim();
+            if (!translatedText) throw new Error("Translation response was incomplete.");
+            const paperSegments = translatedByPaper.get(segment.key) ?? {};
+            paperSegments[segment.segmentId] = translatedText;
+            translatedByPaper.set(segment.key, paperSegments);
+          }
+          translatedAt = Date.parse(payload.translatedAt) || translatedAt;
+        }
+
+        setPaperTranslations((translations) => {
+          const next = { ...translations };
+          for (const key of pendingKeys) {
+            const current = next[key];
+            const segments = { ...current?.segments, ...translatedByPaper.get(key) };
+            next[key] = {
+              status: "ready",
+              showingTranslation: paperLanguageRef.current === "en" && Boolean(Object.keys(segments).length),
+              segments,
+              updatedAt: translatedAt,
+            };
+          }
+          paperTranslationsRef.current = next;
+          return next;
+        });
+        if (announce) setStatusText("Paper language set to English. Technical terms, citations, units, and identifiers are preserved.");
+      } catch {
+        setPaperTranslations((translations) => {
+          const next = { ...translations };
+          for (const key of pendingKeys) {
+            const current = next[key];
+            const hasCachedTranslation = Boolean(Object.keys(current?.segments ?? {}).length);
+            next[key] = {
+              status: "error",
+              showingTranslation: paperLanguageRef.current === "en" && hasCachedTranslation,
+              segments: current?.segments ?? {},
+              updatedAt: current?.updatedAt,
+              error: "Translation is temporarily unavailable.",
+            };
+          }
+          paperTranslationsRef.current = next;
+          return next;
+        });
+        setStatusText("English translation is temporarily unavailable. Original Thai paper text remains visible.");
+      } finally {
+        for (const key of pendingKeys) translationInFlightRef.current.delete(key);
+      }
+    },
+    [],
+  );
+
+  const changePaperLanguage = useCallback((language: PaperLanguage) => {
+    announcePaperLanguageRef.current = language === "en";
+    paperLanguageRef.current = language;
+    setPaperLanguage(language);
+    setTranslationRefreshNonce((value) => value + 1);
+    setPaperTranslations((translations) => {
+      const next = Object.fromEntries(
+        Object.entries(translations).map(([key, translation]) => [
+          key,
+          {
+            ...translation,
+            showingTranslation: language === "en" && Boolean(Object.keys(translation.segments).length),
+            error: undefined,
+          },
+        ]),
+      );
+      paperTranslationsRef.current = next;
+      return next;
+    });
+    setStatusText(language === "en" ? "Translating visible papers to English..." : "Showing original Thai paper text.");
+  }, []);
+
+  useEffect(() => {
+    if (!translationCacheReady || !paperLanguageReady || paperLanguage !== "en" || feedStatus !== "ready" || !visibleCards.length) return;
+    const announce = announcePaperLanguageRef.current;
+    announcePaperLanguageRef.current = false;
+    void translatePapersToEnglish(visibleCards.map((card) => ({ card })), announce);
+  }, [feedStatus, paperLanguage, paperLanguageReady, translatePapersToEnglish, translationCacheReady, translationRefreshNonce, visibleCards]);
 
   const createNewChat = async () => {
     if (isLoading) return;
@@ -2266,7 +3273,7 @@ export default function Home() {
       setChatSessions(payload.sessions ?? []);
       if (payload.user) setUserProfile(payload.user);
       setIsAuthenticated(Boolean(payload.authenticated));
-      setActiveMobileNav("chat");
+      setAppView("chat");
       setIsSharedView(false);
       setStatusText("New chat created");
     } catch (error) {
@@ -2275,8 +3282,11 @@ export default function Home() {
   };
 
   const openChatSession = async (sessionId: string) => {
+    const requestId = chatSessionRequestIdRef.current + 1;
+    chatSessionRequestIdRef.current = requestId;
     try {
       const payload = await fetchJson<SessionPayload>(`/api/history?session=${encodeURIComponent(sessionId)}`);
+      if (chatSessionRequestIdRef.current !== requestId) return;
       const normalized = normalizeSessionPayload(payload);
       setCurrentSessionId(normalized.sessionId);
       setCurrentSessionTitle(normalized.title);
@@ -2286,16 +3296,19 @@ export default function Home() {
       setMessages(normalized.messages);
       if (normalized.user) setUserProfile(normalized.user);
       setIsAuthenticated(normalized.authenticated);
-      setActiveMobileNav("chat");
+      setAppView("chat");
       setPendingDeleteSessionId(null);
       setIsSharedView(false);
       setStatusText("Chat session loaded");
     } catch (error) {
+      if (chatSessionRequestIdRef.current !== requestId) return;
       setStatusText(error instanceof Error ? error.message : "Failed to load chat session.");
     }
   };
 
   const deleteChatSession = async (sessionId: string) => {
+    if (deletingSessionId) return;
+    setDeletingSessionId(sessionId);
     try {
       const payload = await fetchJson<ChatSessionsResponse>(`/api/chat-sessions?sessionId=${encodeURIComponent(sessionId)}`, {
         method: "DELETE",
@@ -2308,6 +3321,8 @@ export default function Home() {
       }
     } catch (error) {
       setStatusText(error instanceof Error ? error.message : "Failed to delete chat session.");
+    } finally {
+      setDeletingSessionId(null);
     }
   };
 
@@ -2328,8 +3343,12 @@ export default function Home() {
 
   const submitAuth = async () => {
     const email = loginEmail.trim();
-    if (!email || (authMode !== "magic-link" && loginPassword.length < 8)) {
-      setStatusText("Enter your work email and a password with at least 8 characters.");
+    if (!email || loginPassword.length < 8) {
+      setStatusText("Enter your email and a password with at least 8 characters.");
+      return;
+    }
+    if (authMode === "signup" && loginPassword !== loginPasswordConfirm) {
+      setStatusText("The passwords do not match.");
       return;
     }
 
@@ -2362,6 +3381,7 @@ export default function Home() {
         }
         setIsAuthenticated(Boolean(payload.authenticated));
         setLoginPassword("");
+        setLoginPasswordConfirm("");
         setStatusText("Signed in. Your current chat history is now linked to this account.");
         await refreshCurrentSession();
         await refreshChatSessions(true);
@@ -2394,6 +3414,65 @@ export default function Home() {
     }
   };
 
+  const sendPasswordRecovery = async () => {
+    const email = loginEmail.trim();
+    if (!email) {
+      setStatusText("Enter your email before requesting a recovery link.");
+      return;
+    }
+
+    setAuthBusy(true);
+    try {
+      await fetchJson<{ ok: boolean; pendingEmail?: boolean }>("/api/auth", {
+        method: "POST",
+        body: JSON.stringify({ action: "forgot-password", email }),
+      });
+      setStatusText("If an account exists for this email, a recovery link is on its way.");
+    } catch {
+      setStatusText("If an account exists for this email, a recovery link is on its way.");
+    } finally {
+      setAuthBusy(false);
+    }
+  };
+
+  const updatePassword = async () => {
+    if (loginPassword.length < 8) {
+      setStatusText("Use at least 8 characters for the new password.");
+      return;
+    }
+    if (loginPassword !== loginPasswordConfirm) {
+      setStatusText("The passwords do not match.");
+      return;
+    }
+
+    setAuthBusy(true);
+    try {
+      const payload = await fetchJson<{ user?: ChatUserProfile; authenticated?: boolean }>("/api/auth", {
+        method: "POST",
+        body: JSON.stringify({ action: "update-password", password: loginPassword }),
+      });
+      if (payload.user) {
+        setUserProfile(payload.user);
+        setLoginName(payload.user.displayName);
+        setLoginEmail(payload.user.email ?? loginEmail);
+      }
+      setIsAuthenticated(Boolean(payload.authenticated));
+      setLoginPassword("");
+      setLoginPasswordConfirm("");
+      setAuthMode("signin");
+      const nextUrl = new URL(window.location.href);
+      nextUrl.searchParams.delete("auth");
+      window.history.replaceState({}, "", `${nextUrl.pathname}${nextUrl.search}${nextUrl.hash}`);
+      setStatusText("Password updated. Your CivilMCP account is ready.");
+      await refreshCurrentSession();
+      await refreshChatSessions(true);
+    } catch (error) {
+      setStatusText(error instanceof Error ? error.message : "Password could not be updated.");
+    } finally {
+      setAuthBusy(false);
+    }
+  };
+
   const logoutChat = async () => {
     try {
       await fetchJson<{ ok: boolean }>("/api/auth", { method: "DELETE" });
@@ -2401,6 +3480,7 @@ export default function Home() {
       setLoginName("");
       setLoginEmail("");
       setLoginPassword("");
+      setLoginPasswordConfirm("");
       setIsAuthenticated(false);
       setMessages([]);
       setChatSessions([]);
@@ -2414,6 +3494,8 @@ export default function Home() {
   };
 
   const openPaperDetail = async (card: ResearchCardData) => {
+    const requestId = detailRequestIdRef.current + 1;
+    detailRequestIdRef.current = requestId;
     setPaperDetail({
       document: card,
       sections: [],
@@ -2424,9 +3506,14 @@ export default function Home() {
     setPaperDetailError("");
     try {
       const detail = await fetchJson<PaperDetailData>(`/api/papers/${encodeURIComponent(card.source)}`);
+      if (detailRequestIdRef.current !== requestId) return;
       setPaperDetail(detail);
       setPaperDetailStatus("ready");
+      if (paperLanguageRef.current === "en") {
+        void translatePapersToEnglish([{ card: detail.document, detail }]);
+      }
     } catch (error) {
+      if (detailRequestIdRef.current !== requestId) return;
       setPaperDetailStatus("error");
       setPaperDetailError(error instanceof Error ? error.message : "Failed to load paper detail.");
     }
@@ -2434,16 +3521,21 @@ export default function Home() {
 
   const loadMoreFeed = async () => {
     if (!feedNextCursor || isFeedLoadingMore || feedStatus !== "ready") return;
+    const requestFeedKey = feedKeyRef.current;
     setIsFeedLoadingMore(true);
     try {
       const params = buildFeedParams(feedNextCursor);
       const payload = await fetchJson<ResearchFeedResponse>(`/api/research-feed?${params.toString()}`);
+      if (feedKeyRef.current !== requestFeedKey) return;
       setFeedCards((current) => {
         const seen = new Set(current.map((card) => card.id));
         const nextCards = (payload.cards ?? []).filter((card) => !seen.has(card.id));
         return [...current, ...nextCards];
       });
       setFeedTotal(payload.facets?.total ?? feedTotal);
+      setFeedTotalSections(payload.facets?.totalSections ?? feedTotalSections);
+      setFeedTotalChunks(payload.facets?.totalChunks ?? feedTotalChunks);
+      setFeedFilterCounts(payload.facets?.filters ?? feedFilterCounts);
       setFeedGeneratedAt(payload.generatedAt ?? feedGeneratedAt);
       setFeedNextCursor(payload.nextCursor ?? null);
     } catch (error) {
@@ -2492,16 +3584,44 @@ export default function Home() {
   };
 
   const createShareLink = async (copyToClipboard: boolean) => {
+    if (shareBusy) return null;
     if (!currentSessionId) {
       setStatusText("Start or open a chat before creating a share link.");
+      return null;
+    }
+    if (!messages.length) {
+      setStatusText("Ask a question before creating a share link.");
       return null;
     }
 
     setShareBusy(true);
     try {
+      const writableSessionId = await ensureWritableSession();
+      if (saveTimerRef.current) {
+        clearTimeout(saveTimerRef.current);
+        saveTimerRef.current = null;
+      }
+      saveControllerRef.current?.abort();
+      const nextTitle = sessionTitleFromMessages(messages, currentSessionTitle);
+      setCurrentSessionTitle(nextTitle);
+      setSyncState("saving");
+      await fetchJson<{ ok: boolean }>("/api/history", {
+        method: "POST",
+        body: JSON.stringify({
+          sessionId: writableSessionId,
+          title: nextTitle,
+          mode,
+          model: selectedModel,
+          collection: selectedCollection,
+          messages,
+        }),
+      });
+      setSyncState("saved");
+      void refreshChatSessions();
+
       const data = await fetchJson<{ shareUrl: string }>("/api/share", {
         method: "POST",
-        body: JSON.stringify({ sessionId: currentSessionId }),
+        body: JSON.stringify({ sessionId: writableSessionId }),
       });
       setShareUrl(data.shareUrl);
       if (copyToClipboard && navigator.clipboard?.writeText) {
@@ -2529,11 +3649,19 @@ export default function Home() {
         // Fall through and recreate the link when clipboard access fails.
       }
     }
-    await createShareLink(true);
+    const url = await createShareLink(true);
+    if (url) setAppView("shared");
+  };
+
+  const changeAuthMode = (nextMode: AuthMode) => {
+    setAuthMode(nextMode);
+    setLoginPassword("");
+    setLoginPasswordConfirm("");
+    setStatusText("");
   };
 
   const navigateApp = (item: MobileNavItem) => {
-    setActiveMobileNav(item);
+    setAppView(item);
     if (item === "explore") {
       setStatusText("");
     } else if (item === "chat") {
@@ -2548,9 +3676,12 @@ export default function Home() {
     }
   };
 
+  const showComposer = activeMobileNav === "explore" || activeMobileNav === "chat";
+
   return (
-    <div ref={pageRef}>
+    <div>
       <AppShell
+        mainRailRef={mainRailRef}
         syncState={syncState}
         syncLabel={syncLabel}
         authenticated={isAuthenticated}
@@ -2560,39 +3691,62 @@ export default function Home() {
         onShare={() => void copyShareLink()}
         onNavigate={navigateApp}
       >
-        <section className="searchStage">
-          <div className="mobileBrandStrip" aria-label="CivilMCP status">
-            <span className="mobileBrandName">CivilMCP</span>
-            <span className="brandBadge">Research Preview</span>
-          </div>
-          <h1>Ask or search civil engineering papers...</h1>
-          <SearchComposer
-            draft={draft}
-            setDraft={setDraft}
-            onSubmit={onSubmit}
-            onKeyDown={onComposerKeyDown}
-            useMcp={useMcp}
-            setUseMcp={setUseMcp}
-            selectedModel={selectedModel}
-            modelOptions={modelOptions}
-            selectedCollection={selectedCollection}
-            openDropdown={openDropdown}
-            setOpenDropdown={setOpenDropdown}
-            setSelectedModel={setSelectedModel}
-            setSelectedCollection={setSelectedCollection}
-            copyShareLink={copyShareLink}
-            exportSession={exportSession}
-            clearConversation={clearConversation}
-            isReady={isReady}
-            isLoading={isLoading}
-          />
-        </section>
+        <div className="mobileBrandStrip" aria-label="CivilMCP status">
+          <span className="mobileBrandName">CivilMCP</span>
+          <span className="brandBadge">Research Preview</span>
+        </div>
+        {showComposer ? (
+          <section className="searchStage">
+            <h1>
+              {activeMobileNav === "explore"
+                ? `Explore ${feedTotal ? feedTotal.toLocaleString("en-US") : "941"} Thai civil engineering papers—structured into ${(feedTotalChunks || 48_370).toLocaleString("en-US")} page-linked evidence chunks.`
+                : "Ask CivilMCP with cited evidence"}
+            </h1>
+            {activeMobileNav === "explore" ? (
+              <div className="corpusProof" aria-label="CivilMCP corpus coverage">
+                <span><strong>{(feedTotal || 941).toLocaleString("en-US")}</strong> papers</span>
+                <span><strong>{(feedTotalSections || 8_148).toLocaleString("en-US")}</strong> active sections</span>
+                <span><strong>{(feedTotalChunks || 48_370).toLocaleString("en-US")}</strong> page-linked chunks</span>
+                <span>Thai + English</span>
+                <span>Exact page citations</span>
+                <span className="modelProof">Powered by GPT-5.6 Luna</span>
+              </div>
+            ) : null}
+            <SearchComposer
+              draft={draft}
+              setDraft={setDraft}
+              activeNav={activeMobileNav}
+              onSubmit={onSubmit}
+              onKeyDown={onComposerKeyDown}
+              useMcp={useMcp}
+              setUseMcp={setUseMcp}
+              selectedModel={selectedModel}
+              modelOptions={modelOptions}
+              selectedCollection={selectedCollection}
+              openDropdown={openDropdown}
+              setOpenDropdown={setOpenDropdown}
+              setSelectedModel={setSelectedModel}
+              setSelectedCollection={setSelectedCollection}
+              copyShareLink={copyShareLink}
+              exportSession={exportSession}
+              clearConversation={clearConversation}
+              isReady={isReady}
+              isLoading={isLoading}
+            />
+            <p className="researchDisclaimer">Research evidence, not professional engineering advice.</p>
+          </section>
+        ) : null}
 
         {activeMobileNav === "explore" ? (
           <FilterBar
             activeFilter={activeFeedFilter}
             setActiveFilter={setActiveFeedFilter}
             totalDocuments={feedTotal}
+            savedCount={Object.keys(bookmarkedCards).length}
+            filterCounts={feedFilterCounts}
+            paperLanguage={paperLanguage}
+            isTranslating={isPaperTranslationBusy}
+            onPaperLanguageChange={changePaperLanguage}
             generatedAt={feedGeneratedAt}
             isRefreshing={feedStatus === "loading"}
             onRefresh={() => setFeedRefreshNonce((value) => value + 1)}
@@ -2604,9 +3758,9 @@ export default function Home() {
             {statusText}
           </p>
         ) : null}
-        {chatSessionsStatus === "error" ? (
+        {chatSessionsStatus === "error" && activeMobileNav === "history" ? (
           <p className="statusLine error" role="alert">
-            {chatSessionsError}
+            Synced history is temporarily unavailable. Please try again shortly.
           </p>
         ) : null}
 
@@ -2614,8 +3768,10 @@ export default function Home() {
           <ChatHistoryPanel
             sessions={chatSessions}
             status={chatSessionsStatus}
+            error={chatSessionsError}
             currentSessionId={currentSessionId}
             pendingDeleteSessionId={pendingDeleteSessionId}
+            deletingSessionId={deletingSessionId}
             onNewChat={() => void createNewChat()}
             onOpenSession={(sessionId) => void openChatSession(sessionId)}
             onRequestDeleteSession={setPendingDeleteSessionId}
@@ -2627,16 +3783,20 @@ export default function Home() {
             user={userProfile}
             authenticated={isAuthenticated}
             authMode={authMode}
-            setAuthMode={setAuthMode}
+            setAuthMode={changeAuthMode}
             statusText={statusText}
             displayName={loginName}
             email={loginEmail}
             password={loginPassword}
+            passwordConfirm={loginPasswordConfirm}
             setDisplayName={setLoginName}
             setEmail={setLoginEmail}
             setPassword={setLoginPassword}
+            setPasswordConfirm={setLoginPasswordConfirm}
             onAuthSubmit={() => void submitAuth()}
             onMagicLink={() => void sendMagicLink()}
+            onForgotPassword={() => void sendPasswordRecovery()}
+            onUpdatePassword={() => void updatePassword()}
             onLogout={() => void logoutChat()}
             isBusy={authBusy}
           />
@@ -2653,6 +3813,9 @@ export default function Home() {
         ) : activeMobileNav === "explore" ? (
           <ResearchFeed
             cards={visibleCards}
+            bookmarkedCards={bookmarkedCards}
+            paperTranslations={paperTranslations}
+            activeFilter={activeFeedFilter}
             status={feedStatus}
             error={feedError}
             query={feedQuery}
@@ -2660,9 +3823,9 @@ export default function Home() {
             isLoadingMore={isFeedLoadingMore}
             onAsk={askPaper}
             onOpen={(card) => void openPaperDetail(card)}
+            onToggleBookmark={toggleBookmark}
             onRetry={() => setFeedRefreshNonce((value) => value + 1)}
             onLoadMore={() => void loadMoreFeed()}
-            onStatus={setStatusText}
             disabled={!isReady || isLoading}
           />
         ) : (
@@ -2680,8 +3843,11 @@ export default function Home() {
         detail={paperDetail}
         status={paperDetailStatus}
         error={paperDetailError}
+        translation={paperDetail ? paperTranslations[cardKey(paperDetail.document)] : undefined}
+        paperLanguage={paperLanguage}
         onClose={closePaperDetail}
         onAsk={askPaper}
+        onPaperLanguageChange={changePaperLanguage}
       />
     </div>
   );

@@ -29,9 +29,9 @@ def main() -> None:
     load_dotenv()
 
     web_url = os.getenv("WEB_URL", "http://localhost:3000").rstrip("/")
-    model = os.getenv("MODEL", "gpt-5-mini-2025-08-07")
-    router_provider = os.getenv("ROUTER_PROVIDER", "deepseek")
-    router_model = os.getenv("ROUTER_MODEL", "deepseek-v4-flash")
+    model = os.getenv("MODEL", "gpt-5.6-luna")
+    router_provider = os.getenv("ROUTER_PROVIDER", "openai")
+    router_model = os.getenv("ROUTER_MODEL", "gpt-5.6-luna")
     questions = json.loads((EVAL_DIR / "questions.json").read_text(encoding="utf-8"))
 
     results: list[dict] = []

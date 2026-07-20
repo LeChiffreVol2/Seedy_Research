@@ -19,7 +19,7 @@ def question_for_collection(collection: str) -> str:
 
 
 def auth_headers(env: dict[str, str]) -> dict[str, str]:
-    key = env.get("MCP_SERVER_API_KEY", "").strip()
+    key = (env.get("MCP_HARNESS_API_KEY") or env.get("MCP_SERVER_API_KEY") or "").strip()
     return {"Authorization": f"Bearer {key}"} if key else {}
 
 
@@ -115,7 +115,7 @@ def check_mcp_tool(mcp_url: str, env: dict[str, str], collection: str) -> Check:
 def check_web_chat(web_url: str, collection: str) -> Check:
     body: dict[str, Any] = {
         "mode": "mcp",
-        "model": "gpt-5-mini-2025-08-07",
+        "model": "gpt-5.6-luna",
         "collection": collection,
         "debug": True,
         "contextOnly": True,
@@ -236,6 +236,7 @@ def main() -> None:
 
     if not args.web_only:
         checks.append(check_get_json("mcp_health", f"{mcp_url}/health", "status"))
+        checks.append(check_get_json("mcp_readiness", f"{mcp_url}/health/ready", "dependencies"))
         checks.append(check_get_json("mcp_tools_list", f"{mcp_url}/tools/list", "tools"))
         checks.append(check_mcp_rejects_missing_auth(mcp_url))
         checks.append(check_mcp_transport_rejects_missing_auth(mcp_url))

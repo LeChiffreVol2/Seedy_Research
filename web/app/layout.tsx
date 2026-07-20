@@ -15,8 +15,8 @@ const body = IBM_Plex_Sans_Thai({
 });
 
 export const metadata: Metadata = {
-  title: "CivilMCP — Research Preview",
-  description: "Minimal Civil Engineering assistant with MCP-enabled research context",
+  title: "CivilMCP | Civil Engineering Research",
+  description: "Search civil engineering papers and ask questions with cited evidence.",
   icons: {
     icon: "/icon.svg",
   },
@@ -28,7 +28,7 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
-    <html lang="th">
+    <html lang="en">
       <body className={`${heading.variable} ${body.variable}`}>{children}</body>
     </html>
   );

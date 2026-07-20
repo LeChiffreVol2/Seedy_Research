@@ -1,6 +1,7 @@
 export const OPENAI_CHAT_MODELS = [
-  { id: "gpt-5-mini-2025-08-07", label: "GPT-5 mini", provider: "openai" },
-  { id: "gpt-5-nano", label: "GPT-5 nano", provider: "openai" },
+  { id: "gpt-5.6-luna", label: "GPT-5.6 Luna", provider: "openai" },
+  { id: "gpt-5.6-terra", label: "GPT-5.6 Terra", provider: "openai" },
+  { id: "gpt-5.6-sol", label: "GPT-5.6 Sol", provider: "openai" },
 ] as const;
 
 export const DEEPSEEK_CHAT_MODELS = [
@@ -14,8 +15,9 @@ export type OpenAIChatModel = (typeof OPENAI_CHAT_MODELS)[number]["id"];
 export type DeepSeekChatModel = (typeof DEEPSEEK_CHAT_MODELS)[number]["id"];
 export type ChatModel = (typeof CHAT_MODELS)[number]["id"];
 
-export const DEFAULT_CHAT_MODEL: ChatModel = "deepseek-v4-flash";
-export const LEGACY_DEFAULT_CHAT_MODEL: ChatModel = "gpt-5-mini-2025-08-07";
+export const DEFAULT_CHAT_MODEL: ChatModel = "gpt-5.6-luna";
+
+const LEGACY_CHAT_MODEL_IDS = new Set(["gpt-5-mini-2025-08-07", "gpt-5-nano"]);
 
 const CHAT_MODEL_IDS = new Set<string>(CHAT_MODELS.map((model) => model.id));
 const OPENAI_MODEL_IDS = new Set<string>(OPENAI_CHAT_MODELS.map((model) => model.id));
@@ -39,6 +41,6 @@ export function normalizeChatModel(value: string | undefined): ChatModel {
 }
 
 export function normalizeStoredChatModel(value: string | undefined): ChatModel {
-  const normalized = normalizeChatModel(value);
-  return normalized === LEGACY_DEFAULT_CHAT_MODEL ? DEFAULT_CHAT_MODEL : normalized;
+  const candidate = (value ?? "").trim();
+  return LEGACY_CHAT_MODEL_IDS.has(candidate) ? DEFAULT_CHAT_MODEL : normalizeChatModel(candidate);
 }

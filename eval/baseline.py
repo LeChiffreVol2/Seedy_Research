@@ -44,7 +44,7 @@ def main() -> None:
     load_dotenv()
 
     api_key = os.getenv("OPENAI_API_KEY")
-    model = os.getenv("MODEL", "gpt-5-mini-2025-08-07")
+    model = os.getenv("MODEL", "gpt-5.6-luna")
     md_dir = Path(os.getenv("MD_DIR", str(ROOT_DIR / "pipeline" / "data" / "markdown")))
     questions = json.loads((EVAL_DIR / "questions.json").read_text(encoding="utf-8"))
 

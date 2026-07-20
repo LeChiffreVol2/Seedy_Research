@@ -44,7 +44,7 @@ def main() -> None:
     load_dotenv()
 
     api_key = os.getenv("OPENAI_API_KEY")
-    model = os.getenv("MODEL", "gpt-5-mini-2025-08-07")
+    model = os.getenv("MODEL", "gpt-5.6-luna")
     mcp_url = os.getenv("MCP_URL", "http://localhost:8000")
     mcp_server_api_key = os.getenv("MCP_SERVER_API_KEY")
     questions = json.loads((EVAL_DIR / "questions.json").read_text(encoding="utf-8"))

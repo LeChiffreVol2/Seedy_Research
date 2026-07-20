@@ -16,13 +16,14 @@ type RateLimitBucket = {
   resetAt: number;
 };
 
-type RateLimitResult = {
+export type RateLimitResult = {
   allowed: boolean;
   key: string;
   limit: number;
   remaining: number;
   resetAt: number;
   retryAfterSeconds: number;
+  policy?: string;
 };
 
 const rateLimitBuckets = new Map<string, RateLimitBucket>();
@@ -39,17 +40,28 @@ export function isPlaceholderSecret(value: string | undefined | null): boolean {
 }
 
 export function isStrictProductionRuntime(): boolean {
-  return process.env.VERCEL_ENV === "production" || process.env.CIVILMCP_ENV === "production";
+  return (
+    process.env.NODE_ENV === "production" ||
+    process.env.VERCEL_ENV === "production" ||
+    process.env.CIVILMCP_ENV === "production"
+  );
 }
 
-export function assertRequiredServerEnv(requirements: Array<{ name: string; value?: string | null; secret?: boolean }>) {
+export function assertRequiredServerEnv(
+  requirements: Array<{ name: string; value?: string | null; secret?: boolean; minLength?: number }>,
+) {
   if (!isStrictProductionRuntime()) return;
 
   const missing = requirements
-    .filter((item) => !item.value || (item.secret && isPlaceholderSecret(item.value)))
+    .filter(
+      (item) =>
+        !item.value ||
+        (item.secret && isPlaceholderSecret(item.value)) ||
+        (item.minLength !== undefined && item.value.trim().length < item.minLength),
+    )
     .map((item) => item.name);
   if (missing.length) {
-    throw new Error(`Production env preflight failed: ${missing.join(", ")} is missing or placeholder.`);
+    throw new Error(`Production env preflight failed: ${missing.join(", ")} is missing, weak, or placeholder.`);
   }
 }
 
@@ -106,6 +118,7 @@ export function rateLimitHeaders(result: RateLimitResult): HeadersInit {
     "X-RateLimit-Limit": String(result.limit),
     "X-RateLimit-Remaining": String(result.remaining),
     "X-RateLimit-Reset": String(Math.ceil(result.resetAt / 1000)),
+    ...(result.policy ? { "X-RateLimit-Policy": result.policy } : {}),
     ...(result.allowed ? {} : { "Retry-After": String(result.retryAfterSeconds) }),
   };
 }

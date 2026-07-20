@@ -1,4 +1,4 @@
-import { randomBytes, randomUUID } from "node:crypto";
+import { createHmac, randomBytes, randomUUID } from "node:crypto";
 
 import { createClient } from "@supabase/supabase-js";
 import type { UIMessage } from "ai";
@@ -9,9 +9,10 @@ import {
   normalizeStoredChatModel,
   type ChatModel,
 } from "@/lib/chat-models";
+import { deriveCivilSecurityKey, GUEST_COOKIE_NAME, SESSION_COOKIE_NAME } from "@/lib/chat-cookies";
 
-export const SESSION_COOKIE_NAME = "civilmcp_session";
-export const USER_COOKIE_NAME = "civilmcp_user";
+export { SESSION_COOKIE_NAME };
+export const USER_COOKIE_NAME = GUEST_COOKIE_NAME;
 
 export type ChatMode = "baseline" | "mcp";
 export type CollectionFilter = "" | "ce_project" | "ncce";
@@ -58,6 +59,7 @@ export type ChatTraceInput = {
   costUsd?: number | null;
   status?: "ok" | "error";
   errorClass?: string | null;
+  includeContent?: boolean;
 };
 
 export type ChatFeedbackInput = {
@@ -68,6 +70,8 @@ export type ChatFeedbackInput = {
   rating: "up" | "down";
   categories?: string[];
   correction?: string | null;
+  questionSnapshot?: string | null;
+  answerSnapshot?: string | null;
 };
 
 export type ChatFeedbackRecord = {
@@ -90,6 +94,8 @@ export type ChatSessionSummary = {
 type ChatSessionRow = {
   session_id: string;
   share_id: string | null;
+  share_expires_at?: string | null;
+  share_revoked_at?: string | null;
   owner_id?: string | null;
   title?: string | null;
   mode: string;
@@ -159,8 +165,24 @@ export function createSessionId(): string {
   return randomUUID();
 }
 
+export function isValidSessionId(value: string | undefined | null): value is string {
+  return Boolean(value && /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(value));
+}
+
 export function createUserId(): string {
   return randomUUID();
+}
+
+export function createEmptyChatSession(sessionId = createSessionId()): ChatSessionSnapshot {
+  return {
+    sessionId,
+    title: "Untitled chat",
+    mode: DEFAULT_CHAT_MODE,
+    model: DEFAULT_CHAT_MODEL,
+    collection: DEFAULT_COLLECTION_FILTER,
+    messages: [],
+    lastMessageAt: null,
+  };
 }
 
 function createShareId(): string {
@@ -263,7 +285,7 @@ export async function getChatUser(userId: string): Promise<ChatUserProfile | nul
 }
 
 function sessionSelect(): string {
-  return "session_id, share_id, owner_id, title, mode, model, collection, transcript, archived, last_message_at, created_at, updated_at";
+  return "session_id, share_id, share_expires_at, share_revoked_at, owner_id, title, mode, model, collection, transcript, archived, last_message_at, created_at, updated_at";
 }
 
 export async function ensureChatSession(sessionId: string, ownerId?: string): Promise<ChatSessionSnapshot> {
@@ -280,6 +302,9 @@ export async function ensureChatSession(sessionId: string, ownerId?: string): Pr
 
   if (data) {
     const row = data as ChatSessionRow;
+    if (ownerId && row.owner_id && row.owner_id !== ownerId) {
+      throw new Error("Chat session belongs to another owner.");
+    }
     if (ownerId && !row.owner_id) {
       await supabase
         .from("civil_chat_sessions")
@@ -319,6 +344,8 @@ export async function getChatSessionByShareId(shareId: string): Promise<ChatSess
     .from("civil_chat_sessions")
     .select(sessionSelect())
     .eq("share_id", shareId)
+    .is("share_revoked_at", null)
+    .gt("share_expires_at", new Date().toISOString())
     .maybeSingle();
 
   if (error) {
@@ -346,7 +373,8 @@ export async function getChatSessionForOwner(sessionId: string, ownerId: string)
 }
 
 export async function createChatSession(ownerId: string): Promise<ChatSessionSnapshot> {
-  return ensureChatSession(createSessionId(), ownerId);
+  void ownerId;
+  return createEmptyChatSession();
 }
 
 export async function listChatSessions(ownerId: string, limit = 30): Promise<ChatSessionSummary[]> {
@@ -357,6 +385,7 @@ export async function listChatSessions(ownerId: string, limit = 30): Promise<Cha
     .select(sessionSelect())
     .eq("owner_id", ownerId)
     .eq("archived", false)
+    .not("last_message_at", "is", null)
     .order("updated_at", { ascending: false })
     .limit(boundedLimit);
 
@@ -438,8 +467,26 @@ export async function saveChatSession(sessionId: string, snapshot: ChatSessionSn
 }
 
 
+function metadataOnlyTraceValue(value: unknown): unknown {
+  if (Array.isArray(value)) return value.map(metadataOnlyTraceValue);
+  if (!value || typeof value !== "object") return value;
+  return Object.fromEntries(
+    Object.entries(value as Record<string, unknown>)
+      .filter(([key]) => !/(question|answer|query|snippet|content|prompt|reason|argument|input)/i.test(key))
+      .map(([key, item]) => [key, metadataOnlyTraceValue(item)]),
+  );
+}
+
 export async function saveChatTrace(trace: ChatTraceInput): Promise<void> {
   const supabase = getSupabaseAdmin();
+  const traceMode = (process.env.TRACE_CONTENT_MODE ?? (process.env.NODE_ENV === "production" ? "metadata" : "debug")).toLowerCase();
+  const retainContent = traceMode === "debug" && trace.includeContent === true;
+  const hashKey = process.env.TRACE_HASH_KEY?.trim() || process.env.GUEST_SESSION_HMAC_KEY?.trim() || "civilmcp-local-trace-hash";
+  const questionHash = trace.question
+    ? createHmac("sha256", hashKey).update(trace.question.trim()).digest("hex")
+    : null;
+  const retentionDays = Math.max(1, Math.min(365, Number.parseInt(process.env.TRACE_RETENTION_DAYS ?? "30", 10) || 30));
+  const retentionExpiresAt = new Date(Date.now() + retentionDays * 86_400_000).toISOString();
   const payload = {
     trace_id: trace.traceId,
     request_id: trace.requestId ?? null,
@@ -449,12 +496,15 @@ export async function saveChatTrace(trace: ChatTraceInput): Promise<void> {
     mode: normalizeChatMode(trace.mode),
     model: trace.model,
     collection: normalizeCollectionFilter(trace.collection),
-    question: trace.question ?? null,
-    answer: trace.answer ?? null,
-    context_stats: trace.contextStats ?? {},
-    evidence_items: trace.evidenceItems ?? [],
-    tool_trace: trace.toolTrace ?? [],
-    plan: trace.plan ?? null,
+    question: retainContent ? trace.question ?? null : null,
+    answer: retainContent ? trace.answer ?? null : null,
+    question_hash: questionHash,
+    content_mode: retainContent ? "debug" : "metadata",
+    retention_expires_at: retentionExpiresAt,
+    context_stats: retainContent ? trace.contextStats ?? {} : metadataOnlyTraceValue(trace.contextStats ?? {}),
+    evidence_items: retainContent ? trace.evidenceItems ?? [] : metadataOnlyTraceValue(trace.evidenceItems ?? []),
+    tool_trace: retainContent ? trace.toolTrace ?? [] : metadataOnlyTraceValue(trace.toolTrace ?? []),
+    plan: retainContent ? trace.plan ?? null : metadataOnlyTraceValue(trace.plan ?? null),
     usage: trace.usage ?? null,
     timings: trace.timings ?? {},
     cost_usd: trace.costUsd ?? null,
@@ -471,17 +521,39 @@ export async function saveChatTrace(trace: ChatTraceInput): Promise<void> {
 
 export async function saveChatFeedback(feedback: ChatFeedbackInput): Promise<ChatFeedbackRecord> {
   const supabase = getSupabaseAdmin();
+  if (!feedback.userId) throw new Error("Feedback requires an authenticated or signed guest identity.");
+  const { data: traceRow, error: traceError } = await supabase
+    .from("civil_chat_traces")
+    .select("trace_id, session_id")
+    .eq("trace_id", feedback.traceId)
+    .eq("user_id", feedback.userId)
+    .maybeSingle();
+  if (traceError) throw new Error(`Failed to validate feedback trace: ${traceError.message}`);
+  if (!traceRow) throw new Error("Feedback trace was not found for this user.");
+  if (feedback.sessionId && traceRow.session_id && feedback.sessionId !== traceRow.session_id) {
+    throw new Error("Feedback session does not match its trace.");
+  }
   const feedbackId = randomUUID();
   const categories = [...new Set((feedback.categories ?? []).map((item) => item.trim()).filter(Boolean))].slice(0, 8);
+  const keepSnapshot = feedback.rating === "down";
+  const contentRetentionDays = Math.max(
+    1,
+    Math.min(365, Number.parseInt(process.env.FEEDBACK_CONTENT_RETENTION_DAYS ?? "30", 10) || 30),
+  );
   const { error } = await supabase.from("civil_chat_feedback").insert({
     feedback_id: feedbackId,
     trace_id: feedback.traceId,
-    session_id: feedback.sessionId ?? null,
+    session_id: traceRow.session_id ?? null,
     user_id: feedback.userId ?? null,
     message_id: feedback.messageId ?? null,
     rating: feedback.rating,
     categories,
     correction: feedback.correction?.trim() || null,
+    question_snapshot: keepSnapshot ? feedback.questionSnapshot?.trim().slice(0, 12_000) || null : null,
+    answer_snapshot: keepSnapshot ? feedback.answerSnapshot?.trim().slice(0, 40_000) || null : null,
+    content_expires_at: keepSnapshot
+      ? new Date(Date.now() + contentRetentionDays * 86_400_000).toISOString()
+      : null,
     citation_issue: categories.includes("wrong_citation"),
     created_at: new Date().toISOString(),
   });
@@ -498,7 +570,7 @@ export async function exportFeedbackEvalRows(limit = 100): Promise<unknown[]> {
   const { data, error } = await supabase
     .from("civil_chat_feedback")
     .select(
-      "feedback_id, trace_id, session_id, user_id, message_id, rating, categories, correction, citation_issue, created_at, civil_chat_traces(question, answer, model, collection, context_stats, evidence_items, usage, timings)",
+      "feedback_id, trace_id, session_id, user_id, message_id, rating, categories, correction, citation_issue, question_snapshot, answer_snapshot, content_expires_at, created_at, civil_chat_traces(question, answer, question_hash, model, collection, context_stats, evidence_items, usage, timings)",
     )
     .order("created_at", { ascending: false })
     .limit(boundedLimit);
@@ -509,33 +581,49 @@ export async function exportFeedbackEvalRows(limit = 100): Promise<unknown[]> {
   return data ?? [];
 }
 
-export async function ensureShareableSession(sessionId: string): Promise<string> {
+export async function ensureShareableSession(sessionId: string, ownerId: string): Promise<{ shareId: string; expiresAt: string }> {
   const supabase = getSupabaseAdmin();
   const { data, error } = await supabase
     .from("civil_chat_sessions")
-    .select("share_id")
+    .select("share_id, share_expires_at, share_revoked_at")
     .eq("session_id", sessionId)
+    .eq("owner_id", ownerId)
     .maybeSingle();
 
   if (error) {
     throw new Error(`Failed to inspect share state: ${error.message}`);
   }
+  if (!data) {
+    throw new Error("Chat session not found for owner.");
+  }
 
   const existingShareId = typeof data?.share_id === "string" ? data.share_id : "";
-  if (existingShareId) {
-    return existingShareId;
+  const existingExpiresAt = typeof data?.share_expires_at === "string" ? data.share_expires_at : "";
+  if (existingShareId && !data?.share_revoked_at && existingExpiresAt && Date.parse(existingExpiresAt) > Date.now()) {
+    return { shareId: existingShareId, expiresAt: existingExpiresAt };
   }
 
   for (let attempt = 0; attempt < 5; attempt += 1) {
     const shareId = createShareId();
-    const { error: updateError } = await supabase
+    const expiresAt = new Date(Date.now() + 30 * 86_400_000).toISOString();
+    const { data: updated, error: updateError } = await supabase
       .from("civil_chat_sessions")
-      .update({ share_id: shareId, updated_at: new Date().toISOString() })
-      .eq("session_id", sessionId);
+      .update({
+        share_id: shareId,
+        share_expires_at: expiresAt,
+        share_revoked_at: null,
+        updated_at: new Date().toISOString(),
+      })
+      .eq("session_id", sessionId)
+      .eq("owner_id", ownerId)
+      .select("session_id")
+      .maybeSingle();
 
-    if (!updateError) {
-      return shareId;
+    if (!updateError && updated) {
+      return { shareId, expiresAt };
     }
+
+    if (!updateError) throw new Error("Chat session owner changed while creating the share link.");
 
     if (!updateError.message.toLowerCase().includes("duplicate")) {
       throw new Error(`Failed to create share link: ${updateError.message}`);
@@ -543,4 +631,113 @@ export async function ensureShareableSession(sessionId: string): Promise<string>
   }
 
   throw new Error("Failed to create unique share link after multiple attempts.");
+}
+
+export async function revokeShareableSession(sessionId: string, ownerId: string): Promise<void> {
+  const supabase = getSupabaseAdmin();
+  const { error } = await supabase
+    .from("civil_chat_sessions")
+    .update({ share_revoked_at: new Date().toISOString(), updated_at: new Date().toISOString() })
+    .eq("session_id", sessionId)
+    .eq("owner_id", ownerId);
+  if (error) throw new Error(`Failed to revoke share link: ${error.message}`);
+}
+
+export type DistributedQuotaResult = {
+  allowed: boolean;
+  key: string;
+  limit: number;
+  remaining: number;
+  resetAt: number;
+  retryAfterSeconds: number;
+  policy: string;
+};
+
+type QuotaRpcRow = {
+  allowed?: boolean;
+  remaining?: number;
+  reset_at?: string;
+  request_count?: number;
+};
+
+export async function consumeChatQuota(input: {
+  userId: string;
+  ipAddress?: string;
+  scope?: string;
+  isAuthenticated: boolean;
+  guestMinuteLimit: number;
+  guestHourLimit: number;
+  authenticatedMinuteLimit: number;
+  authenticatedHourLimit: number;
+}): Promise<DistributedQuotaResult> {
+  const minuteLimit = input.isAuthenticated ? input.authenticatedMinuteLimit : input.guestMinuteLimit;
+  const hourLimit = input.isAuthenticated ? input.authenticatedHourLimit : input.guestHourLimit;
+  const hashKey =
+    process.env.RATE_LIMIT_HASH_KEY?.trim() ||
+    process.env.GUEST_SESSION_HMAC_KEY?.trim() ||
+    deriveCivilSecurityKey("quota");
+  if (!hashKey) throw new Error("RATE_LIMIT_HASH_KEY or GUEST_SESSION_HMAC_KEY is required for distributed quota.");
+  const hashIdentity = (value: string) => createHmac("sha256", hashKey).update(value).digest("hex");
+  const identityHash = hashIdentity(`${input.isAuthenticated ? "authenticated" : "guest"}:${input.userId}`);
+  const scope = input.scope && /^[a-z0-9_:-]{1,70}$/.test(input.scope) ? input.scope : "web_chat";
+  const supabase = getSupabaseAdmin();
+
+  const consume = async (scope: string, quotaIdentityHash: string, limit: number, windowSeconds: number) => {
+    const { data, error } = await supabase.rpc("consume_civil_quota", {
+      p_identity_hash: quotaIdentityHash,
+      p_scope: scope,
+      p_limit: limit,
+      p_window_seconds: windowSeconds,
+    });
+    if (error) throw new Error(`Distributed quota failed: ${error.message}`);
+    const row = (Array.isArray(data) ? data[0] : data) as QuotaRpcRow | null;
+    if (!row || typeof row.allowed !== "boolean" || typeof row.reset_at !== "string") {
+      throw new Error("Distributed quota returned an invalid response.");
+    }
+    return {
+      allowed: row.allowed,
+      remaining: Number(row.remaining ?? 0),
+      reset_at: row.reset_at,
+      request_count: Number(row.request_count ?? 0),
+      limit,
+      windowSeconds,
+    };
+  };
+
+  const requests = [
+    consume(scope, identityHash, minuteLimit, 60),
+    consume(scope, identityHash, hourLimit, 3600),
+  ];
+  const ipAddress = input.ipAddress?.trim();
+  if (ipAddress && ipAddress !== "unknown-ip") {
+    const ipHash = hashIdentity(`ip:${ipAddress}`);
+    requests.push(
+      consume(`${scope}_ip`, ipHash, Math.min(10_000, minuteLimit * 10), 60),
+      consume(`${scope}_ip`, ipHash, Math.min(10_000, hourLimit * 10), 3600),
+    );
+  }
+  const results = await Promise.all(requests);
+  const selected = results.find((result) => !result.allowed) ?? results[0];
+  const resetAt = Date.parse(selected.reset_at);
+  return {
+    allowed: results.every((result) => result.allowed),
+    key: `${scope}:${identityHash.slice(0, 16)}`,
+    limit: selected.limit,
+    remaining: Math.max(0, Number(selected.remaining ?? 0)),
+    resetAt,
+    retryAfterSeconds: Math.max(1, Math.ceil((resetAt - Date.now()) / 1000)),
+    policy: `${minuteLimit};w=60, ${hourLimit};w=3600, ip-aggregate=10x`,
+  };
+}
+
+export async function pruneCivilOperationalData(): Promise<Record<string, number>> {
+  const supabase = getSupabaseAdmin();
+  const { data, error } = await supabase.rpc("prune_civil_operational_data");
+  if (error) throw new Error(`Operational retention cleanup failed: ${error.message}`);
+  const row = (Array.isArray(data) ? data[0] : data) as Record<string, unknown> | null;
+  return {
+    deletedRateBuckets: Number(row?.deleted_rate_buckets ?? 0),
+    deletedTraces: Number(row?.deleted_traces ?? 0),
+    clearedFeedbackSnapshots: Number(row?.cleared_feedback_snapshots ?? 0),
+  };
 }

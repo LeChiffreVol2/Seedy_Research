@@ -54,6 +54,15 @@ button {
   pointer-events: none !important;
 }
 
+.srOnly {
+  width: 1px;
+  height: 1px;
+  position: absolute;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+}
+
 .cursor-pointer {
   cursor: pointer;
 }
@@ -195,7 +204,7 @@ button {
 }
 
 .sidebarUtility {
-  min-height: 42px;
+  min-height: 44px;
   border-radius: 12px;
 }
 
@@ -261,6 +270,42 @@ button {
   font-weight: 700;
   letter-spacing: 0;
   line-height: 1.12;
+  text-align: center;
+}
+
+.corpusProof {
+  margin: -8px auto 14px;
+  display: flex;
+  justify-content: center;
+  flex-wrap: wrap;
+  gap: 7px;
+}
+
+.corpusProof span {
+  min-height: 30px;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  border: 1px solid rgba(84, 105, 128, 0.18);
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.72);
+  color: var(--text-sub);
+  padding: 5px 10px;
+  font-size: 0.72rem;
+  font-weight: 750;
+  line-height: 1;
+}
+
+.corpusProof strong,
+.corpusProof .modelProof {
+  color: var(--accent-strong);
+}
+
+.researchDisclaimer {
+  margin: 9px 0 0;
+  color: var(--text-sub);
+  font-size: 0.72rem;
+  font-weight: 650;
   text-align: center;
 }
 
@@ -395,7 +440,7 @@ button {
 
 .glassButton,
 .modeSegment {
-  min-height: 40px;
+  min-height: 44px;
   border: 1px solid rgba(255, 255, 255, 0.68);
   border-radius: inherit;
   background:
@@ -472,7 +517,7 @@ button {
 
 .modeSegment {
   min-width: 164px;
-  min-height: 40px;
+  min-height: 44px;
   padding: 0 16px;
   display: grid;
   grid-template-columns: 1fr 1fr;
@@ -539,9 +584,9 @@ button {
 }
 
 .promptTrigger .glassButton {
-  width: 42px;
-  min-width: 42px;
-  height: 42px;
+  width: 44px;
+  min-width: 44px;
+  height: 44px;
   padding: 0;
   border-radius: 999px;
 }
@@ -585,6 +630,12 @@ button {
   animation: menuReveal 0.22s var(--ease-spring);
 }
 
+.dropdownDismissLayer {
+  position: fixed;
+  inset: 0;
+  z-index: 29;
+}
+
 .glassDropdown.right {
   right: 0;
   left: auto;
@@ -619,7 +670,7 @@ button {
 
 .menuOption {
   width: 100%;
-  min-height: 42px;
+  min-height: 44px;
   padding: 8px 10px;
   display: flex;
   align-items: center;
@@ -741,11 +792,13 @@ button {
   display: flex;
   align-items: center;
   justify-content: space-between;
+  flex-wrap: wrap;
   gap: 16px;
 }
 
 .filterChips {
   min-width: 0;
+  flex: 1 1 500px;
   display: flex;
   align-items: center;
   flex-wrap: wrap;
@@ -753,16 +806,137 @@ button {
 }
 
 .filterChip .glassButton,
-.refreshChip .glassButton {
-  min-height: 42px;
+.refreshChip .glassButton,
+.refreshChipStatic {
+  min-height: 44px;
   border-radius: 999px;
   padding: 0 16px;
+}
+
+.chipCount {
+  min-width: 24px;
+  height: 22px;
+  display: inline-grid;
+  place-items: center;
+  margin-left: 2px;
+  padding: 0 7px;
+  border-radius: 999px;
+  background: rgba(13, 104, 196, 0.09);
+  color: #0d55a8;
+  font-size: 0.72rem;
+  font-weight: 850;
+  line-height: 1;
 }
 
 .feedToolbarAside {
   display: flex;
   align-items: center;
   gap: 10px;
+}
+
+.feedToolbarControls {
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 10px;
+}
+
+.paperLanguageControl {
+  min-height: 44px;
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 4px 6px 4px 11px;
+  border: 1px solid rgba(84, 105, 128, 0.17);
+  border-radius: 14px;
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.93), rgba(242, 248, 253, 0.82)),
+    rgba(255, 255, 255, 0.78);
+  color: #344960;
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.84),
+    0 10px 24px rgba(31, 54, 82, 0.07);
+  white-space: nowrap;
+}
+
+.paperLanguageLabel {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  color: #526476;
+  font-size: 0.76rem;
+  font-weight: 850;
+}
+
+.paperLanguageLabel svg {
+  color: #0b65c8;
+}
+
+.paperLanguageSegments {
+  min-width: 92px;
+  min-height: 36px;
+  position: relative;
+  display: grid;
+  grid-template-columns: repeat(2, minmax(42px, 1fr));
+  gap: 2px;
+  padding: 2px;
+  border: 1px solid rgba(84, 105, 128, 0.15);
+  border-radius: 12px;
+  background: rgba(226, 234, 242, 0.62);
+  overflow: hidden;
+}
+
+.paperLanguageSegments button {
+  min-width: 42px;
+  min-height: 30px;
+  position: relative;
+  z-index: 2;
+  border: 0;
+  border-radius: 9px;
+  background: transparent;
+  color: #66778b;
+  cursor: pointer;
+  padding: 0 8px;
+  font: inherit;
+  font-size: 0.74rem;
+  font-weight: 900;
+  transition:
+    background 0.18s ease,
+    color 0.18s ease,
+    box-shadow 0.18s ease,
+    transform 0.2s var(--ease-spring);
+}
+
+.paperLanguageSegments button:hover {
+  color: #0b55c6;
+}
+
+.paperLanguageSegments button.active {
+  background: rgba(255, 255, 255, 0.88);
+  color: #0b55c6;
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.96),
+    0 5px 12px rgba(31, 74, 126, 0.12);
+}
+
+.paperLanguageSegments button:active {
+  transform: scale(0.97);
+}
+
+.paperLanguageState {
+  width: 18px;
+  min-width: 18px;
+  height: 18px;
+  display: inline-grid;
+  place-items: center;
+  color: #0a8a63;
+}
+
+.paperLanguageBusy {
+  color: #0b65c8;
+  animation: translationSpin 0.9s linear infinite;
 }
 
 .feedMeta {
@@ -797,6 +971,20 @@ button {
 .refreshChip .glassButton {
   min-width: 150px;
   color: #0b55c6;
+}
+
+.refreshChipStatic {
+  min-width: 150px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  border: 1px solid rgba(23, 141, 126, 0.22);
+  background: rgba(235, 250, 245, 0.72);
+  color: #167865;
+  font-size: 0.82rem;
+  font-weight: 850;
+  white-space: nowrap;
 }
 
 .statusLine {
@@ -910,7 +1098,7 @@ button {
 }
 
 .historyCard:has(.historyConfirm) {
-  grid-template-columns: minmax(0, 1fr) 38px;
+  grid-template-columns: minmax(0, 1fr) 44px;
 }
 
 .historyMain,
@@ -953,8 +1141,9 @@ button {
 }
 
 .historyDelete {
-  width: 38px;
-  min-width: 38px;
+  width: 44px;
+  min-width: 44px;
+  min-height: 44px;
   margin: 4px;
   display: inline-flex;
   align-items: center;
@@ -989,7 +1178,8 @@ button {
 }
 
 .historyConfirm button {
-  min-height: 30px;
+  min-height: 44px;
+  min-width: 44px;
   border: 1px solid rgba(132, 48, 58, 0.2);
   border-radius: 999px;
   background: rgba(255, 255, 255, 0.72);
@@ -1061,11 +1251,12 @@ button {
 }
 
 .authSwitch button {
+  min-height: 44px;
   border: 0;
   background: transparent;
   color: #0b55c6;
   cursor: pointer;
-  padding: 0;
+  padding: 0 6px;
   font: inherit;
   font-weight: 900;
 }
@@ -1074,6 +1265,12 @@ button {
   color: #083e96;
   text-decoration: underline;
   text-underline-offset: 3px;
+}
+
+.authSwitch button:disabled {
+  cursor: not-allowed;
+  opacity: 0.5;
+  text-decoration: none;
 }
 
 .authBenefitCard {
@@ -1209,8 +1406,76 @@ button {
   font-weight: 850;
 }
 
+.authSwitchTop {
+  justify-content: space-between;
+  padding-bottom: 10px;
+  border-bottom: 1px solid rgba(84, 105, 128, 0.12);
+}
+
+.authField {
+  display: grid;
+  gap: 7px;
+}
+
+.authFieldHeader {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.authFieldHeader label {
+  display: block;
+}
+
+.forgotPasswordButton {
+  min-height: 44px;
+  border: 0;
+  background: transparent;
+  color: #0b55c6;
+  cursor: pointer;
+  padding: 0 2px;
+  font: inherit;
+  font-size: 0.76rem;
+  font-weight: 850;
+}
+
+.passwordField {
+  position: relative;
+}
+
+.passwordField input {
+  width: 100%;
+  padding-right: 50px;
+}
+
+.passwordToggle {
+  width: 44px;
+  height: 44px;
+  position: absolute;
+  top: 0;
+  right: 0;
+  display: grid;
+  place-items: center;
+  border: 0;
+  background: transparent;
+  color: #526476;
+  cursor: pointer;
+}
+
+.forgotPasswordButton:hover,
+.passwordToggle:hover {
+  color: #083e96;
+}
+
+.forgotPasswordButton:disabled,
+.passwordToggle:disabled {
+  cursor: not-allowed;
+  opacity: 0.5;
+}
+
 .accountCard input {
-  min-height: 42px;
+  min-height: 44px;
   border: 1px solid rgba(84, 105, 128, 0.18);
   border-radius: 10px;
   background: rgba(255, 255, 255, 0.86);
@@ -1223,6 +1488,11 @@ button {
 .accountCard input:focus {
   border-color: rgba(11, 120, 240, 0.36);
   box-shadow: 0 0 0 4px rgba(11, 120, 240, 0.08);
+}
+
+.accountCard input:disabled {
+  cursor: not-allowed;
+  opacity: 0.62;
 }
 
 .accountActions {
@@ -1322,7 +1592,8 @@ button {
 }
 
 .shareUrlBox button {
-  min-height: 32px;
+  min-height: 44px;
+  min-width: 44px;
   border: 1px solid rgba(11, 120, 240, 0.18);
   border-radius: 999px;
   background: rgba(255, 255, 255, 0.86);
@@ -1370,9 +1641,16 @@ button {
 
 .researchCard {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) 226px;
-  gap: 22px;
-  padding: 16px;
+  grid-template-columns: minmax(0, 1fr) 220px;
+  gap: 18px;
+  padding: 14px;
+}
+
+.researchCard > .documentPreview {
+  height: 202px;
+  min-height: 202px;
+  align-self: start;
+  aspect-ratio: auto;
 }
 
 .cardContent {
@@ -1406,6 +1684,9 @@ button {
 
 .cardTitleButton {
   min-width: 0;
+  min-height: 44px;
+  display: flex;
+  align-items: center;
   border: 0;
   background: transparent;
   color: inherit;
@@ -1435,6 +1716,11 @@ button {
   content: "•";
   margin-right: 7px;
   color: #9aa6b4;
+}
+
+.paperMeta .translatedMeta {
+  color: #08775d;
+  font-weight: 850;
 }
 
 .paperSummary {
@@ -1482,7 +1768,7 @@ button {
 }
 
 .cardAction {
-  min-height: 36px;
+  min-height: 44px;
   display: inline-flex;
   align-items: center;
   gap: 8px;
@@ -1502,6 +1788,12 @@ button {
     transform 0.22s var(--ease-spring);
 }
 
+.cardAction.iconAction {
+  min-width: 44px;
+  justify-content: center;
+  padding: 0 10px;
+}
+
 .cardAction:hover {
   border-color: rgba(11, 120, 240, 0.2);
   background: rgba(235, 245, 255, 0.9);
@@ -1517,6 +1809,30 @@ button {
   color: #0b55c6;
 }
 
+.cardAction.saved {
+  border-color: rgba(10, 166, 118, 0.24);
+  background:
+    linear-gradient(180deg, rgba(239, 255, 248, 0.96), rgba(221, 246, 236, 0.86)),
+    rgba(10, 166, 118, 0.1);
+  color: #08775d;
+}
+
+.cardAction.translationAction {
+  border-color: rgba(30, 112, 194, 0.2);
+  background: rgba(240, 248, 255, 0.92);
+  color: #155caa;
+}
+
+.cardAction.translationAction.active {
+  border-color: rgba(10, 166, 118, 0.26);
+  background: rgba(232, 250, 242, 0.94);
+  color: #08775d;
+}
+
+.translationSpinner {
+  animation: translationSpin 0.9s linear infinite;
+}
+
 .cardAction:disabled {
   cursor: not-allowed;
   opacity: 0.5;
@@ -1528,14 +1844,33 @@ button {
 }
 
 .documentPreview {
-  min-height: 158px;
+  width: 100%;
+  min-height: 210px;
+  display: block;
   position: relative;
   align-self: stretch;
+  aspect-ratio: 0.74;
+  padding: 0;
   border: 1px solid rgba(84, 105, 128, 0.18);
   border-radius: 8px;
   background: #ffffff;
+  color: inherit;
+  cursor: pointer;
   overflow: hidden;
   box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.9);
+  text-align: left;
+  transition:
+    border-color 0.2s ease,
+    box-shadow 0.2s ease,
+    transform 0.22s var(--ease-spring);
+}
+
+.documentPreview:hover {
+  border-color: rgba(11, 120, 240, 0.26);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.9),
+    0 14px 30px rgba(31, 54, 82, 0.1);
+  transform: translateY(-1px);
 }
 
 .documentPreview::after {
@@ -1551,12 +1886,12 @@ button {
 
 .previewImage {
   position: absolute;
-  inset: 0;
+  inset: 8px;
   z-index: 1;
-  width: 100%;
-  height: 100%;
+  width: calc(100% - 16px);
+  height: calc(100% - 16px);
   display: block;
-  object-fit: cover;
+  object-fit: contain;
   object-position: top center;
   background: #ffffff;
 }
@@ -1778,6 +2113,21 @@ button {
   box-shadow: 0 8px 18px rgba(10, 18, 30, 0.16);
 }
 
+.previewOpen {
+  position: absolute;
+  z-index: 2;
+  left: 9px;
+  bottom: 8px;
+  padding: 5px 9px;
+  border: 1px solid rgba(255, 255, 255, 0.58);
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.86);
+  color: #0b55c6;
+  font-size: 0.74rem;
+  font-weight: 900;
+  box-shadow: 0 8px 18px rgba(10, 18, 30, 0.12);
+}
+
 .detailBackdrop {
   position: fixed;
   inset: 0;
@@ -1837,9 +2187,9 @@ button {
 }
 
 .detailClose {
-  width: 38px;
-  min-width: 38px;
-  height: 38px;
+  width: 44px;
+  min-width: 44px;
+  height: 44px;
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -1873,6 +2223,41 @@ button {
   color: var(--text-sub);
   font-size: 0.78rem;
   font-weight: 800;
+}
+
+.detailActions > .translationStatus {
+  border-color: rgba(10, 166, 118, 0.2);
+  background: rgba(232, 250, 242, 0.82);
+  color: #08775d;
+}
+
+.detailPreview {
+  min-width: 0;
+  display: grid;
+  gap: 10px;
+  border: 1px solid rgba(84, 105, 128, 0.18);
+  border-radius: 12px;
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.94), rgba(247, 250, 253, 0.86)),
+    rgba(255, 255, 255, 0.9);
+  cursor: pointer;
+  padding: 12px;
+  text-align: left;
+}
+
+.detailPreview img {
+  width: 100%;
+  max-height: 360px;
+  display: block;
+  object-fit: contain;
+  border-radius: 8px;
+  background: #ffffff;
+}
+
+.detailPreview span {
+  color: #0b55c6;
+  font-size: 0.84rem;
+  font-weight: 900;
 }
 
 .detailSection {
@@ -2279,12 +2664,15 @@ button {
 .sidebarUtility:focus-visible,
 .cardTitleButton:focus-visible,
 .cardAction:focus-visible,
+.documentPreview:focus-visible,
 .detailClose:focus-visible,
 .historyMain:focus-visible,
 .historyDelete:focus-visible,
 .historyConfirm button:focus-visible,
 .shareUrlBox button:focus-visible,
 .authSwitch button:focus-visible,
+.forgotPasswordButton:focus-visible,
+.passwordToggle:focus-visible,
 .accountCard input:focus-visible,
 .mobileBottomNav button:focus-visible {
   outline: 2px solid rgba(11, 120, 240, 0.72);
@@ -2325,6 +2713,12 @@ button {
   }
 }
 
+@keyframes translationSpin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
 @media (max-width: 1180px) {
   .researchApp {
     grid-template-columns: 224px minmax(0, 1fr);
@@ -2346,6 +2740,11 @@ button {
 
   .keyHint {
     margin-left: 0;
+  }
+
+  .paperLanguageLabel span,
+  .feedMeta small {
+    display: none;
   }
 }
 
@@ -2384,11 +2783,12 @@ button {
 
   .searchComposer {
     min-height: 0;
+    gap: 10px;
     padding: 14px;
   }
 
   .searchComposer textarea {
-    min-height: 76px;
+    min-height: 64px;
     padding: 0;
     font-size: 0.98rem;
   }
@@ -2406,15 +2806,15 @@ button {
   }
 
   .promptMenu {
-    width: 42px;
+    width: 44px;
     grid-column: 1;
     grid-row: 1;
   }
 
   .promptTrigger .glassButton {
-    width: 42px;
-    min-width: 42px;
-    height: 42px;
+    width: 44px;
+    min-width: 44px;
+    height: 44px;
   }
 
   .modeGroup {
@@ -2459,6 +2859,15 @@ button {
     left: 0;
   }
 
+  .promptMenu .glassDropdown {
+    position: fixed;
+    right: 18px;
+    bottom: 94px;
+    left: 18px;
+    width: auto;
+    min-width: 0;
+  }
+
   .keyHint {
     display: none;
   }
@@ -2471,52 +2880,62 @@ button {
   }
 
   .feedToolbar {
-    align-items: center;
-    justify-content: flex-start;
-    overflow-x: auto;
-    gap: 10px;
-    scrollbar-width: none;
+    display: flex;
+    align-items: stretch;
+    flex-direction: column;
+    overflow: visible;
   }
 
-  .feedToolbar::-webkit-scrollbar {
-    display: none;
+  .feedToolbarControls {
+    order: -1;
+    width: 100%;
+    justify-content: flex-end;
+  }
+
+  .paperLanguageControl {
+    width: 100%;
+    justify-content: space-between;
+  }
+
+  .paperLanguageLabel span {
+    display: inline;
   }
 
   .filterChips {
+    width: 100%;
     flex: 0 0 auto;
-    flex-wrap: nowrap;
-  }
-
-  .filterChips::-webkit-scrollbar {
-    display: none;
+    display: grid;
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    gap: 7px;
   }
 
   .filterChip {
-    flex: 0 0 auto;
+    min-width: 0;
   }
 
-  .feedToolbarAside {
-    width: auto;
-    min-width: max-content;
-    flex: 0 0 auto;
-  }
-
-  .feedMeta {
+  .filterChip:nth-child(n + 5) {
     display: none;
   }
 
-  .refreshChip .glassButton {
-    min-width: max-content;
-    white-space: nowrap;
+  .filterChip .glassButton {
+    width: 100%;
+    min-width: 0;
+    gap: 5px;
+    padding: 0 7px;
+    font-size: 0.76rem;
+  }
+
+  .feedToolbarAside {
+    display: none;
   }
 
   .researchCard {
     grid-template-columns: 1fr;
-    gap: 14px;
+    gap: 0;
   }
 
-  .documentPreview {
-    min-height: 170px;
+  .researchCard > .documentPreview {
+    display: none;
   }
 
   .paperSummary {
@@ -2587,7 +3006,7 @@ button {
   }
 
   .historyCard {
-    grid-template-columns: minmax(0, 1fr) 36px;
+    grid-template-columns: minmax(0, 1fr) 52px;
   }
 
   .accountGrid {
@@ -2614,6 +3033,21 @@ button {
     padding: 14px;
   }
 
+  .filterChip .glassButton {
+    gap: 4px;
+    padding: 0 5px;
+    font-size: 0.72rem;
+  }
+
+  .filterChip .chipIcon {
+    width: 14px;
+    height: 14px;
+  }
+
+  .filterChip .chipCount {
+    display: none;
+  }
+
   .cardTitleRow {
     grid-template-columns: 20px minmax(0, 1fr);
   }
@@ -2631,30 +3065,29 @@ button {
 
   .cardActions {
     align-items: stretch;
-    flex-wrap: nowrap;
-    overflow-x: auto;
-    gap: 4px;
-    scrollbar-width: none;
-  }
-
-  .cardActions::-webkit-scrollbar {
-    display: none;
+    flex-wrap: wrap;
+    overflow-x: visible;
+    gap: 6px;
   }
 
   .cardAction {
     flex: 0 0 auto;
     justify-content: center;
-    gap: 4px;
-    min-height: 34px;
+    gap: 6px;
+    min-height: 44px;
     min-width: max-content;
-    padding: 0 8px;
-    font-size: 0.74rem;
+    padding: 0 11px;
+    font-size: 0.78rem;
     white-space: nowrap;
   }
 
+  .cardAction.iconAction {
+    min-width: 44px;
+  }
+
   .cardAction svg {
-    width: 15px;
-    height: 15px;
+    width: 16px;
+    height: 16px;
   }
 
   .cardAction strong {
@@ -2666,6 +3099,10 @@ button {
   .authFormCard,
   .authBenefitCard {
     padding: 14px;
+  }
+
+  .authBenefitCard {
+    display: none;
   }
 
   .authFormHeader h3,
@@ -2708,15 +3145,6 @@ button {
     max-height: 24px;
   }
 
-  .promptMenu .glassDropdown {
-    position: fixed;
-    right: 18px;
-    bottom: 94px;
-    left: 18px;
-    width: auto;
-    min-width: 0;
-  }
-
   .promptMenu .dropdownSurface,
   .dropdownSurface {
     background:
@@ -2735,7 +3163,81 @@ button {
   }
 }
 
+@media (max-width: 360px) {
+  .liquidEffect {
+    display: none !important;
+  }
+
+  .composerToolbar {
+    grid-template-columns: minmax(0, 1fr) 44px;
+  }
+
+  .collectionControl {
+    min-width: 0;
+    grid-column: 1;
+  }
+
+  .collectionControl .controlLabel {
+    width: 1px;
+    height: 1px;
+    position: absolute;
+    overflow: hidden;
+    clip: rect(0 0 0 0);
+    clip-path: inset(50%);
+    white-space: nowrap;
+  }
+
+  .actionControl {
+    width: 44px;
+    min-width: 44px;
+    grid-column: 2;
+    justify-self: end;
+  }
+
+  .actionControl > .glassWrap,
+  .actionControl > .glassWrap .glassButton {
+    width: 44px;
+    min-width: 44px;
+    padding: 0;
+  }
+
+  .actionControl .controlValue,
+  .actionControl .chevronIcon {
+    display: none;
+  }
+
+  .actionControl .glassDropdown,
+  .actionControl .glassDropdown.right {
+    width: auto;
+    min-width: 0;
+    position: fixed;
+    top: auto;
+    right: 10px;
+    bottom: 94px;
+    left: 10px;
+  }
+
+  .filterChip .chipIcon {
+    display: none;
+  }
+
+  .mobileBottomNav {
+    gap: 2px;
+    padding: 6px;
+  }
+
+  .mobileBottomNav button {
+    padding-right: 2px;
+    padding-left: 2px;
+    font-size: 0.64rem;
+  }
+}
+
 @media (prefers-reduced-motion: reduce) {
+  .liquidEffect {
+    display: none !important;
+  }
+
   *,
   *::before,
   *::after {

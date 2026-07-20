@@ -3,12 +3,17 @@ import type { User } from "@supabase/supabase-js";
 import { NextRequest, NextResponse } from "next/server";
 
 import {
-  USER_COOKIE_NAME,
   createUserId,
   ensureChatUser,
   getChatUser,
   type ChatUserProfile,
 } from "@/lib/chat-store";
+import {
+  applyIdentityCookie,
+  assertGuestCookieConfigured,
+  signedGuestIdFromRequest,
+} from "@/lib/chat-cookies";
+import { isPlaceholderSecret } from "@/lib/server-guards";
 
 type CookieSet = {
   name: string;
@@ -23,9 +28,60 @@ export type ChatIdentity = {
   isNewGuest: boolean;
 };
 
+export class ChatIdentityError extends Error {
+  constructor(
+    message: string,
+    readonly statusCode: 401 | 503,
+  ) {
+    super(message);
+    this.name = "ChatIdentityError";
+  }
+}
+
+function hasSupabaseAuthCookie(request: NextRequest): boolean {
+  return request.cookies
+    .getAll()
+    .some(({ name }) => /^sb-.+-auth-token(?:\.\d+)?$/.test(name));
+}
+
+export function chatIdentityErrorResponse(error: unknown, request?: NextRequest): NextResponse {
+  let response: NextResponse;
+  if (error instanceof ChatIdentityError) {
+    response = NextResponse.json({ error: error.message }, { status: error.statusCode });
+  } else {
+    console.error("civilmcp_identity_resolution_failed", error instanceof Error ? error.message : String(error));
+    response = NextResponse.json({ error: "Chat identity service is temporarily unavailable." }, { status: 503 });
+  }
+  if (error instanceof ChatIdentityError && error.statusCode === 401) {
+    for (const { name } of request?.cookies.getAll() ?? []) {
+      if (/^sb-.+-auth-token(?:\.\d+)?$/.test(name)) response.cookies.delete(name);
+    }
+  }
+  return response;
+}
+
 function getSupabaseAuthConfig() {
-  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL ?? process.env.SUPABASE_URL;
-  const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY ?? process.env.SUPABASE_ANON_KEY;
+  const normalizeEnv = (value: string | undefined) => value?.trim().replace(/^['"]|['"]$/g, "");
+  const isHttpUrl = (value: string | undefined) => {
+    if (!value) return false;
+    try {
+      return ["http:", "https:"].includes(new URL(value).protocol);
+    } catch {
+      return false;
+    }
+  };
+  const isUsableKey = (value: string | undefined) => Boolean(value && value.length >= 32 && !isPlaceholderSecret(value));
+  const supabaseUrl = [process.env.NEXT_PUBLIC_SUPABASE_URL, process.env.SUPABASE_URL]
+    .map(normalizeEnv)
+    .find(isHttpUrl);
+  // This module is server-only. Service-role fallback keeps auth available until the malformed anon env is rotated.
+  const supabaseAnonKey = [
+    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY,
+    process.env.SUPABASE_ANON_KEY,
+    process.env.SUPABASE_SERVICE_KEY,
+  ]
+    .map(normalizeEnv)
+    .find(isUsableKey);
 
   if (!supabaseUrl || !supabaseAnonKey) {
     throw new Error("SUPABASE_URL and SUPABASE_ANON_KEY are required for Supabase Auth.");
@@ -76,10 +132,20 @@ export async function getAuthenticatedChatUser(request: NextRequest): Promise<{
   applyCookies: (response: NextResponse) => NextResponse;
 }> {
   const auth = createRouteAuthClient(request);
+  const hadAuthCookie = hasSupabaseAuthCookie(request);
   const { data, error } = await auth.supabase.auth.getUser();
   const authUser = error ? null : data.user;
 
   if (!authUser) {
+    if (hadAuthCookie) {
+      const status = Number((error as { status?: unknown } | null)?.status);
+      const message = error instanceof Error ? error.message.toLowerCase() : "";
+      const rejected = status === 401 || status === 403 || /expired|jwt|session|token/.test(message);
+      throw new ChatIdentityError(
+        rejected ? "Your sign-in session has expired. Please sign in again." : "Authentication is temporarily unavailable.",
+        rejected ? 401 : 503,
+      );
+    }
     return { authUser: null, user: null, applyCookies: auth.applyCookies };
   }
 
@@ -92,22 +158,20 @@ export async function getAuthenticatedChatUser(request: NextRequest): Promise<{
   return { authUser, user, applyCookies: auth.applyCookies };
 }
 
-export function setLegacyUserCookie(response: NextResponse, userId: string) {
-  response.cookies.set({
-    name: USER_COOKIE_NAME,
-    value: userId,
-    httpOnly: true,
-    sameSite: "lax",
-    secure: process.env.NODE_ENV === "production",
-    path: "/",
-    maxAge: 60 * 60 * 24 * 365,
-  });
+export function applyChatIdentityCookies(
+  response: NextResponse,
+  identity: Pick<ChatIdentity, "userId" | "isAuthenticated">,
+  applyAuthCookies: (response: NextResponse) => NextResponse,
+): NextResponse {
+  applyAuthCookies(response);
+  return applyIdentityCookie(response, identity);
 }
 
 export async function resolveChatIdentity(request: NextRequest): Promise<{
   identity: ChatIdentity;
   applyAuthCookies: (response: NextResponse) => NextResponse;
 }> {
+  assertGuestCookieConfigured();
   const authenticated = await getAuthenticatedChatUser(request);
   if (authenticated.authUser && authenticated.user) {
     return {
@@ -121,10 +185,15 @@ export async function resolveChatIdentity(request: NextRequest): Promise<{
     };
   }
 
-  const existingUserId = request.cookies.get(USER_COOKIE_NAME)?.value;
+  const existingUserId = signedGuestIdFromRequest(request);
   const userId = existingUserId || createUserId();
-  const storedUser = existingUserId ? await ensureChatUser(userId) : await ensureChatUser(userId, { isGuest: true });
-  const user = { ...storedUser, isGuest: true };
+  const storedUser = existingUserId ? await getChatUser(userId) : null;
+  const user: ChatUserProfile = storedUser ?? {
+    userId,
+    displayName: "Guest researcher",
+    email: null,
+    isGuest: true,
+  };
 
   return {
     identity: {

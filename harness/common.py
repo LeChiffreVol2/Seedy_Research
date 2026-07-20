@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import hashlib
 import json
 import os
 import subprocess
@@ -15,6 +16,8 @@ ROOT = Path(__file__).resolve().parents[1]
 HARNESS_DIR = ROOT / "harness"
 REPORTS_DIR = HARNESS_DIR / "reports"
 STATUS_ORDER = {"pass": 0, "warn": 1, "fail": 2}
+REPORT_FORMAT_VERSION = 2
+_PROVENANCE_CACHE: dict[str, Any] | None = None
 
 
 def utc_now() -> str:
@@ -50,6 +53,97 @@ class Check:
         return payload
 
 
+def _git_output(args: list[str]) -> str:
+    result = subprocess.run(
+        ["git", *args],
+        cwd=ROOT,
+        text=True,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.DEVNULL,
+        check=False,
+    )
+    return result.stdout.strip() if result.returncode == 0 else ""
+
+
+def _source_fingerprint() -> str:
+    digest = hashlib.sha256()
+    digest.update(_git_output(["rev-parse", "HEAD"]).encode("utf-8"))
+    diff = subprocess.run(
+        ["git", "diff", "--binary", "HEAD"],
+        cwd=ROOT,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.DEVNULL,
+        check=False,
+    )
+    digest.update(diff.stdout)
+    untracked = _git_output(["ls-files", "--others", "--exclude-standard"]).splitlines()
+    for relative in sorted(filter(None, untracked)):
+        path = ROOT / relative
+        if not path.is_file():
+            continue
+        digest.update(relative.encode("utf-8"))
+        try:
+            with path.open("rb") as handle:
+                for block in iter(lambda: handle.read(1024 * 1024), b""):
+                    digest.update(block)
+        except OSError:
+            digest.update(b"unreadable")
+    return digest.hexdigest()
+
+
+def _corpus_fingerprint() -> str:
+    configured = os.getenv("CORPUS_FINGERPRINT", "").strip()
+    if configured:
+        return configured
+    markdown_dir = ROOT / "pipeline" / "data" / "markdown"
+    files = sorted(markdown_dir.glob("*.md"))
+    if not files:
+        return "unavailable"
+    digest = hashlib.sha256()
+    for path in files:
+        digest.update(path.name.encode("utf-8"))
+        with path.open("rb") as handle:
+            for block in iter(lambda: handle.read(1024 * 1024), b""):
+                digest.update(block)
+    return digest.hexdigest()
+
+
+def report_provenance() -> dict[str, Any]:
+    global _PROVENANCE_CACHE
+    if _PROVENANCE_CACHE is not None:
+        return dict(_PROVENANCE_CACHE)
+    migration_dir = ROOT / "supabase" / "migrations"
+    migrations = sorted(path.name for path in migration_dir.glob("*.sql"))
+    status = _git_output(["status", "--porcelain"])
+    deployment_urls = {
+        key: value
+        for key, value in {
+            "web": os.getenv("WEB_URL", "").strip(),
+            "mcp": os.getenv("MCP_URL", "").strip(),
+            "ops": os.getenv("OPS_DASHBOARD_URL", "").strip(),
+        }.items()
+        if value
+    }
+    configured_deployment_id = os.getenv("HARNESS_DEPLOYMENT_ID", os.getenv("VERCEL_DEPLOYMENT_ID", "")).strip()
+    deployment_id = configured_deployment_id or (
+        hashlib.sha256(json.dumps(deployment_urls, sort_keys=True).encode("utf-8")).hexdigest()[:24]
+        if deployment_urls
+        else None
+    )
+    _PROVENANCE_CACHE = {
+        "formatVersion": REPORT_FORMAT_VERSION,
+        "gitSha": _git_output(["rev-parse", "HEAD"]) or "unavailable",
+        "gitDirty": bool(status),
+        "sourceFingerprint": _source_fingerprint(),
+        "schemaMigration": migrations[-1] if migrations else "unavailable",
+        "corpusFingerprint": _corpus_fingerprint(),
+        "target": os.getenv("HARNESS_TARGET", "local").strip() or "local",
+        "deploymentId": deployment_id,
+        "deploymentUrls": deployment_urls,
+    }
+    return dict(_PROVENANCE_CACHE)
+
+
 def make_report(suite: str, checks: list[Check], metrics: dict[str, Any] | None = None) -> dict[str, Any]:
     return {
         "status": worst_status([check.status for check in checks]),
@@ -57,6 +151,7 @@ def make_report(suite: str, checks: list[Check], metrics: dict[str, Any] | None 
         "generatedAt": utc_now(),
         "checks": [check.as_dict() for check in checks],
         "metrics": metrics or {},
+        "provenance": report_provenance(),
     }
 
 
@@ -127,6 +222,10 @@ def run_command(name: str, command: list[str], cwd: Path | None = None, timeout:
 def http_json(method: str, url: str, body: dict[str, Any] | None = None, headers: dict[str, str] | None = None, timeout: int = 60) -> tuple[int, Any, float]:
     data = None if body is None else json.dumps(body).encode("utf-8")
     request_headers = {"Accept": "application/json", **(headers or {})}
+    bypass = os.getenv("VERCEL_AUTOMATION_BYPASS_SECRET", "").strip()
+    if bypass and "vercel.app" in url:
+        request_headers.setdefault("x-vercel-protection-bypass", bypass)
+        request_headers.setdefault("x-vercel-set-bypass-cookie", "true")
     if body is not None:
         request_headers["Content-Type"] = "application/json"
     request = urllib.request.Request(url, data=data, headers=request_headers, method=method.upper())

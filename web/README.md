@@ -19,7 +19,7 @@ Open `http://localhost:3000`.
 
 - `MCP off` = model-only answer
 - `MCP on` = bounded Agentic Context Engine over MCP retrieval tools
-- Model dropdown: `gpt-5-mini-2025-08-07`, `gpt-5-nano`, `deepseek-v4-flash`, `deepseek-v4-pro`
+- Model dropdown: `gpt-5.6-luna` (default), `gpt-5.6-terra`, `gpt-5.6-sol`, `deepseek-v4-flash`, `deepseek-v4-pro`
 - Collection dropdown: `All`, `CE Project`, `NCCE`
 - Share/export support for chat sessions
 

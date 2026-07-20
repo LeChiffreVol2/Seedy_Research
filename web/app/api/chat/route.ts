@@ -1,9 +1,12 @@
 import { createOpenAI, openai } from "@ai-sdk/openai";
 import { convertToCoreMessages, generateObject, generateText, streamText, StreamData } from "ai";
 import type { UIMessage } from "ai";
+import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 
-import { saveChatTrace } from "@/lib/chat-store";
+import { applyChatIdentityCookies, chatIdentityErrorResponse, resolveChatIdentity } from "@/lib/chat-auth";
+import { assertGuestCookieConfigured } from "@/lib/chat-cookies";
+import { consumeChatQuota, ensureChatUser, getChatSessionForOwner, isValidSessionId, saveChatTrace } from "@/lib/chat-store";
 import {
   DEFAULT_CHAT_MODEL,
   isDeepSeekChatModel,
@@ -13,13 +16,11 @@ import {
 } from "@/lib/chat-models";
 import {
   assertRequiredServerEnv,
-  checkRateLimit,
   clampEnvNumber,
   isPlaceholderSecret,
-  parseCookies,
+  getRequestIp,
   rateLimitHeaders,
   readBoundedJson,
-  requestIdentityKey,
   safeTraceId,
 } from "@/lib/server-guards";
 
@@ -34,7 +35,7 @@ const DEEPSEEK_BASE_URL = (process.env.DEEPSEEK_BASE_URL ?? "https://api.deepsee
 const AGENTIC_CONTEXT_ENABLED = process.env.AGENTIC_CONTEXT_ENABLED !== "false";
 const SIMPLE_RAG_FALLBACK = process.env.SIMPLE_RAG_FALLBACK !== "false";
 const ROUTER_PROVIDER = normalizeRouterProvider(process.env.ROUTER_PROVIDER, process.env.ROUTER_MODEL);
-const ROUTER_MODEL = process.env.ROUTER_MODEL ?? "deepseek-v4-flash";
+const ROUTER_MODEL = process.env.ROUTER_MODEL ?? "gpt-5.6-luna";
 const MAX_AGENT_STEPS = clampNumber(process.env.MAX_AGENT_STEPS, 1, 5, 3);
 const MAX_TOOL_CALLS = clampNumber(process.env.MAX_TOOL_CALLS, 1, 8, 4);
 const MAX_CONTEXT_CHUNKS = clampNumber(process.env.MAX_CONTEXT_CHUNKS, 1, 16, 8);
@@ -58,9 +59,12 @@ const MEMORY_MAX_COMPACTION_INPUT_TOKENS = clampNumber(
 const CHAT_MAX_BODY_BYTES = clampEnvNumber(process.env.CHAT_MAX_BODY_BYTES, 8_192, 2_000_000, 180_000);
 const CHAT_MAX_MESSAGES = clampEnvNumber(process.env.CHAT_MAX_MESSAGES, 2, 200, 80);
 const CHAT_MAX_MESSAGE_CHARS = clampEnvNumber(process.env.CHAT_MAX_MESSAGE_CHARS, 500, 80_000, 12_000);
-const CHAT_RATE_LIMIT_WINDOW_SECONDS = clampEnvNumber(process.env.CHAT_RATE_LIMIT_WINDOW_SECONDS, 10, 3600, 60);
-const CHAT_RATE_LIMIT_MAX_CALLS = clampEnvNumber(process.env.CHAT_RATE_LIMIT_MAX_CALLS, 1, 300, 24);
+const CHAT_GUEST_REQUESTS_PER_MINUTE = clampEnvNumber(process.env.CHAT_GUEST_REQUESTS_PER_MINUTE, 1, 60, 3);
+const CHAT_GUEST_REQUESTS_PER_HOUR = clampEnvNumber(process.env.CHAT_GUEST_REQUESTS_PER_HOUR, 1, 500, 30);
+const CHAT_AUTH_REQUESTS_PER_MINUTE = clampEnvNumber(process.env.CHAT_AUTH_REQUESTS_PER_MINUTE, 1, 120, 10);
+const CHAT_AUTH_REQUESTS_PER_HOUR = clampEnvNumber(process.env.CHAT_AUTH_REQUESTS_PER_HOUR, 1, 2000, 60);
 const ANSWER_MAX_TOKENS = clampEnvNumber(process.env.ANSWER_MAX_TOKENS, 400, 4000, 1500);
+const OPENAI_ANSWER_MIN_TOKENS = 2400;
 
 type Intent = "simple_lookup" | "compare" | "summarize" | "methodology" | "citation_search";
 type CollectionFilter = "" | "ce_project" | "ncce";
@@ -244,7 +248,19 @@ type TraceTimings = {
 const RouterPlanSchema = z.object({
   intent: z.enum(["simple_lookup", "compare", "summarize", "methodology", "citation_search"]),
   searchQuery: z.string().min(1).max(500),
-  discipline: z.enum(["", "transport", "structural", "geotechnical", "construction_mgmt"]),
+  discipline: z.enum([
+    "",
+    "transport",
+    "structural",
+    "geotechnical",
+    "construction_mgmt",
+    "water_resources",
+    "surveying_gis",
+    "environmental",
+    "infrastructure",
+    "civil_education",
+    "ai_engineering",
+  ]),
   needsNeighbors: z.boolean(),
   reason: z.string().max(240),
 });
@@ -303,7 +319,7 @@ function resolveRouterModel(provider: RouterProvider, modelOverride?: string): s
   if (provider === "deepseek") {
     return candidate.startsWith("deepseek-") ? candidate : "deepseek-v4-flash";
   }
-  return candidate && !candidate.startsWith("deepseek-") ? candidate : "gpt-5-nano";
+  return candidate && !candidate.startsWith("deepseek-") ? candidate : "gpt-5.6-luna";
 }
 
 function normalizeCollection(value: string | undefined | null): CollectionFilter {
@@ -380,6 +396,16 @@ function resolveLanguageModel(selectedModel: ChatModel) {
   return openai(DEFAULT_CHAT_MODEL);
 }
 
+function answerGenerationOptions(selectedModel: ChatModel) {
+  if (isOpenAIChatModel(selectedModel)) {
+    return {
+      maxTokens: Math.max(ANSWER_MAX_TOKENS, OPENAI_ANSWER_MIN_TOKENS),
+      providerOptions: { openai: { reasoningEffort: "low" } },
+    } as const;
+  }
+  return { maxTokens: ANSWER_MAX_TOKENS } as const;
+}
+
 function resolveRouterLanguageModel(provider: RouterProvider, model: string) {
   if (provider === "deepseek") {
     if (!process.env.DEEPSEEK_API_KEY) {
@@ -388,11 +414,6 @@ function resolveRouterLanguageModel(provider: RouterProvider, model: string) {
     return deepseek(model);
   }
   return openai(model);
-}
-
-function userIdFromRequest(request: Request): string | null {
-  const cookies = parseCookies(request.headers.get("cookie"));
-  return cookies.civilmcp_user || null;
 }
 
 function validateChatBody(body: ChatBody): string | null {
@@ -410,6 +431,9 @@ function validateChatBody(body: ChatBody): string | null {
   const totalChars = body.messages.reduce((sum, message) => sum + getMessageText(message).length, 0);
   if (totalChars > CHAT_MAX_MESSAGE_CHARS * Math.max(2, Math.ceil(CHAT_MAX_MESSAGES / 4))) {
     return "conversation payload is too large; start a new chat or wait for memory compaction.";
+  }
+  if (body.sessionId && !isValidSessionId(body.sessionId)) {
+    return "sessionId must be a UUID.";
   }
   return null;
 }
@@ -434,6 +458,19 @@ function assertChatRuntimeEnv(mode: ChatBody["mode"], selectedModel: ChatModel, 
     }
   }
   assertRequiredServerEnv(requirements);
+}
+
+function assertChatSecurityEnv() {
+  assertRequiredServerEnv([
+    { name: "SUPABASE_URL", value: process.env.SUPABASE_URL },
+    { name: "SUPABASE_SERVICE_KEY", value: process.env.SUPABASE_SERVICE_KEY, secret: true },
+    {
+      name: "SUPABASE_ANON_KEY",
+      value: process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY ?? process.env.SUPABASE_ANON_KEY,
+      secret: true,
+    },
+  ]);
+  assertGuestCookieConfigured();
 }
 
 function normalizeUsage(usage: unknown): Record<string, unknown> | null {
@@ -690,7 +727,7 @@ function buildConversationContext(messages: UIMessage[], latestUserText: string)
 function contextWindowTokensForModel(model: ChatModel): number {
   const override = Number.parseInt(process.env.MODEL_CONTEXT_WINDOW_TOKENS ?? "", 10);
   if (Number.isFinite(override) && override >= 8000) return override;
-  if (model.startsWith("gpt-5")) return 128000;
+  if (model.startsWith("gpt-5.6")) return 1_050_000;
   if (model.startsWith("deepseek")) return 64000;
   return 64000;
 }
@@ -811,7 +848,7 @@ async function generateRunningSummary(
       ]
         .filter(Boolean)
         .join("\n\n"),
-      temperature: 0,
+      ...(routerProvider === "openai" ? { providerOptions: { openai: { reasoningEffort: "low" } } } : {}),
       maxTokens: 900,
     });
     const summary = result.text.trim();
@@ -1021,14 +1058,44 @@ async function callSimpleRagContext(
   }
 }
 
+function explicitDisciplineForQuestion(question: string): string {
+  const q = question.trim();
+  if (/construction\s+(?:delay|cost|management|project)|cost\s+overrun|ความล่าช้า[^\n]{0,40}ก่อสร้าง|ต้นทุน[^\n]{0,40}ก่อสร้าง|บริหาร[^\n]{0,40}ก่อสร้าง/iu.test(q)) return "construction_mgmt";
+  if (/transport(?:ation)?|traffic|road\s+safety|road\s+accident|จราจร|ขนส่ง|ความปลอดภัย[^\n]{0,30}ถนน|อุบัติเหตุ[^\n]{0,30}(?:ถนน|ทาง)/iu.test(q)) return "transport";
+  if (/structural|concrete|beam|column|โครงสร้าง|คอนกรีต/iu.test(q)) return "structural";
+  if (/geotechnical|soil|foundation|ปฐพี|ชั้นดิน|ฐานราก/iu.test(q)) return "geotechnical";
+  if (/water\s+resources?|hydraulic|flood|ชลศาสตร์|ชัลประทาน|น้ำท่วม/iu.test(q)) return "water_resources";
+  if (/survey(?:ing)?|\bgis\b|สำรวจ|ภูมิสารสนเทศ/iu.test(q)) return "surveying_gis";
+  if (/environment(?:al)?|pollution|wastewater|สิ่งแวดล้อม|มลพิษ|น้ำเสีย/iu.test(q)) return "environmental";
+  if (/infrastructure|โครงสร้างพื้นฐาน/iu.test(q)) return "infrastructure";
+  return "";
+}
+
 function contextPlanForIntent(question: string, intent: Intent, reason: string): ContextPlan {
   return {
     intent,
     searchQuery: question || "civil engineering",
-    discipline: "",
+    discipline: explicitDisciplineForQuestion(question),
     needsNeighbors: intent === "citation_search",
     reason,
   };
+}
+
+function explicitPaperSources(question: string): string[] {
+  const sources: string[] = [];
+  const seen = new Set<string>();
+  const add = (source: string) => {
+    if (seen.has(source) || sources.length >= Math.min(MAX_AGENT_STEPS, MAX_TOOL_CALLS)) return;
+    seen.add(source);
+    sources.push(source);
+  };
+  for (const match of question.matchAll(/\bNCCE(25|26|29)_([A-Z]{2,4}-?\d{1,3})\b/gi)) {
+    add(`NCCE${match[1]}_${match[2].toUpperCase()}.md`);
+  }
+  for (const match of question.matchAll(/\bY(2019|202[0-4])_TR_Article_G(\d{2})\b/gi)) {
+    add(`Y${match[1]}_TR_Article_G${match[2]}.md`);
+  }
+  return sources;
 }
 
 function deterministicPlan(question: string): ContextPlan | null {
@@ -1117,7 +1184,7 @@ async function planContext(
         "Prefer cheap retrieval. Use discipline only when the user explicitly gives one. " +
         "Return a concise searchQuery optimized for semantic retrieval.\n\n" +
         `Question: ${question}`,
-      temperature: 0,
+      ...(routerProvider === "openai" ? { providerOptions: { openai: { reasoningEffort: "low" } } } : {}),
     });
     return {
       plan: result.object,
@@ -1157,7 +1224,7 @@ async function planContextWithDeepSeek(question: string, routerModel: string): P
               "{\"intent\":\"simple_lookup|compare|summarize|methodology|citation_search\"," +
               "\"searchQuery\":\"semantic query\",\"discipline\":\"\",\"needsNeighbors\":false," +
               "\"reason\":\"short reason\"}. " +
-              "Use discipline only if the user explicitly says transport, structural, geotechnical, or construction management.",
+              "Use discipline only if the user explicitly names one of the supported civil-engineering disciplines.",
           },
           {
             role: "user",
@@ -1210,7 +1277,6 @@ function dedupeChunks(chunks: ChunkResult[]): ChunkResult[] {
     if (seen.has(key)) continue;
     seen.add(key);
     results.push(chunk);
-    if (results.length >= MAX_CONTEXT_CHUNKS) break;
   }
   return results;
 }
@@ -1957,48 +2023,101 @@ async function buildAgenticContext(
     }
   }
 
-  const sectionsPayload = await callTool("search_civil_sections", {
-    query: queryByIntent,
-    discipline: plan.discipline,
-    max_results: sectionTopKByIntent[plan.intent],
-    collection,
-  });
-  sections = [...sections, ...getStructuredResults<SectionResult>(sectionsPayload)];
-  const sectionIds = uniqueStrings(
-    [anchorEvidence?.sectionId, ...sections.map((section) => section.id)].filter(Boolean),
-    24,
-  );
-  const documentIds = explicitAnchor ? uniqueStrings([anchorEvidence?.documentId], 4) : [];
+  let exactPaperMatches = 0;
+  if (!explicitAnchor) {
+    for (const source of explicitPaperSources(question)) {
+      if (toolCalls >= Math.min(MAX_TOOL_CALLS, MAX_AGENT_STEPS)) break;
+      try {
+        const paperPayload = await callTool("fetch_civil_paper", {
+          source,
+          include_sections: true,
+          include_chunks: true,
+          max_sections: 20,
+          max_chunks: 80,
+        });
+        const structured = paperPayload.structuredContent as {
+          found?: boolean;
+          document?: {
+            id?: string;
+            source?: string;
+            collection?: string;
+            source_type?: string;
+            parent_source_pdf?: string;
+            paper_code?: string;
+            discipline?: string;
+          };
+          sections?: unknown;
+          chunks?: unknown;
+        };
+        const document = structured.document;
+        if (!structured.found || !document || (collection && document.collection !== collection)) continue;
+        const paperSections = Array.isArray(structured.sections) ? (structured.sections as SectionResult[]) : [];
+        const paperChunks = Array.isArray(structured.chunks) ? (structured.chunks as ChunkResult[]) : [];
+        sections = [
+          ...sections,
+          ...paperSections.map((section) => ({
+            ...section,
+            document_id: section.document_id ?? document.id,
+            source: section.source ?? document.source ?? source,
+            collection: section.collection ?? document.collection,
+            source_type: section.source_type ?? document.source_type,
+            parent_source_pdf: section.parent_source_pdf ?? document.parent_source_pdf,
+            paper_code: section.paper_code ?? document.paper_code,
+            discipline: section.discipline ?? document.discipline,
+          })),
+        ];
+        chunks = [...chunks, ...paperChunks];
+        exactPaperMatches += 1;
+      } catch {
+        // If an explicit source is stale or missing, bounded semantic retrieval remains the fallback.
+      }
+    }
+  }
 
-  const shouldFetchChunks =
-    plan.intent !== "summarize" || sections.length < 5 || Number(sections[0]?.similarity ?? 0) < 0.2;
-
-  if (shouldFetchChunks && toolCalls < Math.min(MAX_TOOL_CALLS, MAX_AGENT_STEPS)) {
-    const chunkTopKByIntent: Record<Intent, number> = {
-      simple_lookup: MCP_CHUNK_CANDIDATE_LIMIT,
-      compare: MCP_CHUNK_CANDIDATE_LIMIT,
-      summarize: 12,
-      methodology: MCP_CHUNK_CANDIDATE_LIMIT,
-      citation_search: MCP_CHUNK_CANDIDATE_LIMIT,
-    };
-    const chunksPayload = await callTool("search_civil_chunks", {
+  if (exactPaperMatches === 0) {
+    const sectionsPayload = await callTool("search_civil_sections", {
       query: queryByIntent,
       discipline: plan.discipline,
-      max_results: chunkTopKByIntent[plan.intent],
-      section_ids: sectionIds.length ? sectionIds : undefined,
-      document_ids: documentIds.length ? documentIds : undefined,
+      max_results: sectionTopKByIntent[plan.intent],
       collection,
     });
-    chunks = [...chunks, ...getStructuredResults<ChunkResult>(chunksPayload)];
+    sections = [...sections, ...getStructuredResults<SectionResult>(sectionsPayload)];
+    const sectionIds = uniqueStrings(
+      [anchorEvidence?.sectionId, ...sections.map((section) => section.id)].filter(Boolean),
+      24,
+    );
+    const documentIds = explicitAnchor ? uniqueStrings([anchorEvidence?.documentId], 4) : [];
 
-    if (chunks.length === 0 && plan.intent !== "summarize" && toolCalls < Math.min(MAX_TOOL_CALLS, MAX_AGENT_STEPS)) {
-      const fallbackChunksPayload = await callTool("search_civil_chunks", {
+    const shouldFetchChunks =
+      plan.intent !== "summarize" || sections.length < 5 || Number(sections[0]?.similarity ?? 0) < 0.2;
+
+    if (shouldFetchChunks && toolCalls < Math.min(MAX_TOOL_CALLS, MAX_AGENT_STEPS)) {
+      const chunkTopKByIntent: Record<Intent, number> = {
+        simple_lookup: MCP_CHUNK_CANDIDATE_LIMIT,
+        compare: MCP_CHUNK_CANDIDATE_LIMIT,
+        summarize: 12,
+        methodology: MCP_CHUNK_CANDIDATE_LIMIT,
+        citation_search: MCP_CHUNK_CANDIDATE_LIMIT,
+      };
+      const chunksPayload = await callTool("search_civil_chunks", {
         query: queryByIntent,
         discipline: plan.discipline,
         max_results: chunkTopKByIntent[plan.intent],
+        section_ids: sectionIds.length ? sectionIds : undefined,
+        document_ids: documentIds.length ? documentIds : undefined,
         collection,
       });
-      chunks = getStructuredResults<ChunkResult>(fallbackChunksPayload);
+      chunks = [...chunks, ...getStructuredResults<ChunkResult>(chunksPayload)];
+
+      if (chunks.length === 0 && plan.intent !== "summarize" && toolCalls < Math.min(MAX_TOOL_CALLS, MAX_AGENT_STEPS)) {
+        const fallbackChunksPayload = await callTool("search_civil_chunks", {
+          query: queryByIntent,
+          discipline: plan.discipline,
+          max_results: chunkTopKByIntent[plan.intent],
+          collection,
+        });
+        chunks = getStructuredResults<ChunkResult>(fallbackChunksPayload);
+      }
     }
   }
 
@@ -2048,21 +2167,10 @@ async function buildMcpContext(
   }
 }
 
-export async function POST(request: Request) {
+export async function POST(request: NextRequest) {
   const totalStarted = performance.now();
   const requestId = request.headers.get("x-request-id")?.trim() || safeTraceId();
   const traceId = safeTraceId();
-  const rate = checkRateLimit(
-    requestIdentityKey(request, "chat"),
-    CHAT_RATE_LIMIT_MAX_CALLS,
-    CHAT_RATE_LIMIT_WINDOW_SECONDS,
-  );
-  if (!rate.allowed) {
-    return Response.json(
-      { error: "Too many chat requests. Please retry later." },
-      { status: 429, headers: rateLimitHeaders(rate) },
-    );
-  }
 
   let body: ChatBody;
   try {
@@ -2071,13 +2179,62 @@ export async function POST(request: Request) {
     const status = typeof (error as { statusCode?: unknown }).statusCode === "number" ? (error as { statusCode: number }).statusCode : 400;
     return Response.json(
       { error: error instanceof Error ? error.message : "Invalid request body." },
-      { status, headers: rateLimitHeaders(rate) },
+      { status },
     );
   }
 
   const validationError = validateChatBody(body);
   if (validationError) {
-    return Response.json({ error: validationError }, { status: 422, headers: rateLimitHeaders(rate) });
+    return Response.json({ error: validationError }, { status: 422 });
+  }
+
+  try {
+    assertChatSecurityEnv();
+  } catch (error) {
+    return Response.json(
+      { error: error instanceof Error ? error.message : "Chat security runtime is not configured." },
+      { status: 503 },
+    );
+  }
+
+  let resolvedIdentity: Awaited<ReturnType<typeof resolveChatIdentity>>;
+  try {
+    resolvedIdentity = await resolveChatIdentity(request);
+  } catch (error) {
+    return chatIdentityErrorResponse(error, request);
+  }
+  const { identity, applyAuthCookies } = resolvedIdentity;
+  const finalizeResponse = (response: Response): NextResponse => {
+    const nextResponse = new NextResponse(response.body, {
+      status: response.status,
+      statusText: response.statusText,
+      headers: response.headers,
+    });
+    return applyChatIdentityCookies(nextResponse, identity, applyAuthCookies);
+  };
+
+  let rate: Awaited<ReturnType<typeof consumeChatQuota>>;
+  try {
+    rate = await consumeChatQuota({
+      userId: identity.userId,
+      ipAddress: getRequestIp(request),
+      isAuthenticated: identity.isAuthenticated,
+      guestMinuteLimit: CHAT_GUEST_REQUESTS_PER_MINUTE,
+      guestHourLimit: CHAT_GUEST_REQUESTS_PER_HOUR,
+      authenticatedMinuteLimit: CHAT_AUTH_REQUESTS_PER_MINUTE,
+      authenticatedHourLimit: CHAT_AUTH_REQUESTS_PER_HOUR,
+    });
+  } catch (error) {
+    console.error("civilmcp_distributed_quota_failed", error instanceof Error ? error.message : String(error));
+    return finalizeResponse(Response.json({ error: "Chat quota service is temporarily unavailable." }, { status: 503 }));
+  }
+  if (!rate.allowed) {
+    return finalizeResponse(
+      Response.json(
+        { error: `Too many chat requests. Try again after ${new Date(rate.resetAt).toISOString()}.` },
+        { status: 429, headers: rateLimitHeaders(rate) },
+      ),
+    );
   }
 
   const {
@@ -2100,14 +2257,26 @@ export async function POST(request: Request) {
   try {
     assertChatRuntimeEnv(mode, selectedModel, routerProvider);
   } catch (error) {
-    return Response.json(
-      { error: error instanceof Error ? error.message : "Chat runtime is not configured." },
-      { status: 503, headers: rateLimitHeaders(rate) },
+    return finalizeResponse(
+      Response.json(
+        { error: error instanceof Error ? error.message : "Chat runtime is not configured." },
+        { status: 503, headers: rateLimitHeaders(rate) },
+      ),
     );
   }
 
   const languageModel = resolveLanguageModel(selectedModel);
-  const userId = userIdFromRequest(request);
+  const userId = identity.userId;
+  let traceSessionId: string | null = null;
+  try {
+    if (!identity.isAuthenticated) await ensureChatUser(userId, { isGuest: true });
+    traceSessionId = sessionId && (await getChatSessionForOwner(sessionId, userId)) ? sessionId : null;
+  } catch (error) {
+    console.error("civilmcp_trace_identity_failed", error instanceof Error ? error.message : String(error));
+    return finalizeResponse(
+      Response.json({ error: "Chat persistence service is temporarily unavailable." }, { status: 503, headers: rateLimitHeaders(rate) }),
+    );
+  }
   const latestUserForTrace = getLatestUserText(messages ?? []);
   const memoryPreparation = await prepareConversationMemory(
     messages ?? [],
@@ -2132,7 +2301,7 @@ export async function POST(request: Request) {
         model: languageModel,
         system,
         messages: coreMessages,
-        maxTokens: ANSWER_MAX_TOKENS,
+        ...answerGenerationOptions(selectedModel),
       });
       const usage = normalizeUsage(result.usage ?? null);
       const timings: TraceTimings = {
@@ -2142,7 +2311,7 @@ export async function POST(request: Request) {
       const tracePersisted = await saveChatTraceSafe({
         traceId,
         requestId,
-        sessionId: sessionId ?? null,
+        sessionId: traceSessionId,
         userId,
         mode: "baseline",
         model: selectedModel,
@@ -2153,8 +2322,9 @@ export async function POST(request: Request) {
         timings,
         costUsd: estimateCostUsd(selectedModel, usage),
         status: "ok",
+        includeContent: true,
       });
-      return Response.json({
+      return finalizeResponse(Response.json({
         traceId,
         tracePersisted,
         mode: "baseline",
@@ -2163,7 +2333,7 @@ export async function POST(request: Request) {
         usage,
         timings,
         memory: memoryPreparation.memory,
-      });
+      }, { headers: rateLimitHeaders(rate) }));
     }
 
     const baselineData = new StreamData();
@@ -2177,14 +2347,14 @@ export async function POST(request: Request) {
       model: languageModel,
       system,
       messages: coreMessages,
-      maxTokens: ANSWER_MAX_TOKENS,
+      ...answerGenerationOptions(selectedModel),
       onFinish: async (event) => {
         const answer = typeof event.text === "string" ? event.text : "";
         const usage = normalizeUsage(event.usage ?? null);
         await saveChatTraceSafe({
           traceId,
           requestId,
-          sessionId: sessionId ?? null,
+          sessionId: traceSessionId,
           userId,
           mode: "baseline",
           model: selectedModel,
@@ -2202,7 +2372,7 @@ export async function POST(request: Request) {
         await baselineData.close();
       },
     });
-    return result.toDataStreamResponse({ data: baselineData, headers: rateLimitHeaders(rate) });
+    return finalizeResponse(result.toDataStreamResponse({ data: baselineData, headers: rateLimitHeaders(rate) }));
   }
 
   const latestUserText = getLatestUserText(messages ?? []);
@@ -2252,7 +2422,7 @@ export async function POST(request: Request) {
     const tracePersisted = await saveChatTraceSafe({
       traceId,
       requestId,
-      sessionId: sessionId ?? null,
+      sessionId: traceSessionId,
       userId,
       mode: "mcp",
       model: selectedModel,
@@ -2266,8 +2436,9 @@ export async function POST(request: Request) {
       timings,
       costUsd: null,
       status: "ok",
+      includeContent: true,
     });
-    return Response.json({
+    return finalizeResponse(Response.json({
       traceId,
       tracePersisted,
       mode: builtContext.mode,
@@ -2279,7 +2450,7 @@ export async function POST(request: Request) {
       plan: builtContext.plan ?? null,
       timings,
       memory: memoryPreparation.memory,
-    });
+    }, { headers: rateLimitHeaders(rate) }));
   }
 
   if (debug) {
@@ -2288,7 +2459,7 @@ export async function POST(request: Request) {
       model: languageModel,
       system,
       messages: coreMessages,
-      maxTokens: ANSWER_MAX_TOKENS,
+      ...answerGenerationOptions(selectedModel),
     });
     const generatedAnswer = result.text ?? "";
     const answer = shouldUseAnswerFallback(generatedAnswer, builtContext.evidenceItems)
@@ -2303,7 +2474,7 @@ export async function POST(request: Request) {
     const tracePersisted = await saveChatTraceSafe({
       traceId,
       requestId,
-      sessionId: sessionId ?? null,
+      sessionId: traceSessionId,
       userId,
       mode: "mcp",
       model: selectedModel,
@@ -2317,8 +2488,9 @@ export async function POST(request: Request) {
       timings,
       costUsd: estimateCostUsd(selectedModel, usage),
       status: "ok",
+      includeContent: true,
     });
-    return Response.json({
+    return finalizeResponse(Response.json({
       traceId,
       tracePersisted,
       mode: builtContext.mode,
@@ -2330,7 +2502,7 @@ export async function POST(request: Request) {
       plan: builtContext.plan ?? null,
       timings,
       memory: memoryPreparation.memory,
-    });
+    }, { headers: rateLimitHeaders(rate) }));
   }
 
   const data = new StreamData();
@@ -2344,7 +2516,7 @@ export async function POST(request: Request) {
     model: languageModel,
     system,
     messages: coreMessages,
-    maxTokens: ANSWER_MAX_TOKENS,
+    ...answerGenerationOptions(selectedModel),
     onFinish: async (event) => {
       const generatedAnswer = typeof event.text === "string" ? event.text : "";
       const answer = shouldUseAnswerFallback(generatedAnswer, builtContext.evidenceItems)
@@ -2354,7 +2526,7 @@ export async function POST(request: Request) {
       await saveChatTraceSafe({
         traceId,
         requestId,
-        sessionId: sessionId ?? null,
+        sessionId: traceSessionId,
         userId,
         mode: "mcp",
         model: selectedModel,
@@ -2377,5 +2549,5 @@ export async function POST(request: Request) {
     },
   });
 
-  return result.toDataStreamResponse({ data, headers: rateLimitHeaders(rate) });
+  return finalizeResponse(result.toDataStreamResponse({ data, headers: rateLimitHeaders(rate) }));
 }

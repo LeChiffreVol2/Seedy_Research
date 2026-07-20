@@ -23,8 +23,9 @@ def rows_from_supabase_rest(env: dict[str, str]) -> list[dict[str, Any]]:
     return (
         sb.table("civil_chat_feedback")
         .select(
-            "feedback_id, trace_id, session_id, rating, categories, correction, citation_issue, created_at, "
-            "civil_chat_traces(question, answer, model, collection, context_stats, evidence_items, usage, timings)"
+            "feedback_id, trace_id, session_id, rating, categories, correction, citation_issue, "
+            "question_snapshot, answer_snapshot, content_expires_at, created_at, "
+            "civil_chat_traces(question, answer, question_hash, model, collection, context_stats, evidence_items, usage, timings)"
         )
         .eq("rating", "down")
         .order("created_at", desc=True)
@@ -51,10 +52,14 @@ def rows_from_db_url(env: dict[str, str]) -> list[dict[str, Any]]:
                   f.categories,
                   f.correction,
                   f.citation_issue,
+                  f.question_snapshot,
+                  f.answer_snapshot,
+                  f.content_expires_at,
                   f.created_at,
                   jsonb_build_object(
                     'question', t.question,
                     'answer', t.answer,
+                    'question_hash', t.question_hash,
                     'model', t.model,
                     'collection', t.collection,
                     'context_stats', t.context_stats,

@@ -16,7 +16,7 @@ python3.10 baseline.py
 MCP_URL=http://localhost:8000 python3.10 mcp_eval.py
 WEB_URL=http://localhost:3000 python3.10 agentic_context_eval.py
 # optional router A/B
-ROUTER_PROVIDER=openai ROUTER_MODEL=gpt-5-nano WEB_URL=http://localhost:3000 python3.10 agentic_context_eval.py
+ROUTER_PROVIDER=openai ROUTER_MODEL=gpt-5.6-luna WEB_URL=http://localhost:3000 python3.10 agentic_context_eval.py
 python3.10 compare.py
 ```
 
