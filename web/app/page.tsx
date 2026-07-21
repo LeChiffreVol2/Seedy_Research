@@ -448,9 +448,9 @@ const FILTER_OPTIONS: Array<{ id: FeedFilter; label: string; icon: LucideIcon }>
 
 const MAIN_NAV_ITEMS: NavItem[] = [
   { id: "explore", label: "Explore", icon: Compass },
+  { id: "chat", label: "Chat", icon: MessageCircle },
   { id: "workspace", label: "Workspace", icon: TableProperties },
   { id: "path", label: "Research Path", icon: Route },
-  { id: "chat", label: "Chat", icon: MessageCircle },
   { id: "history", label: "History", icon: History },
   { id: "shared", label: "Shared", icon: Share2 },
   { id: "settings", label: "Settings", icon: Settings },
