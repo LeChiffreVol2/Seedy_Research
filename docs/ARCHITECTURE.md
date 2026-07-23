@@ -4,7 +4,7 @@
 CivilMCP has three production surfaces:
 - `web/`: Next.js 15 app with research feed, chat UI, bounded Agentic Context Engine orchestration in `/api/chat`, deterministic learning-path assembly in `/api/research-path`, and a bounded batch matrix in `/api/research-workspaces`.
 - `mcp-server/`: Python FastAPI MCP-style retrieval service exposing `/health`, `/metrics`, `/tools/list`, `/tools/call`, and MCP ASGI transport.
-- `pipeline/` + `supabase/`: PDF extraction, markdown/preview generation, v2 section/chunk embedding, and Supabase pgvector readiness checks.
+- `pipeline/` + `supabase/`: provider registry, metadata harvesting, page-preserving PDF/OCR extraction, markdown/preview generation, v2 section/chunk embedding, and Supabase pgvector readiness checks.
 
 ## Runtime Flow
 ```text
@@ -40,7 +40,9 @@ When a server-only `OPENALEX_API_KEY` is configured, the route adds up to four g
 
 ## Retrieval Substrate
 - Embeddings: `text-embedding-3-small` with `EMBEDDING_DIMENSIONS=768`.
-- Collections: `ce_project` and `ncce` in v2 tables.
+- Page-linked evidence collections: `ce_project` (legacy internal ID for Student Transport Projects) and `ncce` in v2 tables.
+- Discovery catalog: `civil_source_catalog` stores Student Transport, NCCE, and metadata-only TCI/ThaiJO records. Catalog presence never makes a record citable evidence.
+- Promotion gate: external metadata becomes evidence only after full-text rights, stable provenance, page mapping, OCR quality, deduplication, and embedding checks pass.
 - MCP tools are read-only and must keep `readOnlyHint=true`, `openWorldHint=false`, `destructiveHint=false`.
 - Rollback paths: `AGENTIC_CONTEXT_ENABLED=false`, `RETRIEVAL_VERSION=v1`, or collection filtering.
 
@@ -56,3 +58,4 @@ When a server-only `OPENALEX_API_KEY` is configured, the route adds up to four g
 - Web app orchestrates chat/model behavior; MCP server remains retrieval-only.
 - Pipeline/indexing jobs do not run on Vercel request paths.
 - Harness scripts may call live services but must skip with `warn` when required endpoints or keys are absent.
+- OAI harvesters remain bounded, respect provider rate limits, and never scrape full-text PDFs implicitly.

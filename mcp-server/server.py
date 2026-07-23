@@ -157,6 +157,13 @@ VALID_COLLECTIONS = {
     "ncce",
 }
 
+VALID_SOURCE_PROVIDERS = {
+    "",
+    "student_transport_projects",
+    "ncce",
+    "tci_thaijo",
+}
+
 READ_ONLY_ANNOTATIONS = {
     "readOnlyHint": True,
     "openWorldHint": False,
@@ -194,6 +201,18 @@ TOOL_DEFINITIONS: dict[str, dict[str, Any]] = {
     },
     "list_collections": {
         "description": "List indexed CivilMCP collections and document counts.",
+        "annotations": READ_ONLY_ANNOTATIONS,
+    },
+    "search_source_catalog": {
+        "description": "Search CivilMCP discovery metadata, including non-citable ThaiJO records and evidence status.",
+        "annotations": READ_ONLY_ANNOTATIONS,
+    },
+    "find_related_papers": {
+        "description": "Find page-linked CivilMCP papers in the same engineering discipline as a source paper.",
+        "annotations": READ_ONLY_ANNOTATIONS,
+    },
+    "list_source_providers": {
+        "description": "List CivilMCP source providers with indexed, extracted, and metadata-only record counts.",
         "annotations": READ_ONLY_ANNOTATIONS,
     },
 }
@@ -379,6 +398,17 @@ def normalize_collection(value: str | None) -> str | None:
     cleaned = value.strip()
     if cleaned not in VALID_COLLECTIONS:
         raise InputValidationError("collection must be one of: 'ce_project', 'ncce', ''.")
+    return cleaned or None
+
+
+def normalize_source_provider(value: str | None) -> str | None:
+    if value is None:
+        return None
+    cleaned = value.strip()
+    if cleaned not in VALID_SOURCE_PROVIDERS:
+        raise InputValidationError(
+            "provider must be one of: 'student_transport_projects', 'ncce', 'tci_thaijo', ''."
+        )
     return cleaned or None
 
 
@@ -1151,6 +1181,201 @@ def _list_collections_impl() -> ToolExecutionResult:
     )
 
 
+def _search_source_catalog_impl(
+    query: str,
+    provider: str = "",
+    discipline: str = "",
+    max_results: int = 10,
+) -> ToolExecutionResult:
+    cleaned_query = re.sub(r"[^\w\s-]", " ", query, flags=re.UNICODE)
+    cleaned_query = re.sub(r"\s+", " ", cleaned_query).strip()[:120]
+    if len(cleaned_query) < 2:
+        raise InputValidationError("query must contain at least 2 searchable characters")
+    normalized_provider = normalize_source_provider(provider)
+    normalized_discipline = normalize_discipline(discipline)
+    safe_limit = max(1, min(int(max_results), 20))
+    fields = (
+        "id, provider, provider_record_id, collection, source_type, title_local, title_en, "
+        "abstract_local, abstract_en, authors, keywords, canonical_url, journal_title, publisher, "
+        "published_at, language, discipline, license, rights_status, access_level, evidence_status, document_id"
+    )
+    search_filter = ",".join(
+        f"{column}.ilike.%{cleaned_query}%"
+        for column in ("title_local", "title_en", "abstract_local", "abstract_en", "journal_title", "publisher")
+    )
+    try:
+        catalog_query = (
+            sb.table("civil_source_catalog")
+            .select(fields)
+            .neq("evidence_status", "removed")
+            .or_(search_filter)
+            .order("published_at", desc=True)
+            .limit(safe_limit)
+        )
+        if normalized_provider:
+            catalog_query = catalog_query.eq("provider", normalized_provider)
+        if normalized_discipline:
+            catalog_query = catalog_query.eq("discipline", normalized_discipline)
+        rows = catalog_query.execute().data or []
+    except Exception as exc:  # noqa: BLE001
+        raise UpstreamToolCallError(f"Supabase source catalog search failed: {exc}") from exc
+
+    results = [
+        {
+            **row,
+            "citable": row.get("evidence_status") == "indexed" and bool(row.get("document_id")),
+        }
+        for row in rows
+    ]
+    lines = [
+        (
+            f"- [{row.get('provider')} · {row.get('evidence_status')}] "
+            f"{row.get('title_en') or row.get('title_local') or row.get('provider_record_id')}"
+            f"{' · ' + row['canonical_url'] if row.get('canonical_url') else ''}"
+        )
+        for row in results
+    ]
+    return ToolExecutionResult(
+        tool="search_source_catalog",
+        structured_content={
+            "query": cleaned_query,
+            "provider": normalized_provider or "",
+            "discipline": normalized_discipline or "",
+            "result_count": len(results),
+            "results": results,
+        },
+        content_text=(
+            "\n".join(lines)
+            if lines
+            else "No source catalog records matched. Metadata-only records are never used as citable evidence."
+        ),
+        meta={"result_count": len(results)},
+    )
+
+
+def _find_related_papers_impl(source: str, max_results: int = 6) -> ToolExecutionResult:
+    cleaned_source = source.strip()[:320]
+    if not cleaned_source:
+        raise InputValidationError("source must not be empty")
+    safe_limit = max(1, min(int(max_results), 12))
+    fields = (
+        "id, source, source_pdf, collection, source_type, parent_source_pdf, paper_code, "
+        "page_start, page_end, proceeding_no, proceeding_year, discipline, section_count, chunk_count, indexed_at"
+    )
+    try:
+        matches = (
+            sb.table("civil_documents_v2")
+            .select(fields)
+            .eq("source", cleaned_source)
+            .limit(1)
+            .execute()
+            .data
+            or []
+        )
+        if not matches:
+            matches = (
+                sb.table("civil_documents_v2")
+                .select(fields)
+                .eq("source_pdf", cleaned_source)
+                .limit(1)
+                .execute()
+                .data
+                or []
+            )
+        if not matches:
+            return ToolExecutionResult(
+                tool="find_related_papers",
+                structured_content={"source": cleaned_source, "found": False, "related": []},
+                content_text=f"No indexed paper found for source: {cleaned_source}",
+                meta={"found": False, "related_count": 0},
+            )
+        document = matches[0]
+        related = (
+            sb.table("civil_documents_v2")
+            .select(fields)
+            .eq("discipline", document.get("discipline"))
+            .neq("id", document.get("id"))
+            .order("chunk_count", desc=True)
+            .limit(safe_limit)
+            .execute()
+            .data
+            or []
+        )
+    except Exception as exc:  # noqa: BLE001
+        raise UpstreamToolCallError(f"Supabase related-paper lookup failed: {exc}") from exc
+
+    lines = [
+        (
+            f"- [{row.get('collection')} · {row.get('discipline')}] {row.get('source')} "
+            f"({row.get('section_count', 0)} sections, {row.get('chunk_count', 0)} chunks)"
+        )
+        for row in related
+    ]
+    return ToolExecutionResult(
+        tool="find_related_papers",
+        structured_content={
+            "source": cleaned_source,
+            "found": True,
+            "discipline": document.get("discipline"),
+            "related_count": len(related),
+            "related": related,
+        },
+        content_text="\n".join(lines) if lines else "No related indexed papers found.",
+        meta={"found": True, "related_count": len(related)},
+    )
+
+
+def _list_source_providers_impl() -> ToolExecutionResult:
+    try:
+        rows: list[dict[str, Any]] = []
+        page_size = 1000
+        offset = 0
+        while True:
+            page_rows = (
+                sb.table("civil_source_catalog")
+                .select("provider, evidence_status, document_id")
+                .neq("evidence_status", "removed")
+                .range(offset, offset + page_size - 1)
+                .execute()
+                .data
+                or []
+            )
+            rows.extend(page_rows)
+            if len(page_rows) < page_size:
+                break
+            offset += page_size
+    except Exception as exc:  # noqa: BLE001
+        raise UpstreamToolCallError(f"Supabase source provider list failed: {exc}") from exc
+
+    summary: dict[str, dict[str, int]] = {}
+    for row in rows:
+        provider = str(row.get("provider") or "unknown")
+        item = summary.setdefault(
+            provider,
+            {"records": 0, "indexed": 0, "extracted": 0, "metadata_only": 0, "citable": 0},
+        )
+        item["records"] += 1
+        status = str(row.get("evidence_status") or "")
+        if status in item:
+            item[status] += 1
+        if status == "indexed" and row.get("document_id"):
+            item["citable"] += 1
+    providers = [{"provider": provider, **counts} for provider, counts in sorted(summary.items())]
+    lines = [
+        (
+            f"- {item['provider']}: {item['records']} records, {item['citable']} citable, "
+            f"{item['metadata_only']} metadata-only"
+        )
+        for item in providers
+    ]
+    return ToolExecutionResult(
+        tool="list_source_providers",
+        structured_content={"provider_count": len(providers), "records": len(rows), "providers": providers},
+        content_text="Source providers:\n" + "\n".join(lines),
+        meta={"provider_count": len(providers), "record_count": len(rows)},
+    )
+
+
 def _fetch_civil_paper_impl(
     source: str,
     include_sections: bool = True,
@@ -1516,6 +1741,20 @@ def _dispatch_tool_call(name: str, arguments: dict[str, Any]) -> ToolExecutionRe
         )
     if name == "list_collections":
         return _list_collections_impl()
+    if name == "search_source_catalog":
+        return _search_source_catalog_impl(
+            query=str(arguments.get("query", "")),
+            provider=str(arguments.get("provider", "")),
+            discipline=str(arguments.get("discipline", "")),
+            max_results=int(arguments.get("max_results", 10)),
+        )
+    if name == "find_related_papers":
+        return _find_related_papers_impl(
+            source=str(arguments.get("source", "")),
+            max_results=int(arguments.get("max_results", 6)),
+        )
+    if name == "list_source_providers":
+        return _list_source_providers_impl()
     raise InputValidationError(f"Unknown tool: {name}")
 
 
@@ -1648,6 +1887,37 @@ def list_papers(discipline: str = "", collection: str = "") -> dict[str, Any]:
 @_mcp_tool_decorator(TOOL_DEFINITIONS["list_collections"]["annotations"])
 def list_collections() -> dict[str, Any]:
     return _execute_mcp_decorated_tool("list_collections", {})
+
+
+@_mcp_tool_decorator(TOOL_DEFINITIONS["search_source_catalog"]["annotations"])
+def search_source_catalog(
+    query: str,
+    provider: str = "",
+    discipline: str = "",
+    max_results: int = 10,
+) -> dict[str, Any]:
+    return _execute_mcp_decorated_tool(
+        "search_source_catalog",
+        {
+            "query": query,
+            "provider": provider,
+            "discipline": discipline,
+            "max_results": max_results,
+        },
+    )
+
+
+@_mcp_tool_decorator(TOOL_DEFINITIONS["find_related_papers"]["annotations"])
+def find_related_papers(source: str, max_results: int = 6) -> dict[str, Any]:
+    return _execute_mcp_decorated_tool(
+        "find_related_papers",
+        {"source": source, "max_results": max_results},
+    )
+
+
+@_mcp_tool_decorator(TOOL_DEFINITIONS["list_source_providers"]["annotations"])
+def list_source_providers() -> dict[str, Any]:
+    return _execute_mcp_decorated_tool("list_source_providers", {})
 
 
 class ToolCallPayload(BaseModel):

@@ -81,6 +81,82 @@ test("desktop feed keeps the approved research hierarchy", async ({ page }) => {
   await expectNoInteractiveOverlap(page);
 });
 
+test("Explore separates ThaiJO discovery metadata from citable evidence", async ({ page }) => {
+  await page.setViewportSize({ width: 1440, height: 1000 });
+  await page.goto("/");
+
+  await page.getByRole("button", { name: /^Thai journals/ }).click();
+  const feed = page.getByRole("region", { name: "CivilMCP research feed" });
+  await expect(feed.getByText("Discovery metadata", { exact: true }).first()).toBeVisible();
+  await expect(feed.getByText("Not used for AI answers or citations", { exact: true }).first()).toBeVisible();
+  await expect(feed.getByRole("link", { name: "Open publisher record" }).first()).toHaveAttribute("href", /^https:\/\//);
+  await expect(feed.getByRole("button", { name: "Ask with evidence" })).toHaveCount(0);
+
+  const unifiedResponse = await page.request.get("/api/research-feed?filter=hot&q=soil&limit=12");
+  expect(unifiedResponse.ok()).toBe(true);
+  const unified = await unifiedResponse.json() as { cards?: Array<{ citable?: boolean; provider?: string; evidenceStatus?: string }> };
+  expect(unified.cards?.some((card) => card.citable === true)).toBe(true);
+  expect(
+    unified.cards?.some(
+      (card) => card.provider === "tci_thaijo" && card.evidenceStatus === "metadata_only" && card.citable === false,
+    ),
+  ).toBe(true);
+});
+
+test("paper detail exposes library, citation export, global comparison, and related evidence", async ({ page }) => {
+  await page.setViewportSize({ width: 1440, height: 1000 });
+  await page.goto("/");
+  await page.locator(".cardTitleButton").first().click();
+
+  await expect(page.getByRole("button", { name: "BibTeX" })).toBeVisible();
+  await expect(page.getByRole("button", { name: "RIS · Zotero" })).toBeVisible();
+  await expect(page.getByRole("link", { name: "Compare globally" })).toHaveAttribute("href", /^https:\/\/openalex\.org\//);
+  await expect(page.getByRole("heading", { name: "Library notes" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Related Thai evidence" })).toBeVisible();
+});
+
+test("personal library saves a paper and enables notes and folders", async ({ page }) => {
+  await page.route("**/api/paper-workspace**", async (route) => {
+    const request = route.request();
+    if (request.method() === "GET") {
+      await route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ items: [], cards: [] }) });
+      return;
+    }
+    if (request.method() === "POST") {
+      const payload = request.postDataJSON() as { source: string; note?: string; labels?: string[] };
+      await route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify({
+          item: {
+            documentId: null,
+            source: payload.source,
+            collection: "ncce",
+            paperCode: null,
+            note: payload.note ?? "",
+            labels: payload.labels ?? [],
+            createdAt: new Date().toISOString(),
+            updatedAt: new Date().toISOString(),
+          },
+        }),
+      });
+      return;
+    }
+    await route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ ok: true }) });
+  });
+
+  await page.goto("/");
+  await page.getByRole("button", { name: "Save paper to library" }).first().click();
+  await expect(page.getByRole("button", { name: /^Saved 1/ })).toBeVisible();
+
+  await page.locator(".cardTitleButton").first().click();
+  await expect(page.getByLabel("Folders and labels")).toBeEnabled();
+  await page.getByLabel("Folders and labels").fill("Thesis, Read next");
+  await page.getByLabel("Note").fill("Compare the risk factors with the next paper.");
+  await page.getByRole("button", { name: "Save note" }).click();
+  await expect(page.getByText("Library note synced")).toBeVisible();
+});
+
 test("intermediate responsive widths stay collision-free", async ({ page }) => {
   for (const viewport of [
     { width: 1024, height: 768 },

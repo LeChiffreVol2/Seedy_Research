@@ -5,7 +5,7 @@ import { createClient } from "@supabase/supabase-js";
 import { PAPER_SUMMARY_OVERRIDES } from "./paper-summary-overrides";
 import { PAPER_TITLE_OVERRIDES } from "./paper-title-overrides";
 
-export type FeedFilter = "hot" | "recent" | "evidence" | "ncce" | "ce_project";
+export type FeedFilter = "hot" | "recent" | "evidence" | "tci" | "ncce" | "ce_project";
 export type CollectionFilter = "" | "ce_project" | "ncce";
 export type PreviewVariant = "beam" | "flood" | "seismic" | "traffic";
 
@@ -35,6 +35,12 @@ export type ResearchFeedCard = {
   previewUrl?: string;
   prompt: string;
   indexedAt?: string | null;
+  provider?: string | null;
+  evidenceStatus?: "metadata_only" | "extracted" | "indexed" | "quarantined" | "removed";
+  citable?: boolean;
+  canonicalUrl?: string | null;
+  journalTitle?: string | null;
+  authors?: string[];
 };
 
 export type ResearchFeedResponse = {
@@ -43,6 +49,10 @@ export type ResearchFeedResponse = {
     total: number;
     totalSections: number;
     totalChunks: number;
+    catalogTotal: number;
+    citableTotal: number;
+    metadataOnlyTotal: number;
+    providers: Array<{ provider: string; records: number; citable: number }>;
     collections: Array<{ collection: string; documents: number }>;
     filters: Record<FeedFilter, number>;
   };
@@ -77,6 +87,7 @@ export type PaperDetailResponse = {
     sections: number;
     chunks: number;
   };
+  related: ResearchFeedCard[];
   generatedAt: string;
 };
 
@@ -129,6 +140,31 @@ type ChunkRow = {
   content?: string | null;
 };
 
+type CatalogRow = {
+  id: string;
+  provider: string;
+  provider_record_id: string;
+  collection: string;
+  source_type: string;
+  title_local?: string | null;
+  title_en?: string | null;
+  abstract_local?: string | null;
+  abstract_en?: string | null;
+  authors?: unknown;
+  keywords?: unknown;
+  canonical_url?: string | null;
+  journal_title?: string | null;
+  publisher?: string | null;
+  published_at?: string | null;
+  language?: string | null;
+  discipline?: string | null;
+  rights_status: string;
+  evidence_status: "metadata_only" | "extracted" | "indexed" | "quarantined" | "removed";
+  document_id?: string | null;
+  source_updated_at?: string | null;
+  updated_at?: string | null;
+};
+
 type ListFeedParams = {
   filter?: string | null;
   collection?: string | null;
@@ -141,7 +177,10 @@ const DOCUMENT_SELECT =
   "id, source, source_pdf, collection, source_type, parent_source_pdf, paper_code, page_start, page_end, proceeding_no, proceeding_year, discipline, section_count, chunk_count, indexed_at, created_at, updated_at";
 const SECTION_SELECT = "id, document_id, source, collection, paper_code, page_start, page_end, discipline, section_index, section_title, content";
 const CHUNK_SELECT = "id, document_id, section_id, source, collection, paper_code, page_start, page_end, section_index, section_title, chunk_index, content";
-const MAX_DOCS_FOR_FEED = 1200;
+const CATALOG_SELECT = "id, provider, provider_record_id, collection, source_type, title_local, title_en, abstract_local, abstract_en, authors, keywords, canonical_url, journal_title, publisher, published_at, language, discipline, rights_status, evidence_status, document_id, source_updated_at, updated_at";
+// ponytail: in-memory ranking is intentionally bounded; move ranking into SQL when the evidence corpus exceeds this ceiling.
+const MAX_DOCS_FOR_FEED = 2000;
+const MAX_CATALOG_RECORDS = 5000;
 const MAX_QUERY_MATCHES = 500;
 const QUERY_STOP_WORDS = new Set([
   "a", "an", "and", "are", "as", "at", "be", "by", "for", "from", "how", "in", "into", "is", "of", "on", "or", "the", "to", "what", "with",
@@ -166,7 +205,7 @@ function getSupabaseAdmin() {
 }
 
 export function normalizeFeedFilter(value: string | null | undefined): FeedFilter {
-  return value === "recent" || value === "evidence" || value === "ncce" || value === "ce_project" ? value : "hot";
+  return value === "recent" || value === "evidence" || value === "tci" || value === "ncce" || value === "ce_project" ? value : "hot";
 }
 
 export function normalizeCollection(value: string | null | undefined): CollectionFilter {
@@ -513,8 +552,15 @@ function formatDate(value: string | null | undefined): string {
 
 function collectionLabel(value: CollectionFilter): string {
   if (value === "ncce") return "NCCE";
-  if (value === "ce_project") return "CE Project";
+  if (value === "ce_project") return "Student Transport";
   return "All";
+}
+
+function providerLabel(value: string): string {
+  if (value === "tci_thaijo") return "ThaiJO";
+  if (value === "student_transport_projects") return "Student Transport";
+  if (value === "ncce") return "NCCE";
+  return value;
 }
 
 function disciplineLabel(value: string | null | undefined): string {
@@ -547,10 +593,6 @@ function deriveTags(doc: DocumentRow, title: string, summary: string): string[] 
   const summaryHaystack = summary;
   const keywordMap: Array<[RegExp, string]> = [
     [/คอนกรีต|concrete|cement|reinforced/i, "Concrete"],
-    [/โครงสร้าง|structural|beam|column|seismic/i, "Structural"],
-    [/ขนส่ง|traffic|transport|intersection|road/i, "Transport"],
-    [/น้ำท่วม|flood|drainage|hydraulic|hec-ras/i, "Water"],
-    [/ชั้นดิน|ดินเหนียว|ดินทราย|ปฐพี|soil|geotech|slope|foundation/i, "Geotechnical"],
     [/วิธี|method|experiment|model|แบบจำลอง/i, "Method"],
   ];
   for (const [pattern, tag] of keywordMap) {
@@ -644,7 +686,7 @@ function cardFromDocument(doc: DocumentRow, sections: SectionRow[], chunks: Chun
     proceedingYear: doc.proceeding_year,
     discipline: doc.discipline,
     title,
-    date: formatDate(doc.indexed_at ?? doc.updated_at ?? doc.created_at),
+    date: `Indexed ${formatDate(doc.indexed_at ?? doc.updated_at ?? doc.created_at)}`,
     sourceLabel: [collectionLabel(collection), disciplineLabel(doc.discipline), doc.source_type].filter(Boolean).join(" · "),
     summary,
     tags: deriveTags(doc, title, summary),
@@ -656,8 +698,80 @@ function cardFromDocument(doc: DocumentRow, sections: SectionRow[], chunks: Chun
     previewUrl: previewUrlForSource(doc.source),
     prompt: "",
     indexedAt: doc.indexed_at,
+    provider: collection === "ce_project" ? "student_transport_projects" : "ncce",
+    evidenceStatus: "indexed",
+    citable: true,
   };
   return { ...card, prompt: buildPrompt(card) };
+}
+
+function stringArray(value: unknown, limit = 8): string[] {
+  if (!Array.isArray(value)) return [];
+  return value
+    .map((item) => {
+      if (typeof item === "string") return item;
+      if (!item || typeof item !== "object") return "";
+      const record = item as Record<string, unknown>;
+      return String(record.name ?? record.display_name ?? record.full_name ?? "");
+    })
+    .map((item) => cleanText(item, 120))
+    .filter(Boolean)
+    .slice(0, limit);
+}
+
+function cardFromCatalog(row: CatalogRow): ResearchFeedCard {
+  const title = cleanText(row.title_en || row.title_local || row.provider_record_id, 320);
+  const abstract = cleanText(row.abstract_en || row.abstract_local || "", 520);
+  const authors = stringArray(row.authors);
+  const journalTitle = cleanText((row.journal_title || "").split(/\s*[;|]\s*/)[0] || row.publisher || "", 120);
+  const keywordTags = stringArray(row.keywords, 12)
+    .flatMap((value) => value.split(/\s*[,;]\s*/))
+    .map((value) => cleanText(value, 42))
+    .filter(Boolean)
+    .slice(0, 4);
+  const tags = [
+    disciplineLabel(row.discipline),
+    providerLabel(row.provider),
+    ...keywordTags,
+  ].filter(Boolean).slice(0, 6);
+  const summary = abstract || [
+    journalTitle,
+    authors.length ? `By ${authors.slice(0, 3).join(", ")}` : "",
+    "Discovery metadata. Open the publisher record to verify the full text and reuse terms.",
+  ].filter(Boolean).join(" · ");
+  const previewDoc: DocumentRow = {
+    id: row.id,
+    source: row.provider_record_id,
+    collection: null,
+    discipline: row.discipline,
+  };
+
+  return {
+    id: row.id,
+    source: row.provider_record_id,
+    collection: "",
+    sourceType: row.source_type,
+    paperCode: null,
+    discipline: row.discipline,
+    title,
+    date: formatDate(row.published_at ?? row.source_updated_at ?? row.updated_at),
+    sourceLabel: [providerLabel(row.provider), journalTitle, disciplineLabel(row.discipline)].filter(Boolean).join(" · "),
+    summary,
+    tags,
+    filters: ["tci"],
+    evidenceCount: 0,
+    pages: 0,
+    pageLabel: "Metadata only",
+    preview: derivePreview(previewDoc, title),
+    prompt: "",
+    indexedAt: row.updated_at,
+    provider: row.provider,
+    evidenceStatus: row.evidence_status,
+    citable: false,
+    canonicalUrl: row.canonical_url,
+    journalTitle,
+    authors,
+  };
 }
 
 function sortDocuments(docs: DocumentRow[], filter: FeedFilter): DocumentRow[] {
@@ -673,17 +787,59 @@ function sortDocuments(docs: DocumentRow[], filter: FeedFilter): DocumentRow[] {
 
 async function fetchDocuments(collection: CollectionFilter): Promise<DocumentRow[]> {
   const supabase = getSupabaseAdmin() as any;
-  let query = supabase
-    .from("civil_documents_v2")
-    .select(DOCUMENT_SELECT)
-    .order("indexed_at", { ascending: false, nullsFirst: false })
-    .limit(MAX_DOCS_FOR_FEED);
+  const rows: DocumentRow[] = [];
+  const pageSize = 1000;
+  for (let offset = 0; offset < MAX_DOCS_FOR_FEED; offset += pageSize) {
+    let query = supabase
+      .from("civil_documents_v2")
+      .select(DOCUMENT_SELECT)
+      .order("indexed_at", { ascending: false, nullsFirst: false })
+      .range(offset, Math.min(offset + pageSize - 1, MAX_DOCS_FOR_FEED - 1));
+    if (collection) query = query.eq("collection", collection);
+    const { data, error } = await query;
+    if (error) throw new Error(`Failed to read documents: ${error.message}`);
+    const page = (data ?? []) as DocumentRow[];
+    rows.push(...page);
+    if (page.length < pageSize) break;
+  }
+  return rows;
+}
 
-  if (collection) query = query.eq("collection", collection);
+async function fetchCatalog(): Promise<CatalogRow[]> {
+  const supabase = getSupabaseAdmin() as any;
+  const rows: CatalogRow[] = [];
+  const pageSize = 1000;
+  for (let offset = 0; offset < MAX_CATALOG_RECORDS; offset += pageSize) {
+    const { data, error } = await supabase
+      .from("civil_source_catalog")
+      .select(CATALOG_SELECT)
+      .neq("evidence_status", "removed")
+      .order("published_at", { ascending: false, nullsFirst: false })
+      .range(offset, Math.min(offset + pageSize - 1, MAX_CATALOG_RECORDS - 1));
+    if (error) throw new Error(`Failed to read source catalog: ${error.message}`);
+    const page = (data ?? []) as CatalogRow[];
+    rows.push(...page);
+    if (page.length < pageSize) break;
+  }
+  return rows;
+}
 
-  const { data, error } = await query;
-  if (error) throw new Error(`Failed to read documents: ${error.message}`);
-  return (data ?? []) as DocumentRow[];
+function catalogMatchesQuery(row: CatalogRow, q: string): boolean {
+  if (!q) return true;
+  const terms = searchContext(q).baseTerms;
+  if (!terms.length) return true;
+  const haystack = [
+    row.title_local,
+    row.title_en,
+    row.abstract_local,
+    row.abstract_en,
+    row.journal_title,
+    row.publisher,
+    row.discipline,
+    ...stringArray(row.authors, 20),
+    ...stringArray(row.keywords, 20),
+  ].filter(Boolean).join(" ").toLocaleLowerCase("en");
+  return terms.every((term) => haystack.includes(term));
 }
 
 async function fetchSectionsForDocuments(documentIds: string[], perDocument = 8): Promise<Map<string, SectionRow[]>> {
@@ -808,7 +964,8 @@ async function matchingDocumentScores(q: string, collection: CollectionFilter): 
   if (!context.baseTerms.length) return new Map();
 
   const supabase = getSupabaseAdmin() as any;
-  const sectionColumns = ["section_title", "content", "source", "paper_code"];
+  // Explore stays metadata-fast; semantic full-text retrieval belongs to Chat/MCP.
+  const sectionColumns = ["section_title", "source", "paper_code", "discipline"];
   const documentColumns = ["source", "source_pdf", "paper_code", "discipline"];
   const emptyResult = Promise.resolve({ data: [], error: null });
   const searchSections = (terms: string[]) => {
@@ -871,12 +1028,14 @@ async function matchingDocumentScores(q: string, collection: CollectionFilter): 
   );
 }
 
-function facetsFromDocuments(docs: DocumentRow[]): ResearchFeedResponse["facets"] {
+function facetsFromDocuments(docs: DocumentRow[], catalog: CatalogRow[]): ResearchFeedResponse["facets"] {
   const collections = new Map<string, number>();
+  const providerCounts = new Map<string, { records: number; citable: number }>();
   const filters: Record<FeedFilter, number> = {
     hot: docs.length,
     recent: 0,
     evidence: 0,
+    tci: 0,
     ncce: 0,
     ce_project: 0,
   };
@@ -889,10 +1048,22 @@ function facetsFromDocuments(docs: DocumentRow[]): ResearchFeedResponse["facets"
     }
   }
 
+  for (const row of catalog) {
+    const current = providerCounts.get(row.provider) ?? { records: 0, citable: 0 };
+    current.records += 1;
+    if (row.evidence_status === "indexed" && row.document_id) current.citable += 1;
+    providerCounts.set(row.provider, current);
+    if (row.provider === "tci_thaijo") filters.tci += 1;
+  }
+
   return {
     total: docs.length,
     totalSections: docs.reduce((total, doc) => total + (doc.section_count ?? 0), 0),
     totalChunks: docs.reduce((total, doc) => total + (doc.chunk_count ?? 0), 0),
+    catalogTotal: catalog.length,
+    citableTotal: docs.length,
+    metadataOnlyTotal: catalog.filter((row) => row.evidence_status === "metadata_only").length,
+    providers: [...providerCounts.entries()].map(([provider, counts]) => ({ provider, ...counts })),
     collections: [...collections.entries()].map(([collection, documents]) => ({ collection, documents })),
     filters,
   };
@@ -906,33 +1077,82 @@ export async function listResearchFeed(params: ListFeedParams): Promise<Research
   const limit = normalizeLimit(params.limit);
   const offset = decodeCursor(params.cursor);
 
-  let docs = await fetchDocuments(collection);
+  const [allDocs, catalog] = await Promise.all([fetchDocuments(""), fetchCatalog()]);
+  const facets = facetsFromDocuments(allDocs, catalog);
+  if (filter === "tci") {
+    const records = catalog
+      .filter((row) => row.provider === "tci_thaijo" && row.evidence_status !== "removed")
+      .filter((row) => catalogMatchesQuery(row, q))
+      .sort((left, right) =>
+        new Date(right.published_at ?? right.source_updated_at ?? right.updated_at ?? 0).getTime()
+        - new Date(left.published_at ?? left.source_updated_at ?? left.updated_at ?? 0).getTime());
+    const cards = records.slice(offset, offset + limit).map(cardFromCatalog);
+    const nextOffset = offset + limit;
+    return {
+      cards,
+      facets,
+      nextCursor: nextOffset < records.length ? encodeCursor(nextOffset) : null,
+      generatedAt: new Date().toISOString(),
+    };
+  }
+
+  let docs = collection ? allDocs.filter((doc) => normalizeCollection(doc.collection) === collection) : allDocs;
   let relevanceScores: Map<string, number> | null = null;
   if (q) {
     relevanceScores = await matchingDocumentScores(q, collection);
     docs = docs.filter((doc) => relevanceScores?.has(doc.id));
   }
 
-  const facets = facetsFromDocuments(docs);
   const fallbackOrder = new Map(sortDocuments(docs, filter).map((doc, index) => [doc.id, index]));
   const sorted = relevanceScores
     ? [...docs].sort((a, b) =>
       (relevanceScores?.get(b.id) ?? 0) - (relevanceScores?.get(a.id) ?? 0)
       || (fallbackOrder.get(a.id) ?? 0) - (fallbackOrder.get(b.id) ?? 0))
     : sortDocuments(docs, filter);
-  const page = sorted.slice(offset, offset + limit);
-  const pageDocumentIds = page.map((doc) => doc.id);
+  const catalogMatches = q && !collection && filter === "hot"
+    ? catalog
+      .filter((row) => row.provider === "tci_thaijo" && row.evidence_status === "metadata_only")
+      .filter((row) => catalogMatchesQuery(row, q))
+      .sort((left, right) =>
+        new Date(right.published_at ?? right.source_updated_at ?? right.updated_at ?? 0).getTime()
+        - new Date(left.published_at ?? left.source_updated_at ?? left.updated_at ?? 0).getTime())
+    : [];
+  const combined: Array<{ kind: "evidence"; document: DocumentRow } | { kind: "catalog"; record: CatalogRow }> = [];
+  let catalogIndex = 0;
+  sorted.forEach((document, index) => {
+    combined.push({ kind: "evidence", document });
+    if ((index + 1) % 3 === 0 && catalogIndex < catalogMatches.length) {
+      combined.push({ kind: "catalog", record: catalogMatches[catalogIndex] });
+      catalogIndex += 1;
+    }
+  });
+  while (catalogIndex < catalogMatches.length) {
+    combined.push({ kind: "catalog", record: catalogMatches[catalogIndex] });
+    catalogIndex += 1;
+  }
+
+  const page = combined.slice(offset, offset + limit);
+  const pageDocumentIds = page
+    .filter((item): item is { kind: "evidence"; document: DocumentRow } => item.kind === "evidence")
+    .map((item) => item.document.id);
   const [sectionsByDoc, chunksByDoc] = await Promise.all([
     fetchSectionsForDocuments(pageDocumentIds),
     fetchChunksForDocuments(pageDocumentIds),
   ]);
-  const cards = page.map((doc) => cardFromDocument(doc, sectionsByDoc.get(doc.id) ?? [], chunksByDoc.get(doc.id) ?? []));
+  const cards = page.map((item) =>
+    item.kind === "catalog"
+      ? cardFromCatalog(item.record)
+      : cardFromDocument(
+        item.document,
+        sectionsByDoc.get(item.document.id) ?? [],
+        chunksByDoc.get(item.document.id) ?? [],
+      ));
   const nextOffset = offset + limit;
 
   return {
     cards,
     facets,
-    nextCursor: nextOffset < sorted.length ? encodeCursor(nextOffset) : null,
+    nextCursor: nextOffset < combined.length ? encodeCursor(nextOffset) : null,
     generatedAt: new Date().toISOString(),
   };
 }
@@ -957,12 +1177,53 @@ async function findDocumentBySource(source: string): Promise<DocumentRow | null>
   return null;
 }
 
-export async function getPaperDetail(source: string): Promise<PaperDetailResponse | null> {
+export async function getResearchCardsBySources(sources: string[]): Promise<ResearchFeedCard[]> {
+  const normalized = [...new Set(sources.map((source) => source.trim()).filter(Boolean))].slice(0, 100);
+  if (!normalized.length) return [];
+  const supabase = getSupabaseAdmin() as any;
+  const { data, error } = await supabase
+    .from("civil_documents_v2")
+    .select(DOCUMENT_SELECT)
+    .in("source", normalized)
+    .limit(normalized.length);
+  if (error) throw new Error(`Failed to read saved papers: ${error.message}`);
+  const docs = (data ?? []) as DocumentRow[];
+  const documentIds = docs.map((doc) => doc.id);
+  const [sectionsByDoc, chunksByDoc] = await Promise.all([
+    fetchSectionsForDocuments(documentIds, 4),
+    fetchChunksForDocuments(documentIds, 2),
+  ]);
+  const cards = new Map(
+    docs.map((doc) => [
+      doc.source,
+      cardFromDocument(doc, sectionsByDoc.get(doc.id) ?? [], chunksByDoc.get(doc.id) ?? []),
+    ]),
+  );
+  return normalized.map((source) => cards.get(source)).filter((card): card is ResearchFeedCard => Boolean(card));
+}
+
+async function relatedResearchCards(doc: DocumentRow, limit = 4): Promise<ResearchFeedCard[]> {
+  const discipline = doc.discipline?.trim();
+  if (!discipline) return [];
+  const docs = (await fetchDocuments(""))
+    .filter((candidate) => candidate.id !== doc.id && candidate.discipline === discipline)
+    .sort((left, right) => hotScore(right) - hotScore(left))
+    .slice(0, limit);
+  const documentIds = docs.map((candidate) => candidate.id);
+  const [sectionsByDoc, chunksByDoc] = await Promise.all([
+    fetchSectionsForDocuments(documentIds, 3),
+    fetchChunksForDocuments(documentIds, 1),
+  ]);
+  return docs.map((candidate) =>
+    cardFromDocument(candidate, sectionsByDoc.get(candidate.id) ?? [], chunksByDoc.get(candidate.id) ?? []));
+}
+
+export async function getPaperDetail(source: string, includeRelated = false): Promise<PaperDetailResponse | null> {
   const doc = await findDocumentBySource(decodeURIComponent(source));
   if (!doc) return null;
 
   const supabase = getSupabaseAdmin() as any;
-  const [sectionsResult, chunksResult] = await Promise.all([
+  const [sectionsResult, chunksResult, related] = await Promise.all([
     supabase
       .from("civil_sections_v2")
       .select(SECTION_SELECT)
@@ -978,6 +1239,7 @@ export async function getPaperDetail(source: string): Promise<PaperDetailRespons
       .order("section_index", { ascending: true })
       .order("chunk_index", { ascending: true })
       .limit(16),
+    includeRelated ? relatedResearchCards(doc) : Promise.resolve([]),
   ]);
 
   if (sectionsResult.error) throw new Error(`Failed to read paper sections: ${sectionsResult.error.message}`);
@@ -1010,6 +1272,7 @@ export async function getPaperDetail(source: string): Promise<PaperDetailRespons
       sections: doc.section_count ?? sections.length,
       chunks: doc.chunk_count ?? chunks.length,
     },
+    related,
     generatedAt: new Date().toISOString(),
   };
 }

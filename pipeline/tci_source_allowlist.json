@@ -1,0 +1,36 @@
+{
+  "version": 1,
+  "policy": "metadata_only_until_rights_and_page_provenance_are_verified",
+  "endpoints": [
+    {
+      "endpoint": "https://ph01.tci-thaijo.org/index.php/index/oai",
+      "sets": [
+        {
+          "set_spec": "SEAGS_AGSSEA_Journal:RP",
+          "label": "Geotechnical Engineering Journal — Research Papers",
+          "scope": "geotechnical"
+        },
+        {
+          "set_spec": "SEAGS_AGSSEA_Journal:CS",
+          "label": "Geotechnical Engineering Journal — Case Studies",
+          "scope": "geotechnical"
+        },
+        {
+          "set_spec": "SEAGS_AGSSEA_Journal:TP",
+          "label": "Geotechnical Engineering Journal — Technical Papers",
+          "scope": "geotechnical"
+        },
+        {
+          "set_spec": "html:RP",
+          "label": "Journal of Thailand Concrete Association — Research Papers",
+          "scope": "structural"
+        },
+        {
+          "set_spec": "html:TR",
+          "label": "Journal of Thailand Concrete Association — Technical Reports",
+          "scope": "structural"
+        }
+      ]
+    }
+  ]
+}

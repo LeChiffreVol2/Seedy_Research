@@ -2,7 +2,7 @@
 
 **CivilMCP is the evidence layer for Thai civil engineering education.** It is a Public Research Preview that turns a uniquely structured corpus of Thai civil-engineering research into searchable, bilingual, page-linked evidence for students, instructors, and researchers.
 
-[Open the public preview](https://civil-mcp-web.vercel.app/) · [Build Week notes](BUILD_WEEK.md) · [Data sources and rights](DATA_SOURCES.md)
+[Open the public preview](https://civil-mcp-web.vercel.app/) · [Launch readiness](docs/LAUNCH_READINESS.md) · [Data expansion](docs/DATA_EXPANSION.md) · [Data sources and rights](DATA_SOURCES.md)
 
 > Research evidence, not professional engineering advice.
 
@@ -10,12 +10,12 @@
 
 | Collection | Papers | Coverage |
 | --- | ---: | --- |
-| CE Project | 67 | Civil-engineering research projects, 2019–2024 |
+| Student Transport Projects | 67 | Student transport research projects, 2019–2024 |
 | NCCE | 874 | NCCE25, NCCE26, and NCCE29 proceedings |
-| **Total** | **941** | **8,148 active, page-linked sections · 48,370 active, page-linked evidence chunks** |
+| **Total** | **941** | **8,060 active, page-linked sections · 48,365 active, page-linked evidence chunks** |
 
 These public proof metrics intentionally exclude legacy/stale or non-page-linked
-rows. The underlying index currently contains 9,413 section records and 50,588
+rows. The underlying index currently contains 9,418 section records and 50,715
 chunk records; only evidence with active page provenance is included above.
 
 The application can search this corpus, synthesize findings across papers, open the exact evidence pages, and translate Thai paper content to English. The source PDFs and extracted corpus are intentionally not redistributed through Git; see [DATA_SOURCES.md](DATA_SOURCES.md).
@@ -32,7 +32,7 @@ With MCP on, the default run is a bounded, fully-agentic Evidence Mission:
 
 The brief is stored in the existing chat history/share transcript and exports as portable Markdown. `Tutor Mission` emphasizes guided checkpoints; `Fast Answer` preserves the existing streaming brief. Agent activity is inspectable, but private reasoning and raw tool payloads are never exposed. See [docs/AGENTIC_EVIDENCE_MISSIONS.md](docs/AGENTIC_EVIDENCE_MISSIONS.md).
 
-Explore remains the feed-first discovery surface: search, filter, inspect a paper, open its evidence, and continue into chat. `Research Path` is a separate learning workspace that turns a goal into four bounded stages using CivilMCP papers, saves progress in the browser, and can bridge to global metadata through OpenAlex. `Deep Research` is the Founder Pro workflow for a rigorous one-question brief.
+Explore remains the feed-first discovery surface: search, filter, inspect a paper, open its evidence, and continue into chat. It keeps page-citable evidence separate from ThaiJO discovery metadata, learns a lightweight `For you` ranking from saved papers, and syncs a personal library with notes, labels/folders, BibTeX, RIS/Zotero export, and related Thai evidence. Paper detail and `Research Path` bridge to global metadata through OpenAlex without presenting external metadata as CivilMCP evidence. `Deep Research` is the Founder Pro workflow for a rigorous one-question brief.
 
 `Research Workspace Pro` is a separate, spreadsheet-style automated-research surface rather than a chat mode. Papers are rows and bounded AI instructions are columns. A run can process up to six selected papers across six columns, attaches allow-listed exact-page evidence to every supported cell, exposes confidence and human-review states, and exports a source-bearing CSV. The browser keeps a local draft; Founder Pro adds account sync and batch execution. Luna, Terra, and Sol consume 1, 3, or 5 credits per selected paper respectively.
 
@@ -53,6 +53,11 @@ Deep Research and Research Workspace batch execution require Founder Pro. Worksp
 
 Supabase Auth remains the identity source. Google OAuth and email magic links are the primary sign-in paths, with password sign-in available as a fallback. Billing uses Stripe-hosted Checkout and Customer Portal; entitlement and credit checks are always enforced on the server.
 
+The current Vercel Hobby launch is a free Research Preview. Founder Pro pricing
+and gates are product-preview surfaces only; Stripe checkout must remain
+unconfigured until the deployment moves to a paid Vercel plan and commercial
+data-rights review is complete.
+
 ## Architecture
 
 ```text
@@ -66,11 +71,11 @@ question
 ```
 
 - `web/`: Next.js research feed, chat, Research Workspace Pro, paper detail, translation, history, and feedback.
-- `mcp-server/`: FastAPI MCP-style retrieval service.
-- `pipeline/`: PDF extraction, metadata normalization, chunking, and indexing.
+- `mcp-server/`: FastAPI MCP service with 11 read-only evidence, catalog, related-paper, and provider tools.
+- `pipeline/`: provider registry, metadata harvesting, page-preserving PDF/OCR extraction, normalization, chunking, and indexing.
 - `supabase/`: shared schema and additive migration ledger.
 - `harness/` and `eval/`: CivilMCP release, security, retrieval, citation, and memory gates.
-- `citymcp/`: separately managed CityMCP consumer; excluded from the Build Week scope and Civil quality score.
+- `citymcp/`: separately managed CityMCP consumer; excluded from CivilMCP release gates and quality score.
 
 CityMCP shares only the read-only MCP contract and applied Supabase migration history. Its application, harness, CI, and release live under [citymcp/](citymcp/).
 
@@ -126,12 +131,16 @@ pipeline/data/markdown/
 Extract and index only when you have lawful local access to the source documents:
 
 ```bash
-python3.10 pipeline/extract.py
-python3.10 pipeline/extract_ncce.py
+python3.10 pipeline/extract.py --engine hybrid
+python3.10 pipeline/extract_ncce.py --source-glob 'Proceedings_NCCE31.pdf'
 python3.10 pipeline/index.py --mode batch
 ```
 
-The indexer is incremental and does not re-embed unchanged chunks. A synthetic, redistributable schema example is available at [fixtures/synthetic-civil-paper.json](fixtures/synthetic-civil-paper.json).
+TCI/ThaiJO begins as bounded OAI metadata in `civil_source_catalog`; it is not
+page-linked evidence until rights and full-text quality gates pass. The indexer
+is incremental and does not re-embed unchanged chunks. A synthetic,
+redistributable schema example is available at
+[fixtures/synthetic-civil-paper.json](fixtures/synthetic-civil-paper.json).
 
 ## Demo prompts
 

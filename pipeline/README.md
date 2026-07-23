@@ -5,42 +5,43 @@
 ## Install
 
 ```bash
-cd /Users/lechiffre/Desktop/Civil_MCP/pipeline
-python3.10 -m venv .venv
-source .venv/bin/activate
-pip install -r requirements.txt
-pip install -r requirements.index.txt
+cd Civil_MCP
+python3.10 -m venv .venv310
+source .venv310/bin/activate
+pip install -r pipeline/requirements.txt
+pip install -r pipeline/requirements.index.txt
 ```
 
-## CE Project Extraction
+## Student Transport Project Extraction
 
 ```bash
-python3.10 extract.py
+python3.10 pipeline/extract.py
 ```
 
-ค่า default อ่านจาก:
+ค่า default อ่านจาก `CE Project Database/` ที่ root ของ repository (คงชื่อ
+directory และ internal collection `ce_project` ไว้เพื่อ backward compatibility)
+แต่ canonical source name คือ `Student Transport Projects`.
 
-```text
-/Users/lechiffre/Desktop/Civil_MCP/CE Project Database
-```
+Default engine คือ page-preserving hybrid extraction: ใช้ `pdftotext` ก่อนและ
+OCR เฉพาะหน้าที่ text อ่อนด้วย Tesseract `tha+eng`. หน้าว่างจะไม่ถูกตัดออกจาก
+ลำดับ จึงไม่ทำให้ exact-page citation ของหน้าถัดไปเลื่อน.
 
-ใช้ `pdftotext` engine ถ้าต้องการเบากว่า layout/OCR:
+เลือกไฟล์และลดงาน OCR ได้โดย:
 
 ```bash
-python3.10 extract.py --engine pdftotext
+python3.10 pipeline/extract.py \
+  --source-glob 'Y2024_TR_Article_G01.pdf' \
+  --overwrite \
+  --engine hybrid
 ```
 
 ## NCCE Proceedings Extraction
 
 ```bash
-python3.10 extract_ncce.py
+python3.10 pipeline/extract_ncce.py
 ```
 
-ค่า default อ่านจาก:
-
-```text
-/Users/lechiffre/Desktop/Civil_MCP/NCCE Project Database
-```
+ค่า default อ่านจาก `NCCE Project Database/` ที่ root.
 
 ผลลัพธ์จะถูกเขียนเป็น paper-level markdown ใน `pipeline/data/markdown` พร้อม metadata:
 
@@ -53,6 +54,47 @@ python3.10 extract_ncce.py
 - `discipline`
 
 Boundary detection ใช้ pattern เช่น `STR01-1`, `BTL-02-1`, `EEC01-1`. ถ้า detect ได้ไม่ดีพอ จะ fallback เป็น page-window docs โดยยังเก็บ page range สำหรับ citation.
+
+Extract เฉพาะ NCCE31 โดยไม่แตะรุ่นเดิม:
+
+```bash
+python3.10 pipeline/extract_ncce.py \
+  --source-glob 'Proceedings_NCCE31.pdf'
+
+python3.10 pipeline/sync_extracted_catalog.py \
+  --source-glob 'NCCE31_*.md'
+```
+
+คำสั่ง sync ลงทะเบียน candidate เป็น `evidence_status=extracted` เท่านั้นและ
+ไม่เรียก embedding provider. เติม `--apply` เมื่อต้องการเขียน source catalog.
+
+## TCI / ThaiJO Metadata Catalog
+
+TCI เริ่มที่ metadata catalog เท่านั้น ไม่ download PDF และไม่ส่ง record เข้า
+page-linked evidence index จนกว่าสิทธิ์ full text และ page provenance จะผ่าน
+review:
+
+```bash
+python3.10 pipeline/harvest_tci_oai.py \
+  --endpoint 'https://ph01.tci-thaijo.org/index.php/index/oai' \
+  --list-sets
+
+python3.10 pipeline/harvest_tci_oai.py \
+  --endpoint 'https://ph01.tci-thaijo.org/index.php/index/oai' \
+  --set-spec '<reviewed-civil-journal-set>' \
+  --discipline geotechnical \
+  --max-records 100 \
+  --output pipeline/data/catalog/tci_ph01.jsonl
+```
+
+Default delay 6.2 วินาทีต่อ request อยู่ใต้ published limit 10 requests/minute.
+ต้องเลือก journal set ที่ review แล้ว; endpoint-wide harvesting ต้อง opt in ด้วย
+`--allow-unscoped` เพื่อกันวารสารนอก civil engineering ปน catalog.
+ชุดเริ่มต้นที่ตรวจชื่อและ scope แล้วอยู่ใน
+`pipeline/tci_source_allowlist.json`; การเพิ่ม set ใหม่ต้อง review ชื่อวารสาร,
+scope, duplicate behavior, และ rights policy ก่อน.
+ใช้ `--apply` หลัง apply migration `20260724120000_civil_source_catalog.sql`
+แล้วเท่านั้น.
 
 ## v2 Indexing
 
@@ -102,6 +144,15 @@ Indexer เป็น incremental:
 - `--collection` และ `--source-glob` จำกัด blast radius ของการ re-index
 - `--max-embedding-jobs` เป็น hard cap กัน cost runaway
 - `--dry-run` แสดงจำนวน docs/sections/chunks/jobs โดยไม่เรียก OpenAI และไม่เขียน DB
+- effective titles มาจาก `web/lib/paper-title-overrides.json` source เดียวกัน
+  และถูก sync เข้า `civil_source_catalog`
+
+Sync title catalog โดยไม่ re-embed:
+
+```bash
+python3.10 pipeline/sync_catalog_titles.py
+.venv310/bin/python pipeline/sync_catalog_titles.py --apply
+```
 
 ## Batch Controls
 
@@ -126,14 +177,12 @@ python3.10 index.py --mode batch --max-batch-estimated-tokens 750000
 หลัง ingest รอบใหญ่:
 
 ```bash
-cd /Users/lechiffre/Desktop/Civil_MCP
 python3.10 supabase/recheck.py --reindex-v2 --v2
 ```
 
 ## Readiness Check
 
 ```bash
-cd /Users/lechiffre/Desktop/Civil_MCP
 python3.10 supabase/recheck.py --v2
 ```
 
@@ -142,7 +191,6 @@ python3.10 supabase/recheck.py --v2
 ใช้ venv หลักของ repo เพื่อให้ DB driver พร้อม:
 
 ```bash
-cd /Users/lechiffre/Desktop/Civil_MCP
 .venv310/bin/python harness/run_data_quality.py
 ```
 

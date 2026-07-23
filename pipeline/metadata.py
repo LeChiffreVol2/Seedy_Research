@@ -26,6 +26,10 @@ DISCIPLINE_BY_PREFIX = {
     "DET": "infrastructure",
     "CEE": "civil_education",
     "AIE": "ai_engineering",
+    "AIC": "ai_engineering",
+    # NCCE31 uses WER-24 for a water-engineering paper; retain the source code
+    # while normalizing it to the canonical water-resources discipline.
+    "WER": "water_resources",
 }
 
 

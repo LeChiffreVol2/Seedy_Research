@@ -71,7 +71,7 @@ def detect_paper_code(page_text: str) -> str | None:
 def infer_proceeding(pdf_path: Path) -> tuple[int | None, int | None]:
     match = PDF_NCCE_RE.search(pdf_path.stem)
     proceeding_no = int(match.group(1)) if match else None
-    year_by_no = {25: 2020, 26: 2021, 29: 2024}
+    year_by_no = {25: 2020, 26: 2021, 29: 2024, 31: 2026}
     return proceeding_no, year_by_no.get(proceeding_no or 0)
 
 
@@ -181,6 +181,8 @@ def markdown_for_group(pdf_path: Path, group: PaperGroup) -> str:
     lines = [
         "---",
         "collection: ncce",
+        "collection_label: NCCE Proceedings",
+        "source_provider: ncce",
         f"source_pdf: {source_pdf}",
         f"parent_source_pdf: {source_pdf}",
         f"source_type: {source_type}",
@@ -190,6 +192,9 @@ def markdown_for_group(pdf_path: Path, group: PaperGroup) -> str:
         f"proceeding_no: {proceeding_no or ''}",
         f"proceeding_year: {proceeding_year or ''}",
         f"discipline: {infer_discipline(group.paper_code)}",
+        "rights_status: public_source_no_redistribution",
+        "access_level: full_text_local",
+        "evidence_status: extracted",
         f"generated_at: {dt.datetime.now(dt.timezone.utc).isoformat()}",
         "extractor: pdftotext-ncce",
         "---",
@@ -237,6 +242,12 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--out-dir", type=Path, default=Path(os.getenv("MD_DIR", DEFAULT_OUT_DIR)))
     parser.add_argument("--overwrite", action="store_true")
     parser.add_argument("--limit", type=int, default=None)
+    parser.add_argument(
+        "--source-glob",
+        action="append",
+        default=[],
+        help="Extract only PDF filenames matching this glob. Can be provided multiple times.",
+    )
     parser.add_argument("--min-groups", type=int, default=10)
     parser.add_argument("--window-pages", type=int, default=10)
     return parser.parse_args()
@@ -248,6 +259,8 @@ def main() -> None:
         raise FileNotFoundError(f"NCCE PDF directory not found: {args.pdf_dir}")
     args.out_dir.mkdir(parents=True, exist_ok=True)
     pdfs = sorted(args.pdf_dir.glob("*.pdf"))
+    if args.source_glob:
+        pdfs = [pdf for pdf in pdfs if any(pdf.match(pattern) for pattern in args.source_glob)]
     if args.limit is not None:
         pdfs = pdfs[: args.limit]
 

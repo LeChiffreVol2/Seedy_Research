@@ -4,6 +4,7 @@ import { z } from "zod";
 import { applyChatIdentityCookies, chatIdentityErrorResponse, resolveChatIdentity } from "@/lib/chat-auth";
 import { consumeChatQuota, ensureChatUser } from "@/lib/chat-store";
 import { deleteWorkspaceItem, listWorkspaceItems, upsertWorkspaceItem } from "@/lib/paper-workspace";
+import { getResearchCardsBySources } from "@/lib/research-feed";
 import { checkRateLimit, getRequestIp, rateLimitHeaders, readBoundedJson, requestIdentityKey } from "@/lib/server-guards";
 
 export const runtime = "nodejs";
@@ -52,8 +53,9 @@ export async function GET(request: NextRequest) {
   if (result.response) return result.response;
   const { identity, applyAuthCookies } = result.resolved!;
   const items = await listWorkspaceItems(identity.userId);
+  const cards = await getResearchCardsBySources(items.map((item) => item.source));
   return applyChatIdentityCookies(
-    NextResponse.json({ items }, { headers: rateLimitHeaders(rate) }),
+    NextResponse.json({ items, cards }, { headers: rateLimitHeaders(rate) }),
     identity,
     applyAuthCookies,
   );

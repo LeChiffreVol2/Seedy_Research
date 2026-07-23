@@ -53,6 +53,9 @@ EXPECTED_TOOLS = [
     "fetch_paper_outline",
     "list_papers",
     "list_collections",
+    "search_source_catalog",
+    "find_related_papers",
+    "list_source_providers",
 ]
 
 
@@ -252,7 +255,15 @@ def check_build_week_contract() -> Check:
         "luna_translation": '"gpt-5.6-luna"' in translation,
         "guest_hour_quota": "CHAT_GUEST_REQUESTS_PER_HOUR, 1, 500, 30" in chat,
         "corpus_facets": all(marker in feed for marker in ("totalSections", "totalChunks")),
-        "verified_corpus_fallback": all(marker in page for marker in ("941", "48_370", "Exact-page citations")),
+        "verified_corpus_fallback": all(
+            marker in page
+            for marker in (
+                "feedCitableTotal",
+                "feedTotalChunks",
+                "Search ${feedCitableTotal.toLocaleString",
+                "Exact-page citations",
+            )
+        ),
         "explicit_paper_routing": all(marker in chat for marker in ("explicitPaperSources", "fetch_civil_paper", "exactPaperMatches")),
         "city_directory": (ROOT / "citymcp" / "ops-dashboard").exists(),
         "city_ci": (ROOT / ".github" / "workflows" / "citymcp-ci.yml").exists(),

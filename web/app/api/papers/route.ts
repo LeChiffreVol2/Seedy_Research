@@ -15,7 +15,7 @@ export async function GET(request: Request) {
       return Response.json({ error: "Paper source is required." }, { status: 400, headers: { "Cache-Control": "no-store" } });
     }
 
-    const payload = await getPaperDetail(source);
+    const payload = await getPaperDetail(source, true);
     if (!payload) {
       return Response.json({ error: "Paper not found." }, { status: 404, headers: { "Cache-Control": "no-store" } });
     }

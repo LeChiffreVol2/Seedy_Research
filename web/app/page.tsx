@@ -19,6 +19,7 @@ import {
   Crown,
   Database,
   Download,
+  ExternalLink,
   Eye,
   EyeOff,
   FileText,
@@ -63,7 +64,7 @@ type ChatExperience = "answer" | "mission" | "learn" | "research" | "automated";
 type CollectionFilter = "" | "ce_project" | "ncce";
 type SyncState = "loading" | "saving" | "saved" | "error";
 type OpenDropdown = "experience" | "model" | "collection" | "actions" | "examples" | null;
-type FeedFilter = "hot" | "recent" | "evidence" | "saved" | "ncce" | "ce_project";
+type FeedFilter = "hot" | "for_you" | "recent" | "evidence" | "saved" | "tci" | "ncce" | "ce_project";
 type MobileNavItem = "explore" | "workspace" | "path" | "chat" | "history" | "shared" | "settings";
 type FeedStatus = "loading" | "ready" | "error";
 type SessionsStatus = "idle" | "loading" | "ready" | "error";
@@ -251,6 +252,12 @@ type ResearchCardData = {
   previewUrl?: string;
   prompt: string;
   indexedAt?: string | null;
+  provider?: string | null;
+  evidenceStatus?: "metadata_only" | "extracted" | "indexed" | "quarantined" | "removed";
+  citable?: boolean;
+  canonicalUrl?: string | null;
+  journalTitle?: string | null;
+  authors?: string[];
 };
 
 type PaperAnchor = {
@@ -265,6 +272,10 @@ type ResearchFeedResponse = {
     total?: number;
     totalSections?: number;
     totalChunks?: number;
+    catalogTotal?: number;
+    citableTotal?: number;
+    metadataOnlyTotal?: number;
+    providers?: Array<{ provider: string; records: number; citable: number }>;
     collections?: Array<{ collection: string; documents: number }>;
     filters?: Partial<Record<FeedFilter, number>>;
   };
@@ -295,7 +306,19 @@ type PaperDetailData = {
     sections: number;
     chunks: number;
   };
+  related?: ResearchCardData[];
   generatedAt?: string;
+};
+
+type PaperWorkspaceItem = {
+  id: string;
+  source: string;
+  documentId?: string | null;
+  collection: CollectionFilter;
+  paperCode?: string | null;
+  note: string;
+  labels: string[];
+  updatedAt?: string;
 };
 
 type TranslationStatus = "idle" | "loading" | "ready" | "error";
@@ -433,7 +456,7 @@ const EXPERIENCE_OPTIONS: Array<MenuOption<ChatExperience>> = [
 
 const COLLECTION_OPTIONS: Array<MenuOption<CollectionFilter>> = [
   { value: "", label: "All", description: "All indexed papers" },
-  { value: "ce_project", label: "CE Project", description: "Civil engineering project reports" },
+  { value: "ce_project", label: "Student Transport", description: "Student transport research projects" },
   { value: "ncce", label: "NCCE", description: "Conference proceedings" },
 ];
 
@@ -442,8 +465,10 @@ const FILTER_OPTIONS: Array<{ id: FeedFilter; label: string; icon: LucideIcon }>
   { id: "recent", label: "Recent", icon: Clock3 },
   { id: "evidence", label: "Evidence", icon: FileText },
   { id: "saved", label: "Saved", icon: Bookmark },
+  { id: "for_you", label: "For you", icon: Sparkles },
+  { id: "tci", label: "Thai journals", icon: Database },
   { id: "ncce", label: "NCCE", icon: Building2 },
-  { id: "ce_project", label: "CE Project", icon: Layers3 },
+  { id: "ce_project", label: "Student Transport", icon: Layers3 },
 ];
 
 const MAIN_NAV_ITEMS: NavItem[] = [
@@ -1966,13 +1991,21 @@ function FilterBar({
         <div className="feedToolbarAside">
           <div className="feedMeta" aria-label="Dynamic corpus status">
             <Database size={15} strokeWidth={2.2} aria-hidden />
-            <span>{activeFilter === "saved" ? `${savedCount.toLocaleString("en-US")} saved` : totalDocuments ? `${totalDocuments.toLocaleString("en-US")} papers` : "Live corpus"}</span>
+            <span>
+              {activeFilter === "saved"
+                ? `${savedCount.toLocaleString("en-US")} saved`
+                : activeFilter === "tci"
+                  ? `${(filterCounts.tci ?? 0).toLocaleString("en-US")} journal records`
+                  : totalDocuments
+                    ? `${totalDocuments.toLocaleString("en-US")} cited papers`
+                    : "Live corpus"}
+            </span>
             <small>{activeFilter === "saved" ? syncText : `updated ${syncText}`}</small>
           </div>
           {activeFilter === "saved" ? (
-            <div className="refreshChipStatic" aria-label="Saved papers are stored locally in this browser">
+            <div className="refreshChipStatic" aria-label="Saved papers are kept in the CivilMCP library">
               <Bookmark className="chipIcon" aria-hidden />
-              <span>Saved locally</span>
+              <span>Library synced</span>
             </div>
           ) : (
             <GlassButton
@@ -2100,7 +2133,14 @@ function ResearchCard({
   const title = translatedPaperText(translation, "paper.title", displayTitle(card));
   const summary = translatedPaperText(translation, "paper.summary", displaySummary(card));
   const translated = Boolean(translation?.showingTranslation);
-  const collectionLabel = card.collection === "ncce" ? "NCCE" : card.collection === "ce_project" ? "CE Project" : "All collections";
+  const citable = card.citable !== false && card.evidenceStatus !== "metadata_only";
+  const collectionLabel = card.collection === "ncce"
+    ? "NCCE"
+    : card.collection === "ce_project"
+      ? "Student Transport"
+      : card.provider === "tci_thaijo"
+        ? "ThaiJO"
+        : "All collections";
   const disciplineLabel = card.discipline?.trim();
   const pagesLabel = card.pageStart != null
     ? card.pageEnd === card.pageStart
@@ -2115,16 +2155,26 @@ function ResearchCard({
       <div className="cardContent">
         <div className="cardTitleRow">
           <FileText className="cardDocIcon" aria-hidden />
-          <button type="button" className="cardTitleButton" onClick={() => onOpen(card)}>
-            <h2 lang={contentLanguage(title)}>{title}</h2>
-          </button>
+          {citable ? (
+            <button type="button" className="cardTitleButton" onClick={() => onOpen(card)}>
+              <h2 lang={contentLanguage(title)}>{title}</h2>
+            </button>
+          ) : card.canonicalUrl ? (
+            <a className="cardTitleButton catalogTitleLink" href={card.canonicalUrl} target="_blank" rel="noreferrer">
+              <h2 lang={contentLanguage(title)}>{title}</h2>
+            </a>
+          ) : (
+            <div className="cardTitleButton"><h2 lang={contentLanguage(title)}>{title}</h2></div>
+          )}
         </div>
         <div className="paperMeta">
           <span>{card.date}</span>
           <span>{collectionLabel}</span>
           {disciplineLabel ? <span>{disciplineLabel}</span> : null}
-          <span>{pagesLabel}</span>
-          <span>{card.evidenceCount} evidence</span>
+          {citable ? <span>{pagesLabel}</span> : null}
+          <span className={citable ? "citableMeta" : "discoveryMeta"}>
+            {citable ? `${card.evidenceCount} evidence` : "Discovery metadata"}
+          </span>
           {translated ? <span className="translatedMeta">EN translation</span> : null}
         </div>
         <p className="paperSummary" lang={contentLanguage(summary)}>{summary}</p>
@@ -2135,35 +2185,55 @@ function ResearchCard({
           })}
         </div>
         <div className="cardActions">
-          <button type="button" className="cardAction primary" disabled={disabled} onClick={() => onAsk(card)}>
-            <MessageCircle size={17} strokeWidth={2.2} aria-hidden />
-            <span>Ask with evidence</span>
-          </button>
-          <button
-            type="button"
-            className={`cardAction iconAction ${bookmarked ? "saved" : ""}`}
-            aria-pressed={bookmarked}
-            aria-label={bookmarked ? "Remove saved paper" : "Bookmark paper"}
-            title={bookmarked ? "Saved" : "Bookmark"}
-            onClick={() => onToggleBookmark(card)}
-          >
-            <Bookmark size={17} strokeWidth={2.2} aria-hidden />
-            <span className="srOnly">{bookmarked ? "Saved" : "Bookmark"}</span>
-          </button>
-          <button type="button" className="cardAction" onClick={() => onOpen(card)}>
-            <Layers3 size={17} strokeWidth={2.2} aria-hidden />
-            <span>Evidence</span>
-            <strong>{card.evidenceCount}</strong>
-          </button>
+          {citable ? (
+            <>
+              <button type="button" className="cardAction primary" disabled={disabled} onClick={() => onAsk(card)}>
+                <MessageCircle size={17} strokeWidth={2.2} aria-hidden />
+                <span>Ask with evidence</span>
+              </button>
+              <button
+                type="button"
+                className={`cardAction iconAction ${bookmarked ? "saved" : ""}`}
+                aria-pressed={bookmarked}
+                aria-label={bookmarked ? "Remove saved paper" : "Save paper to library"}
+                title={bookmarked ? "Saved" : "Save to library"}
+                onClick={() => onToggleBookmark(card)}
+              >
+                <Bookmark size={17} strokeWidth={2.2} aria-hidden />
+                <span className="srOnly">{bookmarked ? "Saved" : "Save to library"}</span>
+              </button>
+              <button type="button" className="cardAction" onClick={() => onOpen(card)}>
+                <Layers3 size={17} strokeWidth={2.2} aria-hidden />
+                <span>Evidence</span>
+                <strong>{card.evidenceCount}</strong>
+              </button>
+            </>
+          ) : card.canonicalUrl ? (
+            <a className="cardAction primary" href={card.canonicalUrl} target="_blank" rel="noreferrer">
+              <ExternalLink size={17} strokeWidth={2.2} aria-hidden />
+              <span>Open publisher record</span>
+            </a>
+          ) : (
+            <span className="catalogUnavailable">Source link unavailable</span>
+          )}
         </div>
       </div>
-      <DocumentPreview
-        variant={card.preview}
-        pageLabel={card.pageLabel ?? "PDF preview"}
-        previewUrl={card.previewUrl}
-        title={card.title}
-        onOpen={() => onOpen(card)}
-      />
+      {citable ? (
+        <DocumentPreview
+          variant={card.preview}
+          pageLabel={card.pageLabel ?? "PDF preview"}
+          previewUrl={card.previewUrl}
+          title={card.title}
+          onOpen={() => onOpen(card)}
+        />
+      ) : (
+        <aside className="catalogSourceCard" aria-label="Discovery record status">
+          <Database size={20} aria-hidden />
+          <strong>Metadata only</strong>
+          <span>Not used for AI answers or citations</span>
+          {card.journalTitle ? <small>{card.journalTitle}</small> : null}
+        </aside>
+      )}
     </article>
   );
 }
@@ -2289,14 +2359,52 @@ function ResearchFeed({
   );
 }
 
+function downloadCitation(card: ResearchCardData, format: "bibtex" | "ris") {
+  const key = (card.paperCode || card.source || "civilmcp")
+    .replace(/\.(md|pdf)$/i, "")
+    .replace(/[^A-Za-z0-9_-]+/g, "_")
+    .replace(/^_+|_+$/g, "")
+    .slice(0, 80) || "civilmcp";
+  const year = String(card.proceedingYear ?? card.date.match(/\b(19|20)\d{2}\b/)?.[0] ?? "");
+  const title = displayTitle(card).replace(/[{}]/g, "");
+  const source = card.source.replace(/[{}]/g, "");
+  const content = format === "bibtex"
+    ? [
+        `@${card.collection === "ncce" ? "inproceedings" : "techreport"}{${key},`,
+        `  title = {${title}},`,
+        year ? `  year = {${year}},` : "",
+        `  note = {CivilMCP source: ${source}; page-linked evidence available},`,
+        "}",
+      ].filter(Boolean).join("\n")
+    : [
+        `TY  - ${card.collection === "ncce" ? "CPAPER" : "RPRT"}`,
+        `TI  - ${title}`,
+        year ? `PY  - ${year}` : "",
+        `N1  - CivilMCP source: ${source}; page-linked evidence available`,
+        "ER  -",
+      ].filter(Boolean).join("\n");
+  const blob = new Blob([content], { type: format === "bibtex" ? "application/x-bibtex;charset=utf-8" : "application/x-research-info-systems;charset=utf-8" });
+  const url = URL.createObjectURL(blob);
+  const anchor = document.createElement("a");
+  anchor.href = url;
+  anchor.download = `${key}.${format === "bibtex" ? "bib" : "ris"}`;
+  anchor.click();
+  URL.revokeObjectURL(url);
+}
+
 function PaperDetailDrawer({
   detail,
   status,
   error,
   translation,
   paperLanguage,
+  bookmarked,
+  libraryItem,
   onClose,
   onAsk,
+  onOpenRelated,
+  onToggleBookmark,
+  onSaveLibrary,
   onPaperLanguageChange,
 }: {
   detail: PaperDetailData | null;
@@ -2304,13 +2412,26 @@ function PaperDetailDrawer({
   error: string;
   translation?: PaperTranslationState;
   paperLanguage: PaperLanguage;
+  bookmarked: boolean;
+  libraryItem?: PaperWorkspaceItem;
   onClose: () => void;
   onAsk: (card: ResearchCardData) => void;
+  onOpenRelated: (card: ResearchCardData) => void;
+  onToggleBookmark: (card: ResearchCardData) => void;
+  onSaveLibrary: (card: ResearchCardData, note: string, labels: string[]) => Promise<void>;
   onPaperLanguageChange: (language: PaperLanguage) => void;
 }) {
   const drawerRef = useRef<HTMLElement | null>(null);
   const closeButtonRef = useRef<HTMLButtonElement | null>(null);
   const isOpen = Boolean(detail) || status === "loading" || status === "error";
+  const [libraryNote, setLibraryNote] = useState("");
+  const [libraryLabels, setLibraryLabels] = useState("");
+  const [librarySaving, setLibrarySaving] = useState(false);
+
+  useEffect(() => {
+    setLibraryNote(libraryItem?.note ?? "");
+    setLibraryLabels((libraryItem?.labels ?? []).join(", "));
+  }, [detail?.document.source, libraryItem?.labels, libraryItem?.note]);
 
   useEffect(() => {
     if (!isOpen) return;
@@ -2405,11 +2526,37 @@ function PaperDetailDrawer({
                 <MessageCircle size={17} strokeWidth={2.2} aria-hidden />
                 <span>Ask this paper</span>
               </button>
+              <button
+                type="button"
+                className={`cardAction ${bookmarked ? "saved" : ""}`}
+                aria-pressed={bookmarked}
+                onClick={() => onToggleBookmark(paper)}
+              >
+                <Bookmark size={17} strokeWidth={2.2} aria-hidden />
+                <span>{bookmarked ? "Saved" : "Save to library"}</span>
+              </button>
               <PaperLanguageToggle
                 language={paperLanguage}
                 isTranslating={translation?.status === "loading"}
                 onChange={onPaperLanguageChange}
               />
+              <button type="button" className="cardAction" onClick={() => downloadCitation(paper, "bibtex")}>
+                <Download size={17} strokeWidth={2.2} aria-hidden />
+                <span>BibTeX</span>
+              </button>
+              <button type="button" className="cardAction" onClick={() => downloadCitation(paper, "ris")}>
+                <Download size={17} strokeWidth={2.2} aria-hidden />
+                <span>RIS · Zotero</span>
+              </button>
+              <a
+                className="cardAction"
+                href={`https://openalex.org/works?search=${encodeURIComponent(displayTitle(paper))}`}
+                target="_blank"
+                rel="noreferrer"
+              >
+                <ExternalLink size={17} strokeWidth={2.2} aria-hidden />
+                <span>Compare globally</span>
+              </a>
               {sourceRef ? (
                 <button
                   type="button"
@@ -2437,6 +2584,50 @@ function PaperDetailDrawer({
             <section className="detailSection">
               <h3>Summary</h3>
               <p lang={contentLanguage(translatedSummary)}>{translatedSummary}</p>
+            </section>
+
+            <section className="detailSection libraryEditor">
+              <div className="libraryHeading">
+                <div>
+                  <h3>Library notes</h3>
+                  <p>Use comma-separated labels as folders or review tags.</p>
+                </div>
+                {!bookmarked ? <span>Save this paper first</span> : null}
+              </div>
+              <label>
+                <span>Folders and labels</span>
+                <input
+                  value={libraryLabels}
+                  onChange={(event) => setLibraryLabels(event.target.value)}
+                  placeholder="Road safety, Thesis, Read next"
+                  disabled={!bookmarked || librarySaving}
+                />
+              </label>
+              <label>
+                <span>Note</span>
+                <textarea
+                  value={libraryNote}
+                  onChange={(event) => setLibraryNote(event.target.value)}
+                  placeholder="Why this paper matters, questions to verify, or advisor feedback"
+                  disabled={!bookmarked || librarySaving}
+                />
+              </label>
+              <button
+                type="button"
+                className="cardAction primary"
+                disabled={!bookmarked || librarySaving}
+                onClick={() => {
+                  setLibrarySaving(true);
+                  void onSaveLibrary(
+                    paper,
+                    libraryNote,
+                    [...new Set(libraryLabels.split(",").map((label) => label.trim()).filter(Boolean))].slice(0, 20),
+                  ).finally(() => setLibrarySaving(false));
+                }}
+              >
+                <Bookmark size={17} aria-hidden />
+                <span>{librarySaving ? "Saving..." : "Save note"}</span>
+              </button>
             </section>
 
             <section className="detailSection">
@@ -2482,6 +2673,21 @@ function PaperDetailDrawer({
                 })}
               </div>
             </section>
+
+            {detail.related?.length ? (
+              <section className="detailSection">
+                <h3>Related Thai evidence</h3>
+                <p className="detailSectionLead">More page-linked studies in the same civil engineering discipline.</p>
+                <div className="relatedPaperList">
+                  {detail.related.map((related) => (
+                    <button type="button" key={related.id} onClick={() => onOpenRelated(related)}>
+                      <strong>{displayTitle(related)}</strong>
+                      <span>{related.paperCode || related.sourceLabel} · {related.evidenceCount} evidence</span>
+                    </button>
+                  ))}
+                </div>
+              </section>
+            ) : null}
           </div>
         ) : null}
       </aside>
@@ -3324,6 +3530,7 @@ export default function Home() {
   const [shareUrl, setShareUrl] = useState("");
   const [shareBusy, setShareBusy] = useState(false);
   const [bookmarkedCards, setBookmarkedCards] = useState<Record<string, ResearchCardData>>({});
+  const [workspaceItems, setWorkspaceItems] = useState<Record<string, PaperWorkspaceItem>>({});
   const [bookmarksReady, setBookmarksReady] = useState(false);
   const [paperTranslations, setPaperTranslations] = useState<Record<string, PaperTranslationState>>({});
   const [translationCacheReady, setTranslationCacheReady] = useState(false);
@@ -3335,6 +3542,9 @@ export default function Home() {
   const [feedError, setFeedError] = useState("");
   const [feedQuery, setFeedQuery] = useState("");
   const [feedTotal, setFeedTotal] = useState(0);
+  const [feedCatalogTotal, setFeedCatalogTotal] = useState(0);
+  const [feedCitableTotal, setFeedCitableTotal] = useState(0);
+  const [feedMetadataOnlyTotal, setFeedMetadataOnlyTotal] = useState(0);
   const [feedTotalSections, setFeedTotalSections] = useState(0);
   const [feedTotalChunks, setFeedTotalChunks] = useState(0);
   const [feedFilterCounts, setFeedFilterCounts] = useState<Partial<Record<FeedFilter, number>>>({});
@@ -3424,6 +3634,26 @@ export default function Home() {
       setStatusText("Saved papers could not be updated in this browser.");
     }
   }, [bookmarkedCards, bookmarksReady]);
+
+  useEffect(() => {
+    if (!isReady || !bookmarksReady) return;
+    let cancelled = false;
+    void fetchJson<{ items: PaperWorkspaceItem[]; cards: ResearchCardData[] }>("/api/paper-workspace")
+      .then((payload) => {
+        if (cancelled) return;
+        setWorkspaceItems(Object.fromEntries((payload.items ?? []).map((item) => [item.source, item])));
+        setBookmarkedCards((current) => ({
+          ...current,
+          ...Object.fromEntries((payload.cards ?? []).map((card) => [cardKey(card), card])),
+        }));
+      })
+      .catch(() => {
+        // Browser bookmarks remain available if account sync is temporarily unavailable.
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [bookmarksReady, isReady]);
 
   useEffect(() => {
     try {
@@ -3742,6 +3972,9 @@ export default function Home() {
         if (cancelled) return;
         setFeedCards(payload.cards ?? []);
         setFeedTotal(payload.facets?.total ?? 0);
+        setFeedCatalogTotal(payload.facets?.catalogTotal ?? payload.facets?.total ?? 0);
+        setFeedCitableTotal(payload.facets?.citableTotal ?? payload.facets?.total ?? 0);
+        setFeedMetadataOnlyTotal(payload.facets?.metadataOnlyTotal ?? 0);
         setFeedTotalSections(payload.facets?.totalSections ?? 0);
         setFeedTotalChunks(payload.facets?.totalChunks ?? 0);
         setFeedFilterCounts(payload.facets?.filters ?? {});
@@ -3752,6 +3985,9 @@ export default function Home() {
         if (cancelled || controller.signal.aborted) return;
         setFeedCards([]);
         setFeedTotal(0);
+        setFeedCatalogTotal(0);
+        setFeedCitableTotal(0);
+        setFeedMetadataOnlyTotal(0);
         setFeedTotalSections(0);
         setFeedTotalChunks(0);
         setFeedFilterCounts({});
@@ -3809,6 +4045,18 @@ export default function Home() {
   };
 
   const visibleCards = useMemo(() => {
+    if (activeFeedFilter === "for_you") {
+      const saved = Object.values(bookmarkedCards);
+      const disciplines = new Set(saved.map((card) => card.discipline).filter(Boolean));
+      const tags = new Set(saved.flatMap((card) => card.tags.map((tag) => tag.toLocaleLowerCase("en"))));
+      return [...feedCards].sort((left, right) => {
+        const score = (card: ResearchCardData) =>
+          (card.discipline && disciplines.has(card.discipline) ? 8 : 0)
+          + card.tags.filter((tag) => tags.has(tag.toLocaleLowerCase("en"))).length * 2
+          + Math.min(card.evidenceCount, 100) / 100;
+        return score(right) - score(left);
+      });
+    }
     if (activeFeedFilter !== "saved") return feedCards;
     const query = feedQuery.toLowerCase();
     return Object.values(bookmarkedCards).filter((card) => {
@@ -3922,7 +4170,48 @@ export default function Home() {
       }
       return next;
     });
-    setStatusText(saved ? "Removed from saved papers" : "Saved paper to this browser");
+    setStatusText(saved ? "Removed from library" : "Saved to your research library");
+    if (saved) {
+      setWorkspaceItems((current) => {
+        const next = { ...current };
+        delete next[card.source];
+        return next;
+      });
+      void fetchJson<{ ok: boolean }>(`/api/paper-workspace?source=${encodeURIComponent(card.source)}`, { method: "DELETE" })
+        .catch(() => setStatusText("Removed in this browser. Library sync will retry on your next save."));
+      return;
+    }
+    const existing = workspaceItems[card.source];
+    void fetchJson<{ item: PaperWorkspaceItem }>("/api/paper-workspace", {
+      method: "POST",
+      body: JSON.stringify({
+        documentId: card.id,
+        source: card.source,
+        collection: card.collection,
+        paperCode: card.paperCode,
+        note: existing?.note ?? "",
+        labels: existing?.labels ?? [],
+      }),
+    })
+      .then((payload) => setWorkspaceItems((current) => ({ ...current, [card.source]: payload.item })))
+      .catch(() => setStatusText("Saved in this browser. Account sync is temporarily unavailable."));
+  };
+
+  const saveLibraryDetails = async (card: ResearchCardData, note: string, labels: string[]) => {
+    const payload = await fetchJson<{ item: PaperWorkspaceItem }>("/api/paper-workspace", {
+      method: "POST",
+      body: JSON.stringify({
+        documentId: card.id,
+        source: card.source,
+        collection: card.collection,
+        paperCode: card.paperCode,
+        note,
+        labels,
+      }),
+    });
+    setWorkspaceItems((current) => ({ ...current, [card.source]: payload.item }));
+    setBookmarkedCards((current) => ({ ...current, [cardKey(card)]: card }));
+    setStatusText("Library note synced");
   };
 
   const translatePapersToEnglish = useCallback(
@@ -4112,7 +4401,8 @@ export default function Home() {
     if (!translationCacheReady || !paperLanguageReady || paperLanguage !== "en" || feedStatus !== "ready" || !visibleCards.length) return;
     const announce = announcePaperLanguageRef.current;
     announcePaperLanguageRef.current = false;
-    void translatePapersToEnglish(visibleCards.map((card) => ({ card })), announce);
+    const citableCards = visibleCards.filter((card) => card.citable !== false);
+    if (citableCards.length) void translatePapersToEnglish(citableCards.map((card) => ({ card })), announce);
   }, [feedStatus, paperLanguage, paperLanguageReady, translatePapersToEnglish, translationCacheReady, translationRefreshNonce, visibleCards]);
 
   const createNewChat = async () => {
@@ -4440,6 +4730,9 @@ export default function Home() {
         return [...current, ...nextCards];
       });
       setFeedTotal(payload.facets?.total ?? feedTotal);
+      setFeedCatalogTotal(payload.facets?.catalogTotal ?? feedCatalogTotal);
+      setFeedCitableTotal(payload.facets?.citableTotal ?? feedCitableTotal);
+      setFeedMetadataOnlyTotal(payload.facets?.metadataOnlyTotal ?? feedMetadataOnlyTotal);
       setFeedTotalSections(payload.facets?.totalSections ?? feedTotalSections);
       setFeedTotalChunks(payload.facets?.totalChunks ?? feedTotalChunks);
       setFeedFilterCounts(payload.facets?.filters ?? feedFilterCounts);
@@ -4682,10 +4975,15 @@ export default function Home() {
             </h1>
             {activeMobileNav === "explore" ? (
               <>
-                <p className="searchLead">Search {(feedTotal || 941).toLocaleString("en-US")} papers. Compare findings. Verify every claim on the original page.</p>
+                <p className="searchLead">
+                  {feedCitableTotal
+                    ? `Search ${feedCitableTotal.toLocaleString("en-US")} page-cited papers across ${Math.max(feedCatalogTotal, feedCitableTotal).toLocaleString("en-US")} Thai research records.`
+                    : "Search Thai civil engineering research. Compare findings. Verify every claim on the original page."}
+                </p>
                 <div className="corpusProof" aria-label="CivilMCP corpus coverage">
-                  <span><strong>{(feedTotal || 941).toLocaleString("en-US")}</strong> papers</span>
-                  <span><strong>{(feedTotalChunks || 48_370).toLocaleString("en-US")}</strong> cited passages</span>
+                  <span><strong>{feedCitableTotal ? feedCitableTotal.toLocaleString("en-US") : "—"}</strong> citable papers</span>
+                  <span><strong>{feedTotalChunks ? feedTotalChunks.toLocaleString("en-US") : "—"}</strong> cited passages</span>
+                  {feedMetadataOnlyTotal ? <span><strong>{feedMetadataOnlyTotal.toLocaleString("en-US")}</strong> discovery records</span> : null}
                   <span>Exact-page citations</span>
                 </div>
                 <p className="corpusContext">Thai + English · Powered by GPT-5.6 Luna</p>
@@ -4873,8 +5171,13 @@ export default function Home() {
         error={paperDetailError}
         translation={paperDetail ? paperTranslations[cardKey(paperDetail.document)] : undefined}
         paperLanguage={paperLanguage}
+        bookmarked={paperDetail ? Boolean(bookmarkedCards[cardKey(paperDetail.document)]) : false}
+        libraryItem={paperDetail ? workspaceItems[paperDetail.document.source] : undefined}
         onClose={closePaperDetail}
         onAsk={askPaper}
+        onOpenRelated={(card) => void openPaperDetail(card)}
+        onToggleBookmark={toggleBookmark}
+        onSaveLibrary={saveLibraryDetails}
         onPaperLanguageChange={changePaperLanguage}
       />
     </div>

@@ -9,6 +9,8 @@ CivilMCP is a Research Preview for an Agentic Context Engine over civil engineer
 - Architecture: `docs/ARCHITECTURE.md`
 - Harness and QA commands: `docs/HARNESS.md`
 - Product quality gates: `docs/QUALITY_SCORE.md`
+- Launch decision and rollout bar: `docs/LAUNCH_READINESS.md`
+- Data-provider expansion and promotion gates: `docs/DATA_EXPANSION.md`
 - Operations and rollback: `docs/OPERATIONS.md`
 - GitHub push checklist: `docs/GITHUB_PUSH_WRAPUP.md`
 - Setup and current data status: `README.md`

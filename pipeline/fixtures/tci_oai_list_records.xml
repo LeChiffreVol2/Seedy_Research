@@ -1,0 +1,39 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<OAI-PMH xmlns="http://www.openarchives.org/OAI/2.0/"
+         xmlns:oai_dc="http://www.openarchives.org/OAI/2.0/oai_dc/"
+         xmlns:dc="http://purl.org/dc/elements/1.1/">
+  <responseDate>2026-07-24T00:00:00Z</responseDate>
+  <request verb="ListRecords">https://example.invalid/oai</request>
+  <ListRecords>
+    <record>
+      <header>
+        <identifier>oai:example.invalid:article/42</identifier>
+        <datestamp>2026-07-20</datestamp>
+      </header>
+      <metadata>
+        <oai_dc:dc>
+          <dc:title>การประเมินความปลอดภัยทางถนน</dc:title>
+          <dc:title>Road Safety Assessment</dc:title>
+          <dc:creator>Somchai Researcher</dc:creator>
+          <dc:subject>transport</dc:subject>
+          <dc:description>บทคัดย่อสำหรับทดสอบตัวแยกข้อมูล</dc:description>
+          <dc:description>Abstract used to test the metadata parser.</dc:description>
+          <dc:publisher>Example Engineering Journal</dc:publisher>
+          <dc:date>2026-07-01</dc:date>
+          <dc:identifier>https://example.invalid/article/42</dc:identifier>
+          <dc:identifier>https://doi.org/10.1234/example.42</dc:identifier>
+          <dc:source>Example Engineering Journal</dc:source>
+          <dc:language>th</dc:language>
+          <dc:rights>CC BY 4.0</dc:rights>
+        </oai_dc:dc>
+      </metadata>
+    </record>
+    <record>
+      <header status="deleted">
+        <identifier>oai:example.invalid:article/deleted</identifier>
+        <datestamp>2026-07-21</datestamp>
+      </header>
+    </record>
+    <resumptionToken>next-page-token</resumptionToken>
+  </ListRecords>
+</OAI-PMH>

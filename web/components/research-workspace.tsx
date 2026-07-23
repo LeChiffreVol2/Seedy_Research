@@ -716,7 +716,7 @@ export function ResearchWorkspacePanel({
                 return (
                   <article key={row.source} className={`prismaScreeningRow ${entry.decision}`}>
                     <div>
-                      <span>{row.paperCode || (row.collection === "ncce" ? "NCCE" : "CE Project")}</span>
+                      <span>{row.paperCode || (row.collection === "ncce" ? "NCCE" : "Student Transport")}</span>
                       <strong>{row.title}</strong>
                     </div>
                     <div className="prismaDecisionGroup" role="group" aria-label={`Screen ${row.title}`}>
@@ -780,7 +780,7 @@ export function ResearchWorkspacePanel({
                   </td>
                   <th scope="row" className="workspacePaperColumn">
                     <button type="button" onClick={() => onOpenPaper(row.source)}>
-                      <span>{row.paperCode || (row.collection === "ncce" ? "NCCE" : "CE Project")}</span>
+                      <span>{row.paperCode || (row.collection === "ncce" ? "NCCE" : "Student Transport")}</span>
                       <strong>{row.title}</strong>
                       <small>{row.pageLabel} · {row.evidenceCount} evidence{prismaEnabled ? ` · ${screening[row.source]?.decision ?? "pending"}` : ""}</small>
                     </button>

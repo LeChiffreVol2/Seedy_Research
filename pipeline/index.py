@@ -31,6 +31,7 @@ from text_quality import OCR_CLEANUP_VERSION, clean_markdown_for_index
 PIPELINE_DIR = Path(__file__).resolve().parent
 ROOT_DIR = PIPELINE_DIR.parent
 DEFAULT_MD_DIR = PIPELINE_DIR / "data" / "markdown"
+TITLE_OVERRIDES_PATH = ROOT_DIR / "web" / "lib" / "paper-title-overrides.json"
 
 VALID_COLLECTIONS = {"ce_project", "ncce"}
 
@@ -120,6 +121,34 @@ def metadata_int(metadata: dict[str, str], key: str) -> int | None:
         return int(value)
     except ValueError:
         return None
+
+
+def load_title_overrides() -> dict[str, str]:
+    if not TITLE_OVERRIDES_PATH.exists():
+        return {}
+    payload = json.loads(TITLE_OVERRIDES_PATH.read_text(encoding="utf-8"))
+    return {
+        str(key): compact_text(str(value))
+        for key, value in payload.items()
+        if compact_text(str(value))
+    }
+
+
+def effective_title(
+    filename: str,
+    markdown: str,
+    paper_code: str | None,
+    document_id: str,
+    overrides: dict[str, str],
+) -> str:
+    override = overrides.get(filename)
+    if override:
+        return override
+    for match in re.finditer(r"^#\s+(.+?)\s*$", markdown, flags=re.MULTILINE):
+        title = compact_text(match.group(1))
+        if title and not re.fullmatch(r"Page\s+\d+", title, flags=re.IGNORECASE):
+            return title[:500]
+    return paper_code or document_id
 
 
 def page_range_for_section(section: Section, doc_page_start: int | None, doc_page_end: int | None) -> tuple[int | None, int | None]:
@@ -666,6 +695,7 @@ def run(args: argparse.Namespace) -> None:
         chunk_size=args.chunk_size,
         chunk_overlap=args.chunk_overlap,
     )
+    title_overrides = load_title_overrides()
 
     files = sorted(args.md_dir.glob("*.md"))
     if args.source_glob:
@@ -695,6 +725,7 @@ def run(args: argparse.Namespace) -> None:
     )
 
     doc_rows: list[dict[str, Any]] = []
+    catalog_rows: list[dict[str, Any]] = []
     section_rows_by_id: dict[str, dict[str, Any]] = {}
     chunk_rows_by_id: dict[str, dict[str, Any]] = {}
     jobs: list[EmbedJob] = []
@@ -734,6 +765,13 @@ def run(args: argparse.Namespace) -> None:
         if discipline == "unknown":
             discipline = get_discipline(md_file.stem)
         doc_hash = sha256_text(f"{OCR_CLEANUP_VERSION}\n{markdown}")
+        document_title = effective_title(
+            md_file.name,
+            markdown,
+            paper_code,
+            document_id,
+            title_overrides,
+        )
         sections = split_sections(markdown)
 
         existing_sections = existing_sections_by_doc.get(document_id, {})
@@ -857,6 +895,45 @@ def run(args: argparse.Namespace) -> None:
                 "updated_at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
             }
         )
+        source_provider = metadata_text(metadata, "source_provider")
+        if not source_provider:
+            source_provider = "student_transport_projects" if collection == "ce_project" else "ncce"
+        now_iso = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
+        catalog_rows.append(
+            {
+                "id": f"{source_provider}:{document_id}",
+                "provider": source_provider,
+                "provider_record_id": document_id,
+                "collection": collection,
+                "source_type": source_type,
+                "title_local": document_title,
+                "discipline": discipline,
+                "rights_status": metadata_text(
+                    metadata,
+                    "rights_status",
+                    "public_source_no_redistribution",
+                ),
+                "access_level": metadata_text(metadata, "access_level", "full_text_local"),
+                "evidence_status": "indexed",
+                "document_id": document_id,
+                "record_hash": doc_hash,
+                "raw_metadata": {
+                    "source": source,
+                    "source_pdf": source_pdf,
+                    "parent_source_pdf": parent_source_pdf,
+                    "paper_code": paper_code,
+                    "page_start": page_start,
+                    "page_end": page_end,
+                    "proceeding_no": proceeding_no,
+                    "proceeding_year": proceeding_year,
+                    "section_count": len(sections),
+                    "chunk_count": chunk_count,
+                },
+                "source_updated_at": now_iso,
+                "last_seen_at": now_iso,
+                "updated_at": now_iso,
+            }
+        )
         if args.verbose:
             print(
                 f"  planned: {source} -> {len(sections)} sections, "
@@ -864,6 +941,7 @@ def run(args: argparse.Namespace) -> None:
             )
 
     print(f"\nDocuments planned: {len(doc_rows)}")
+    print(f"Catalog rows planned: {len(catalog_rows)}")
     print(f"Sections planned : {len(section_rows_by_id)}")
     print(f"Chunks planned   : {len(chunk_rows_by_id)}")
     print(f"Embedding jobs needed: {len(jobs)}")
@@ -947,12 +1025,22 @@ def run(args: argparse.Namespace) -> None:
         else:
             raise RuntimeError(f"Unknown embedding job table: {job.table}")
 
-    section_rows = list(section_rows_by_id.values())
-    chunk_rows = list(chunk_rows_by_id.values())
+    # Reused rows already have the canonical content hash and embedding. Do not
+    # upsert a payload without `embedding`: PostgREST would replace the stored
+    # vector with null. Changed/new rows carry a fresh embedding below.
+    reused_section_ids = set(reused_sections)
+    reused_chunk_ids = set(reused_chunks)
+    section_rows = [
+        row for row_id, row in section_rows_by_id.items() if row_id not in reused_section_ids
+    ]
+    chunk_rows = [
+        row for row_id, row in chunk_rows_by_id.items() if row_id not in reused_chunk_ids
+    ]
 
     upsert_rows(supabase, "civil_documents_v2", doc_rows)
     upsert_rows(supabase, "civil_sections_v2", section_rows)
     upsert_rows(supabase, "civil_chunks_v2", chunk_rows)
+    upsert_rows(supabase, "civil_source_catalog", catalog_rows)
 
     update_ids(supabase, "civil_sections_v2", reused_sections, {"is_stale": False})
     update_ids(supabase, "civil_chunks_v2", reused_chunks, {"is_stale": False})

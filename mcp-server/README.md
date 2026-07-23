@@ -5,7 +5,7 @@ CivilMCP retrieval server using FastAPI + FastMCP-compatible tool handlers.
 ## Run Local
 
 ```bash
-cd /Users/lechiffre/Desktop/Civil_MCP
+cd Civil_MCP
 cp .env.example .env
 
 cd mcp-server
@@ -37,12 +37,22 @@ Read-only tools exposed by the server:
 - `fetch_paper_outline`
 - `list_papers`
 - `list_collections`
+- `search_source_catalog`
+- `find_related_papers`
+- `list_source_providers`
 
 Collection-aware tools accept optional `collection`:
 
 - `""` = all collections
-- `"ce_project"` = CE Project Database only
+- `"ce_project"` = student civil engineering projects only
 - `"ncce"` = NCCE proceedings only
+
+Discovery tools keep evidence boundaries explicit:
+
+- `search_source_catalog` searches indexed, extracted, and metadata-only records.
+- `find_related_papers` returns only indexed, page-linked papers.
+- `list_source_providers` reports citable and metadata-only totals separately.
+- ThaiJO metadata-only records are never returned as evidence by the retrieval tools.
 
 ## Retrieval
 

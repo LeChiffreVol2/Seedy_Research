@@ -8,6 +8,19 @@ from typing import Any
 from common import Check, http_json, is_connection_error, load_env, make_report, print_report, write_report
 
 DEFAULT_QUESTION = "ค้นงาน NCCE ด้านโครงสร้างที่เกี่ยวกับคอนกรีต"
+EXPECTED_MCP_TOOLS = {
+    "search_civil_knowledge",
+    "search_civil_sections",
+    "search_civil_chunks",
+    "fetch_civil_paper",
+    "fetch_chunk_neighbors",
+    "fetch_paper_outline",
+    "list_papers",
+    "list_collections",
+    "search_source_catalog",
+    "find_related_papers",
+    "list_source_providers",
+}
 
 
 def question_for_collection(collection: str) -> str:
@@ -36,6 +49,139 @@ def check_get_json(name: str, url: str, required_key: str | None = None) -> Chec
         "pass" if ok else "fail",
         f"HTTP {status}: {json.dumps(payload, ensure_ascii=False)[:1000]}",
         "" if ok else "Fix endpoint response contract.",
+        latency,
+    )
+
+
+def check_mcp_tools_contract(mcp_url: str) -> Check:
+    try:
+        status, payload, latency = http_json("GET", f"{mcp_url}/tools/list", timeout=45)
+    except BaseException as exc:
+        if is_connection_error(exc):
+            return Check("mcp_tools_list", "warn", f"MCP unavailable: {exc}", "Start MCP server or set MCP_URL.")
+        raise
+    tools = payload.get("tools") if isinstance(payload, dict) else None
+    names = {str(tool.get("name")) for tool in tools if isinstance(tool, dict)} if isinstance(tools, list) else set()
+    missing = sorted(EXPECTED_MCP_TOOLS - names)
+    annotation_issues = [
+        str(tool.get("name"))
+        for tool in (tools or [])
+        if isinstance(tool, dict)
+        and tool.get("name") in EXPECTED_MCP_TOOLS
+        and (
+            not isinstance(tool.get("annotations"), dict)
+            or tool["annotations"].get("readOnlyHint") is not True
+            or tool["annotations"].get("destructiveHint") is not False
+        )
+    ]
+    ok = 200 <= status < 300 and not missing and not annotation_issues
+    return Check(
+        "mcp_tools_list",
+        "pass" if ok else "fail",
+        f"HTTP {status}; tools={len(names)}; missing={missing}; annotation_issues={annotation_issues}",
+        "" if ok else "Expose all 11 read-only CivilMCP tools with non-destructive annotations.",
+        latency,
+        {"toolCount": len(names)},
+    )
+
+
+def check_mcp_source_boundary(mcp_url: str, env: dict[str, str]) -> Check:
+    body = {
+        "name": "list_source_providers",
+        "arguments": {},
+    }
+    try:
+        status, payload, latency = http_json(
+            "POST",
+            f"{mcp_url}/tools/call",
+            body=body,
+            headers=auth_headers(env),
+            timeout=60,
+        )
+    except BaseException as exc:
+        if is_connection_error(exc):
+            return Check("mcp_source_boundary", "warn", f"MCP unavailable: {exc}", "Start MCP server or set MCP_URL.")
+        raise
+    structured = payload.get("structuredContent") if isinstance(payload, dict) else None
+    providers = structured.get("providers") if isinstance(structured, dict) else None
+    tci = next(
+        (item for item in providers if isinstance(item, dict) and item.get("provider") == "tci_thaijo"),
+        None,
+    ) if isinstance(providers, list) else None
+    ok = (
+        200 <= status < 300
+        and isinstance(tci, dict)
+        and int(tci.get("metadata_only") or 0) > 0
+        and int(tci.get("citable") or 0) == 0
+    )
+    return Check(
+        "mcp_source_boundary",
+        "pass" if ok else "fail",
+        f"HTTP {status}; tci={json.dumps(tci, ensure_ascii=False)}",
+        "" if ok else "Keep ThaiJO discovery records metadata-only until their evidence promotion gate passes.",
+        latency,
+    )
+
+
+def check_web_tci_boundary(web_url: str) -> Check:
+    try:
+        status, payload, latency = http_json("GET", f"{web_url}/api/research-feed?filter=tci&limit=3", timeout=45)
+    except BaseException as exc:
+        if is_connection_error(exc):
+            return Check("web_tci_boundary", "warn", f"Web unavailable: {exc}", "Start web app or set WEB_URL.")
+        raise
+    cards = payload.get("cards") if isinstance(payload, dict) else None
+    ok = (
+        200 <= status < 300
+        and isinstance(cards, list)
+        and bool(cards)
+        and all(
+            isinstance(card, dict)
+            and card.get("provider") == "tci_thaijo"
+            and card.get("evidenceStatus") == "metadata_only"
+            and card.get("citable") is False
+            and str(card.get("canonicalUrl") or "").startswith("https://")
+            for card in cards
+        )
+    )
+    return Check(
+        "web_tci_boundary",
+        "pass" if ok else "fail",
+        f"HTTP {status}; cards={len(cards) if isinstance(cards, list) else 'missing'}",
+        "" if ok else "Render ThaiJO discovery records with canonical links and never mark them citable.",
+        latency,
+    )
+
+
+def check_web_unified_search(web_url: str) -> Check:
+    try:
+        status, payload, latency = http_json(
+            "GET",
+            f"{web_url}/api/research-feed?filter=hot&q=soil&limit=12",
+            timeout=45,
+        )
+    except BaseException as exc:
+        if is_connection_error(exc):
+            return Check("web_unified_search", "warn", f"Web unavailable: {exc}", "Start web app or set WEB_URL.")
+        raise
+    cards = payload.get("cards") if isinstance(payload, dict) else None
+    evidence_cards = [
+        card for card in (cards or [])
+        if isinstance(card, dict) and card.get("citable") is True
+    ]
+    discovery_cards = [
+        card for card in (cards or [])
+        if isinstance(card, dict)
+        and card.get("provider") == "tci_thaijo"
+        and card.get("evidenceStatus") == "metadata_only"
+        and card.get("citable") is False
+    ]
+    ok = 200 <= status < 300 and bool(evidence_cards) and bool(discovery_cards)
+    return Check(
+        "web_unified_search",
+        "pass" if ok else "fail",
+        f"HTTP {status}; evidence={len(evidence_cards)}; discovery={len(discovery_cards)}",
+        "" if ok else "Search should combine page-citable Thai evidence with clearly labeled ThaiJO discovery metadata.",
         latency,
     )
 
@@ -237,14 +383,17 @@ def main() -> None:
     if not args.web_only:
         checks.append(check_get_json("mcp_health", f"{mcp_url}/health", "status"))
         checks.append(check_get_json("mcp_readiness", f"{mcp_url}/health/ready", "dependencies"))
-        checks.append(check_get_json("mcp_tools_list", f"{mcp_url}/tools/list", "tools"))
+        checks.append(check_mcp_tools_contract(mcp_url))
         checks.append(check_mcp_rejects_missing_auth(mcp_url))
         checks.append(check_mcp_transport_rejects_missing_auth(mcp_url))
+        checks.append(check_mcp_source_boundary(mcp_url, env))
         checks.append(check_mcp_tool(mcp_url, env, "ce_project"))
         checks.append(check_mcp_tool(mcp_url, env, "ncce"))
 
     if not args.mcp_only:
         checks.append(check_get_json("web_research_feed_ncce", f"{web_url}/api/research-feed?filter=ncce&limit=3", "cards"))
+        checks.append(check_web_tci_boundary(web_url))
+        checks.append(check_web_unified_search(web_url))
         checks.append(check_web_chat_rejects_invalid_body(web_url))
         checks.append(check_web_chat_rejects_oversized_body(web_url))
         for collection in ["ce_project", "ncce", ""]:

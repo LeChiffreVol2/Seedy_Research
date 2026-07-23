@@ -6,7 +6,7 @@ Harness smoke uses `harness_questions.json` for 15 fixed CE/NCCE/cross-collectio
 ## Run
 
 ```bash
-cd /Users/lechiffre/Desktop/Civil_MCP
+cd Civil_MCP
 cp .env.example .env  # ทำครั้งเดียวทั้งโปรเจกต์
 
 cd eval
@@ -23,7 +23,7 @@ python3.10 compare.py
 Harness eval:
 
 ```bash
-cd /Users/lechiffre/Desktop/Civil_MCP
+cd Civil_MCP
 WEB_URL=http://localhost:3000 python3.10 harness/run_eval.py --mode smoke
 # Lower-cost retrieval-only validation:
 WEB_URL=http://localhost:3000 python3.10 harness/run_eval.py --mode smoke --context-only
