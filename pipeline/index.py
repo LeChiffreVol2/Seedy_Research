@@ -284,6 +284,7 @@ def fetch_existing_rows(
             supabase.table(resource)
             .select("id, content_hash, has_embedding, is_stale")
             .eq("document_id", document_id)
+            .order("id")
             .range(offset, offset + page_size - 1)
             .execute()
             .data
@@ -308,6 +309,7 @@ def fetch_existing_rows_by_document(
         page = (
             supabase.table(resource)
             .select("id, document_id, content_hash, has_embedding, is_stale")
+            .order("id")
             .range(offset, offset + page_size - 1)
             .execute()
             .data
@@ -326,7 +328,19 @@ def fetch_existing_rows_by_document(
 
 def upsert_rows(supabase: Client, table: str, rows: list[dict[str, Any]], batch_size: int = 200) -> None:
     for i in range(0, len(rows), batch_size):
-        supabase.table(table).upsert(rows[i : i + batch_size]).execute()
+        batch = rows[i : i + batch_size]
+        try:
+            supabase.table(table).upsert(batch).execute()
+        except Exception as exc:
+            if "statement timeout" not in str(exc).lower() or len(batch) <= 25:
+                raise
+            smaller_batch_size = max(25, len(batch) // 2)
+            print(
+                f"  {table} upsert timed out for {len(batch)} rows; "
+                f"retrying in batches of {smaller_batch_size}",
+                flush=True,
+            )
+            upsert_rows(supabase, table, batch, batch_size=smaller_batch_size)
 
 
 def update_ids(
@@ -660,6 +674,17 @@ def parse_args() -> argparse.Namespace:
         default=1,
         help="1-based split part number for --resume-batch-id.",
     )
+    parser.add_argument(
+        "--resume-batch-map",
+        action="append",
+        default=[],
+        metavar="PART=BATCH_ID",
+        help=(
+            "Resume multiple submitted OpenAI Batch parts. Repeat this option for "
+            "each completed part; for example --resume-batch-map 1=batch_... "
+            "--resume-batch-map 2=batch_...."
+        ),
+    )
     return parser.parse_args()
 
 
@@ -968,16 +993,48 @@ def run(args: argparse.Namespace) -> None:
     if openai_client is None:
         raise RuntimeError("OpenAI client is not initialized outside dry-run mode.")
 
+    resume_batches: dict[int, str] = {}
+    for resume_spec in args.resume_batch_map:
+        part_value, separator, batch_id = resume_spec.partition("=")
+        if not separator or not part_value.isdigit() or not batch_id.strip():
+            raise RuntimeError(
+                f"Invalid --resume-batch-map value {resume_spec!r}; expected PART=BATCH_ID."
+            )
+        part_number = int(part_value)
+        if part_number in resume_batches:
+            raise RuntimeError(f"Duplicate resumed Batch part: {part_number}.")
+        resume_batches[part_number] = batch_id.strip()
     if args.resume_batch_id:
+        if args.resume_batch_part in resume_batches:
+            raise RuntimeError(f"Duplicate resumed Batch part: {args.resume_batch_part}.")
+        resume_batches[args.resume_batch_part] = args.resume_batch_id
+
+    if resume_batches:
         split_parts = split_batch_jobs(jobs)
-        part_index = args.resume_batch_part - 1
-        if part_index < 0 or part_index >= len(split_parts):
-            raise RuntimeError(f"--resume-batch-part must be between 1 and {len(split_parts)} for this plan.")
-        resumed_jobs = split_parts[part_index]
-        resumed_ids = {job.custom_id for job in resumed_jobs}
+        embeddings: dict[str, list[float]] = {}
+        resumed_ids: set[str] = set()
+        for part_number, batch_id in sorted(resume_batches.items()):
+            part_index = part_number - 1
+            if part_index < 0 or part_index >= len(split_parts):
+                raise RuntimeError(
+                    f"Resumed Batch part must be between 1 and {len(split_parts)} for this plan."
+                )
+            resumed_jobs = split_parts[part_index]
+            resumed_ids.update(job.custom_id for job in resumed_jobs)
+            embeddings.update(
+                retrieve_batch_embeddings(
+                    openai_client,
+                    batch_id,
+                    resumed_jobs,
+                    args.poll_seconds,
+                )
+            )
         remaining_jobs = [job for job in jobs if job.custom_id not in resumed_ids]
-        embeddings = retrieve_batch_embeddings(openai_client, args.resume_batch_id, resumed_jobs, args.poll_seconds)
-        print(f"Resumed embeddings: {len(embeddings)}; remaining jobs: {len(remaining_jobs)}", flush=True)
+        print(
+            f"Resumed embeddings: {len(embeddings)} from {len(resume_batches)} parts; "
+            f"remaining jobs: {len(remaining_jobs)}",
+            flush=True,
+        )
         if remaining_jobs:
             if args.mode == "batch":
                 embeddings.update(

@@ -19,7 +19,7 @@ only evidence-index records.
 | --- | --- | --- |
 | Student Transport Projects | Page-preserving hybrid OCR | PDF page parity, non-empty evidence, verified title, exact-page audit |
 | NCCE25/26/29 | Indexed evidence | Existing quality gates |
-| NCCE31 | Local extraction candidate | Paper boundary/duplicate audit, discipline/title review, embedding cost guard, strict data quality |
+| NCCE31 | Indexed evidence: 356 papers | Passed paper boundary/duplicate, discipline/title, page, embedding, and strict data-quality gates on 24 July 2026 |
 | TCI / ThaiJO | Official OAI metadata only | Article/journal license or permission, stable URL, lawful full-text access, page mapping, OCR/text quality |
 
 The initial ThaiJO allowlist is intentionally narrow: research/case/technical
@@ -52,6 +52,7 @@ separate so takedown does not require deleting unrelated evidence.
 - no empty or weak evidence promoted;
 - titles, disciplines, language, author, and institution normalized;
 - embedding job count and estimated cost reviewed before apply;
+- resumable embedding parts and adaptive database upsert sizing for large runs;
 - retrieval/citation eval sliced by provider and language;
 - source-health, failure, stale-record, and takedown observability.
 

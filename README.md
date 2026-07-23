@@ -11,12 +11,12 @@
 | Collection | Papers | Coverage |
 | --- | ---: | --- |
 | Student Transport Projects | 67 | Student transport research projects, 2019–2024 |
-| NCCE | 874 | NCCE25, NCCE26, and NCCE29 proceedings |
-| **Total** | **941** | **8,060 active, page-linked sections · 48,365 active, page-linked evidence chunks** |
+| NCCE | 1,230 | NCCE25, NCCE26, NCCE29, and NCCE31 proceedings |
+| **Total** | **1,297** | **11,523 active, page-linked sections · 68,614 page-linked evidence chunks** |
 
-These public proof metrics intentionally exclude legacy/stale or non-page-linked
-rows. The underlying index currently contains 9,418 section records and 50,715
-chunk records; only evidence with active page provenance is included above.
+These public proof metrics intentionally exclude stale or non-page-linked rows.
+The underlying index contains 69,687 active chunk rows; the headline excludes
+1,073 legacy/non-page-linked rows that are not counted as corpus proof.
 
 The application can search this corpus, synthesize findings across papers, open the exact evidence pages, and translate Thai paper content to English. The source PDFs and extracted corpus are intentionally not redistributed through Git; see [DATA_SOURCES.md](DATA_SOURCES.md).
 
@@ -137,9 +137,12 @@ python3.10 pipeline/index.py --mode batch
 ```
 
 TCI/ThaiJO begins as bounded OAI metadata in `civil_source_catalog`; it is not
-page-linked evidence until rights and full-text quality gates pass. The indexer
-is incremental and does not re-embed unchanged chunks. A synthetic,
-redistributable schema example is available at
+page-linked evidence until rights and full-text quality gates pass. NCCE31 is
+indexed as 356 page-citable papers after its extraction, discipline, title,
+page, embedding, and strict data-quality gates passed on 24 July 2026. The
+indexer is incremental, does not re-embed unchanged chunks, can resume multiple
+completed Batch API parts, and automatically reduces database upsert size after
+a statement timeout. A synthetic, redistributable schema example is available at
 [fixtures/synthetic-civil-paper.json](fixtures/synthetic-civil-paper.json).
 
 ## Demo prompts

@@ -2,21 +2,21 @@
 
 ## Indexed corpus
 
-CivilMCP indexes 941 documents from two locally curated collections:
+CivilMCP indexes 1,297 documents from two locally curated collections:
 
 | Collection | Source material | Indexed scope |
 | --- | --- | ---: |
 | Student Transport Projects (`ce_project`) | Publicly available student transport research PDFs, 2019–2024 | 67 papers |
-| NCCE | Proceedings for NCCE25, NCCE26, and NCCE29 | 874 papers |
+| NCCE | Proceedings for NCCE25, NCCE26, NCCE29, and NCCE31 | 1,230 papers |
 
-NCCE31 is held locally for controlled extraction and quality review. Until its
-dry-run, duplicate-code, title, discipline, page, and embedding gates pass, it
-is not part of the production headline count.
+NCCE31 contributes 356 papers after its dry-run, duplicate-code, title,
+discipline, page, embedding, and strict data-quality gates passed on 24 July
+2026.
 
-The public corpus proof counts 8,060 active, page-linked sections and 48,365
-active, page-linked evidence chunks. The underlying tables contain additional
-legacy/stale or non-page-linked rows; those rows are intentionally excluded
-from the headline metric.
+The public corpus proof counts 11,523 active, page-linked sections and 68,614
+page-linked evidence chunks. The underlying index contains 69,687 active chunk
+rows; 1,073 legacy/non-page-linked rows are intentionally excluded from the
+headline metric.
 
 ## Rights policy
 
@@ -32,7 +32,11 @@ CivilMCP to send the locally extracted NCCE31 and `Y2024_TR_Article_G02` text to
 the OpenAI Embeddings Batch API. Only extracted text and stable internal
 identifiers are sent for embedding; raw PDFs are not uploaded by the indexer.
 This processing authorization does not grant redistribution rights or change
-the source copyright status.
+the source copyright status. G02 and all 356 NCCE31 papers passed the production
+index and strict data-quality gates on the same date. Two completed NCCE31
+Batch parts were reused; after a later Batch part stalled twice at zero
+completed requests, the remaining text was processed through the same OpenAI
+embeddings model using the indexer's bounded synchronous fallback.
 
 ## TCI / ThaiJO boundary
 
