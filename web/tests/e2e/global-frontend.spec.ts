@@ -101,6 +101,18 @@ test("Explore separates ThaiJO discovery metadata from citable evidence", async 
       (card) => card.provider === "tci_thaijo" && card.evidenceStatus === "metadata_only" && card.citable === false,
     ),
   ).toBe(true);
+
+  const ncceResponse = await page.request.get("/api/research-feed?filter=ncce&limit=3");
+  expect(ncceResponse.ok()).toBe(true);
+  const ncce = await ncceResponse.json() as { cards?: Array<{ title?: string; citable?: boolean }> };
+  expect(ncce.cards?.length).toBeGreaterThan(0);
+  expect(
+    ncce.cards?.every(
+      (card) =>
+        card.citable === true &&
+        !/^(?:keywords?|key words?|ค[ํำ]าส[ํำ]าคัญ|คำสำคัญ)(?:\s*[:：]|\s+|$)/i.test(card.title ?? ""),
+    ),
+  ).toBe(true);
 });
 
 test("paper detail exposes library, citation export, global comparison, and related evidence", async ({ page }) => {

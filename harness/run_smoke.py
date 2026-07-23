@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import re
 import time
 from typing import Any
 
@@ -149,6 +150,40 @@ def check_web_tci_boundary(web_url: str) -> Check:
         "pass" if ok else "fail",
         f"HTTP {status}; cards={len(cards) if isinstance(cards, list) else 'missing'}",
         "" if ok else "Render ThaiJO discovery records with canonical links and never mark them citable.",
+        latency,
+    )
+
+
+def check_web_ncce_feed(web_url: str) -> Check:
+    try:
+        status, payload, latency = http_json("GET", f"{web_url}/api/research-feed?filter=ncce&limit=3", timeout=45)
+    except BaseException as exc:
+        if is_connection_error(exc):
+            return Check("web_research_feed_ncce", "warn", f"Web unavailable: {exc}", "Start web app or set WEB_URL.")
+        raise
+    cards = payload.get("cards") if isinstance(payload, dict) else None
+    noisy_titles = [
+        str(card.get("title") or "")
+        for card in (cards or [])
+        if isinstance(card, dict)
+        and re.match(
+            r"^(?:keywords?|key words?|ค[ํำ]าส[ํำ]าคัญ|คำสำคัญ)(?:\s*[:：]|\s+|$)",
+            str(card.get("title") or ""),
+            flags=re.IGNORECASE,
+        )
+    ]
+    ok = (
+        200 <= status < 300
+        and isinstance(cards, list)
+        and bool(cards)
+        and not noisy_titles
+        and all(isinstance(card, dict) and card.get("citable") is True for card in cards)
+    )
+    return Check(
+        "web_research_feed_ncce",
+        "pass" if ok else "fail",
+        f"HTTP {status}; cards={len(cards) if isinstance(cards, list) else 'missing'}; noisy_titles={noisy_titles}",
+        "" if ok else "Use verified paper titles and keep all NCCE feed cards page-citable.",
         latency,
     )
 
@@ -391,7 +426,7 @@ def main() -> None:
         checks.append(check_mcp_tool(mcp_url, env, "ncce"))
 
     if not args.mcp_only:
-        checks.append(check_get_json("web_research_feed_ncce", f"{web_url}/api/research-feed?filter=ncce&limit=3", "cards"))
+        checks.append(check_web_ncce_feed(web_url))
         checks.append(check_web_tci_boundary(web_url))
         checks.append(check_web_unified_search(web_url))
         checks.append(check_web_chat_rejects_invalid_body(web_url))

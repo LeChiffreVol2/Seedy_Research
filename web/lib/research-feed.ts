@@ -394,7 +394,7 @@ function isNoisyTitle(value: string | null | undefined): boolean {
   if (!title) return true;
   if (/^document$/i.test(title)) return true;
   if (/^(page|หน้า|abstract|บทคัดย่อ|references?|เอกสารอ้างอิง|introduction|บทนำ)$/i.test(title)) return true;
-  if (/^(keywords?|key words?|ค[ํำ]าส[ํำ]าคัญ|คำสำคัญ|บทคัดยอ|บพคัดย่อ)\b/i.test(title)) return true;
+  if (/^(?:keywords?|key words?|ค[ํำ]าส[ํำ]าคัญ|คำสำคัญ|บทคัดยอ|บพคัดย่อ)(?:\s*[:：]|\s+|$)/i.test(title)) return true;
   if (/การประชุมวิชาการวิศวกรรมโยธาแห่งชาติ|National Convention on Civil Engineering|Online Conference/i.test(title)) return true;
   if (/^วันที่\b|^\d{1,2}-\d{1,2}\s+(May|June|July)\s+\d{4}/i.test(title)) return true;
   if (/^(table|figure)\s*\d+/i.test(title)) return true;
@@ -505,7 +505,7 @@ function extractAbstractSnippet(value: string | null | undefined, maxChars = 520
   for (const line of lines.slice(start + 1)) {
     const cleaned = repairThaiText(line).replace(/^#{1,6}\s*/, "").trim();
     if (!cleaned) continue;
-    if (/^(keywords?|คำสำคัญ|1\s*บท|บทนำ|introduction)\b/i.test(cleaned)) break;
+    if (/^(?:keywords?|คำสำคัญ)(?:\s*[:：]|\s+|$)|^(?:1\s*บท|บทนำ|introduction)\b/i.test(cleaned)) break;
     if (/^(abstract|บทคัดย่อ|บทคัดยอ|บพคัดย่อ)$/i.test(cleaned)) continue;
     body.push(line);
   }
