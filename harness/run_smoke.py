@@ -157,6 +157,11 @@ def check_web_tci_boundary(web_url: str) -> Check:
 def check_web_ncce_feed(web_url: str) -> Check:
     try:
         status, payload, latency = http_json("GET", f"{web_url}/api/research-feed?filter=ncce&limit=3", timeout=45)
+        known_status, known_payload, known_latency = http_json(
+            "GET",
+            f"{web_url}/api/papers/NCCE31_CEM-06.md",
+            timeout=45,
+        )
     except BaseException as exc:
         if is_connection_error(exc):
             return Check("web_research_feed_ncce", "warn", f"Web unavailable: {exc}", "Start web app or set WEB_URL.")
@@ -172,19 +177,26 @@ def check_web_ncce_feed(web_url: str) -> Check:
             flags=re.IGNORECASE,
         )
     ]
+    known_card = known_payload.get("document") if isinstance(known_payload, dict) else None
+    known_title = str(known_card.get("title") or "") if isinstance(known_card, dict) else ""
     ok = (
         200 <= status < 300
         and isinstance(cards, list)
         and bool(cards)
         and not noisy_titles
         and all(isinstance(card, dict) and card.get("citable") is True for card in cards)
+        and 200 <= known_status < 300
+        and known_title.startswith("การศึกษาการบริหารจัดการความเสี่ยง")
     )
     return Check(
         "web_research_feed_ncce",
         "pass" if ok else "fail",
-        f"HTTP {status}; cards={len(cards) if isinstance(cards, list) else 'missing'}; noisy_titles={noisy_titles}",
+        (
+            f"HTTP {status}; cards={len(cards) if isinstance(cards, list) else 'missing'}; "
+            f"noisy_titles={noisy_titles}; known_title={known_title!r}"
+        ),
         "" if ok else "Use verified paper titles and keep all NCCE feed cards page-citable.",
-        latency,
+        latency + known_latency,
     )
 
 

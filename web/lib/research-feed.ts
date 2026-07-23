@@ -473,6 +473,14 @@ function titleFromContent(content: string | null | undefined): string {
 }
 
 function deriveTitle(doc: DocumentRow, sections: SectionRow[]): string {
+  const firstSection = [...sections].sort(
+    (left, right) => (left.section_index ?? Number.MAX_SAFE_INTEGER) - (right.section_index ?? Number.MAX_SAFE_INTEGER),
+  )[0];
+  const declaredTitle = cleanTitleCandidate(firstSection?.section_title);
+  if (declaredTitle && titleQualityScore(declaredTitle) > 0) {
+    return declaredTitle;
+  }
+
   const titleZone = sections.slice(0, 6);
   const candidates = titleZone.flatMap((section) => {
     const items: string[] = [];

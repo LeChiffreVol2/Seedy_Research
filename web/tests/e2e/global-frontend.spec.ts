@@ -113,6 +113,12 @@ test("Explore separates ThaiJO discovery metadata from citable evidence", async 
         !/^(?:keywords?|key words?|ค[ํำ]าส[ํำ]าคัญ|คำสำคัญ)(?:\s*[:：]|\s+|$)/i.test(card.title ?? ""),
     ),
   ).toBe(true);
+
+  const knownPaperResponse = await page.request.get("/api/papers/NCCE31_CEM-06.md");
+  expect(knownPaperResponse.ok()).toBe(true);
+  const knownPaper = await knownPaperResponse.json() as { document?: { source?: string; title?: string } };
+  expect(knownPaper.document?.source).toBe("NCCE31_CEM-06.md");
+  expect(knownPaper.document?.title).toMatch(/^การศึกษาการบริหารจัดการความเสี่ยง/);
 });
 
 test("paper detail exposes library, citation export, global comparison, and related evidence", async ({ page }) => {
