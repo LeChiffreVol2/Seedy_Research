@@ -123,10 +123,53 @@ export async function transferWorkspaceItems(fromOwnerId: string | null | undefi
   const from = fromOwnerId?.trim();
   const to = toOwnerId.trim();
   if (!from || !to || from === to) return;
+
   const supabase = getSupabaseAdmin();
-  const { error } = await supabase
+  const { data: guestItems, error: guestError } = await supabase
     .from("civil_paper_workspace_items")
-    .update({ owner_id: to, updated_at: new Date().toISOString() })
+    .select("id, owner_id, document_id, source, collection, paper_code, note, labels, created_at, updated_at")
     .eq("owner_id", from);
-  if (error) throw new Error(`Failed to transfer workspace items: ${error.message}`);
+  if (guestError) throw new Error(`Failed to read guest workspace items: ${guestError.message}`);
+
+  const sourceItems = (guestItems ?? []) as PaperWorkspaceRow[];
+  if (!sourceItems.length) return;
+
+  const sources = [...new Set(sourceItems.map((item) => item.source))];
+  const { data: accountItems, error: accountError } = await supabase
+    .from("civil_paper_workspace_items")
+    .select("id, owner_id, document_id, source, collection, paper_code, note, labels, created_at, updated_at")
+    .eq("owner_id", to)
+    .in("source", sources);
+  if (accountError) throw new Error(`Failed to read account workspace items: ${accountError.message}`);
+
+  const accountBySource = new Map(
+    ((accountItems ?? []) as PaperWorkspaceRow[]).map((item) => [item.source, item]),
+  );
+  const labels = (value: unknown) => (Array.isArray(value) ? value.map(String) : []);
+  const now = new Date().toISOString();
+  const mergedItems = sourceItems.map((guestItem) => {
+    const accountItem = accountBySource.get(guestItem.source);
+    return {
+      id: accountItem?.id ?? workspaceItemId(to, guestItem.source),
+      owner_id: to,
+      document_id: accountItem?.document_id ?? guestItem.document_id ?? null,
+      source: guestItem.source,
+      collection: normalizeCollectionFilter(accountItem?.collection ?? guestItem.collection),
+      paper_code: accountItem?.paper_code ?? guestItem.paper_code ?? null,
+      note: accountItem?.note?.trim() ? accountItem.note : guestItem.note ?? "",
+      labels: [...new Set([...labels(accountItem?.labels), ...labels(guestItem.labels)])].slice(0, 20),
+      updated_at: now,
+    };
+  });
+
+  const { error: mergeError } = await supabase
+    .from("civil_paper_workspace_items")
+    .upsert(mergedItems, { onConflict: "owner_id,source" });
+  if (mergeError) throw new Error(`Failed to merge guest workspace items: ${mergeError.message}`);
+
+  const { error: deleteError } = await supabase
+    .from("civil_paper_workspace_items")
+    .delete()
+    .eq("owner_id", from);
+  if (deleteError) throw new Error(`Failed to clear transferred guest workspace items: ${deleteError.message}`);
 }

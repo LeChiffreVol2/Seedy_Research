@@ -33,6 +33,9 @@ class GASecurityContracts(unittest.TestCase):
     def test_authenticated_identity_wins_and_clears_guest_cookie(self) -> None:
         auth = source("web/lib/chat-auth.ts")
         cookies = source("web/lib/chat-cookies.ts")
+        callback = source("web/app/auth/callback/route.ts")
+        workspace = source("web/lib/paper-workspace.ts")
+        page = source("web/app/page.tsx")
         self.assertIn('value?.trim().replace(/^[\'\"]|[\'\"]$/g, "")', auth)
         self.assertIn(".find(isHttpUrl)", auth)
         self.assertIn("process.env.SUPABASE_SERVICE_KEY", auth)
@@ -41,6 +44,22 @@ class GASecurityContracts(unittest.TestCase):
         guest = auth.index("signedGuestIdFromRequest(request)")
         self.assertLess(authenticated, guest)
         self.assertIn("if (identity.isAuthenticated) clearGuestCookie(response)", cookies)
+        for contract in (
+            "exchangeCodeForSession(code)",
+            "transferChatSessions(previousOwnerId, data.user.id)",
+            "transferWorkspaceItems(previousOwnerId, data.user.id)",
+            "clearGuestCookie(response)",
+        ):
+            self.assertIn(contract, callback)
+        for contract in (
+            'workspaceItemId(to, guestItem.source)',
+            '.upsert(mergedItems, { onConflict: "owner_id,source" })',
+            '.delete()',
+            '.eq("owner_id", from)',
+        ):
+            self.assertIn(contract, workspace)
+        self.assertIn('body: JSON.stringify({ action: "profile", displayName })', page)
+        self.assertIn("onProfileUpdate={() => void updateProfile()}", page)
 
     def test_expired_authenticated_session_never_falls_back_to_guest(self) -> None:
         auth = source("web/lib/chat-auth.ts")

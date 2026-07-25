@@ -3144,6 +3144,7 @@ function AccountPanel({
   onMagicLink,
   onForgotPassword,
   onUpdatePassword,
+  onProfileUpdate,
   onLogout,
   onCheckout,
   onPortal,
@@ -3169,6 +3170,7 @@ function AccountPanel({
   onMagicLink: () => void;
   onForgotPassword: () => void;
   onUpdatePassword: () => void;
+  onProfileUpdate: () => void;
   onLogout: () => void;
   onCheckout: () => void;
   onPortal: () => void;
@@ -3258,18 +3260,42 @@ function AccountPanel({
       <div className="accountGrid">
         <form className="accountCard authFormCard" onSubmit={onSubmit}>
           {signedIn ? (
-            <div className="accountSignedIn">
-              <span className="authAvatar">{user.displayName.slice(0, 1).toUpperCase()}</span>
-              <div>
-                <strong>{user.displayName}</strong>
-                <span>{user.email || "Verified workspace session"}</span>
+            <>
+              <div className="accountSignedIn">
+                <span className="authAvatar">{user.displayName.slice(0, 1).toUpperCase()}</span>
+                <div>
+                  <strong>{user.displayName}</strong>
+                  <span>{user.email || "Verified workspace session"}</span>
+                </div>
+              </div>
+              <label>
+                <span>Display name</span>
+                <input
+                  value={displayName}
+                  onChange={(event) => setDisplayName(event.target.value)}
+                  placeholder="Your name"
+                  autoComplete="name"
+                  maxLength={80}
+                  disabled={isBusy}
+                />
+              </label>
+              <div className="accountActions">
+                <button
+                  type="button"
+                  className="cardAction primary"
+                  onClick={onProfileUpdate}
+                  disabled={isBusy || !displayName.trim() || displayName.trim() === user.displayName}
+                >
+                  <ShieldCheck size={17} strokeWidth={2.2} aria-hidden />
+                  <span>{isBusy ? "Saving..." : "Save profile"}</span>
+                </button>
               </div>
               {statusText ? (
                 <p className="authFormStatus" role="status" aria-live="polite">
                   {statusText}
                 </p>
               ) : null}
-            </div>
+            </>
           ) : (
             <>
               <button type="button" className="googleAuthAction" onClick={onGoogle} disabled={isBusy}>
@@ -4658,6 +4684,33 @@ export default function Home() {
     }
   };
 
+  const updateProfile = async () => {
+    const displayName = loginName.trim();
+    if (!displayName) {
+      setStatusText("Enter a display name.");
+      return;
+    }
+
+    setAuthBusy(true);
+    try {
+      const payload = await fetchJson<{ user?: ChatUserProfile; authenticated?: boolean }>("/api/auth", {
+        method: "POST",
+        body: JSON.stringify({ action: "profile", displayName }),
+      });
+      if (payload.user) {
+        setUserProfile(payload.user);
+        setLoginName(payload.user.displayName);
+        setLoginEmail(payload.user.email ?? loginEmail);
+      }
+      setIsAuthenticated(Boolean(payload.authenticated));
+      setStatusText("Profile saved.");
+    } catch (error) {
+      setStatusText(error instanceof Error ? error.message : "Profile could not be saved.");
+    } finally {
+      setAuthBusy(false);
+    }
+  };
+
   const logoutChat = async () => {
     try {
       await fetchJson<{ ok: boolean }>("/api/auth", { method: "DELETE" });
@@ -5115,6 +5168,7 @@ export default function Home() {
             onMagicLink={() => void sendMagicLink()}
             onForgotPassword={() => void sendPasswordRecovery()}
             onUpdatePassword={() => void updatePassword()}
+            onProfileUpdate={() => void updateProfile()}
             onLogout={() => void logoutChat()}
             onCheckout={() => void openBilling("checkout")}
             onPortal={() => void openBilling("portal")}
