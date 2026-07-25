@@ -68,7 +68,7 @@ type FeedFilter = "hot" | "for_you" | "recent" | "evidence" | "saved" | "tci" | 
 type MobileNavItem = "explore" | "workspace" | "path" | "chat" | "history" | "shared" | "settings";
 type FeedStatus = "loading" | "ready" | "error";
 type SessionsStatus = "idle" | "loading" | "ready" | "error";
-type AuthMode = "signin" | "signup" | "magic-link" | "forgot-password" | "recovery";
+type AuthMode = "signin" | "signup" | "forgot-password" | "recovery";
 type PaperLanguage = "th" | "en";
 
 type CivilEvidenceItem = {
@@ -3141,7 +3141,6 @@ function AccountPanel({
   setPasswordConfirm,
   onAuthSubmit,
   onGoogle,
-  onMagicLink,
   onForgotPassword,
   onUpdatePassword,
   onProfileUpdate,
@@ -3167,7 +3166,6 @@ function AccountPanel({
   setPasswordConfirm: (value: string) => void;
   onAuthSubmit: () => void;
   onGoogle: () => void;
-  onMagicLink: () => void;
   onForgotPassword: () => void;
   onUpdatePassword: () => void;
   onProfileUpdate: () => void;
@@ -3179,10 +3177,10 @@ function AccountPanel({
 }) {
   const [showPassword, setShowPassword] = useState(false);
   const isSignup = authMode === "signup";
-  const isMagic = authMode === "magic-link";
   const isForgot = authMode === "forgot-password";
   const isRecovery = authMode === "recovery";
   const signedIn = authenticated && user?.isGuest === false && !isRecovery;
+  const showPlan = signedIn || /Founder Pro|upgrade/i.test(statusText);
   const founderPro = billing.plan === "founder_pro" && billing.premiumModels;
   const resetLabel = billing.resetAt
     ? new Intl.DateTimeFormat("en-US", { month: "short", day: "numeric" }).format(new Date(billing.resetAt))
@@ -3190,49 +3188,39 @@ function AccountPanel({
   const authTitle = signedIn
     ? "Account"
     : isSignup
-      ? "Create an account"
-      : isMagic
-        ? "Sign in"
-        : isForgot || isRecovery
-          ? "Reset password"
-          : "Sign in";
+      ? "Create your account"
+      : isForgot || isRecovery
+        ? "Reset password"
+        : "Sign in";
   const authSubtitle = signedIn
     ? "Your chats, paths, and papers sync across devices."
     : isSignup
-      ? "Save chats, paths, and papers across devices."
-      : isMagic
-        ? "Save chats, paths, and papers across devices."
-        : isForgot
-          ? "We'll email you a secure reset link."
-          : isRecovery
-            ? "Use at least eight characters."
-            : "Save chats, paths, and papers across devices.";
+      ? "Create one account for your research across devices."
+      : isForgot
+        ? "We'll email you a secure reset link."
+        : isRecovery
+          ? "Choose a new password with at least eight characters."
+          : "Access your saved chats, research paths, and papers.";
   const authSwitchLabel = isSignup
     ? "Already have an account?"
     : isForgot || isRecovery
-      ? "Back to sign in"
-      : isMagic
-        ? "Use a password instead"
-        : "New to CivilMCP?";
-  const authSwitchAction = isSignup || isMagic || isForgot || isRecovery ? "Sign in" : "Create account";
-  const authSwitchMode: AuthMode = isSignup || isMagic || isForgot || isRecovery ? "signin" : "signup";
+      ? "Remember your password?"
+      : "New to CivilMCP?";
+  const authSwitchAction = isSignup || isForgot || isRecovery ? "Sign in" : "Create account";
+  const authSwitchMode: AuthMode = isSignup || isForgot || isRecovery ? "signin" : "signup";
   const primaryActionLabel = isBusy
     ? "Please wait..."
-    : isMagic
-      ? "Send sign-in link"
-      : isSignup
-        ? "Create account"
-        : isForgot
-          ? "Send recovery link"
-          : isRecovery
-            ? "Update password"
-            : "Sign in";
+    : isSignup
+      ? "Create account"
+      : isForgot
+        ? "Send recovery link"
+        : isRecovery
+          ? "Update password"
+          : "Sign in";
 
   const onSubmit = (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
-    if (isMagic) {
-      onMagicLink();
-    } else if (isForgot) {
+    if (isForgot) {
       onForgotPassword();
     } else if (isRecovery) {
       onUpdatePassword();
@@ -3257,7 +3245,7 @@ function AccountPanel({
         ) : null}
       </div>
 
-      <div className="accountGrid">
+      <div className={`accountGrid ${showPlan ? "withPlan" : "authOnly"}`}>
         <form className="accountCard authFormCard" onSubmit={onSubmit}>
           {signedIn ? (
             <>
@@ -3298,16 +3286,14 @@ function AccountPanel({
             </>
           ) : (
             <>
-              <button type="button" className="googleAuthAction" onClick={onGoogle} disabled={isBusy}>
-                <span>Continue with Google</span>
-              </button>
-              <div className="authDivider"><span>or use email</span></div>
-              <div className="authSwitch authSwitchTop">
-                <span>{authSwitchLabel}</span>
-                <button type="button" onClick={() => setAuthMode(authSwitchMode)} disabled={isBusy}>
-                  {authSwitchAction}
-                </button>
-              </div>
+              {!isForgot && !isRecovery ? (
+                <>
+                  <button type="button" className="googleAuthAction" onClick={onGoogle} disabled={isBusy}>
+                    <span>Continue with Google</span>
+                  </button>
+                  <div className="authDivider"><span>or continue with email</span></div>
+                </>
+              ) : null}
 
               {isSignup ? (
                 <label>
@@ -3337,7 +3323,7 @@ function AccountPanel({
                 </label>
               ) : null}
 
-              {!isMagic && !isForgot ? (
+              {!isForgot ? (
                 <div className="authField">
                   <div className="authFieldHeader">
                     <label htmlFor="civilmcp-password">Password</label>
@@ -3392,18 +3378,18 @@ function AccountPanel({
               <div className="accountActions">
                 <button
                   type="submit"
-                  className="cardAction primary"
+                  className="cardAction primary authPrimaryAction"
                   disabled={isBusy}
                 >
-                  {isMagic || isForgot ? <Mail size={17} strokeWidth={2.2} aria-hidden /> : <LockKeyhole size={17} strokeWidth={2.2} aria-hidden />}
+                  {isForgot ? <Mail size={17} strokeWidth={2.2} aria-hidden /> : <LockKeyhole size={17} strokeWidth={2.2} aria-hidden />}
                   <span>{primaryActionLabel}</span>
                 </button>
-                {authMode === "signin" ? (
-                  <button type="button" className="cardAction" onClick={() => setAuthMode("magic-link")} disabled={isBusy}>
-                    <Mail size={17} strokeWidth={2.2} aria-hidden />
-                    <span>Use email link</span>
-                  </button>
-                ) : null}
+              </div>
+              <div className="authSwitch authSwitchBottom">
+                <span>{authSwitchLabel}</span>
+                <button type="button" onClick={() => setAuthMode(authSwitchMode)} disabled={isBusy}>
+                  {authSwitchAction}
+                </button>
               </div>
               {statusText ? (
                 <p className="authFormStatus" role="status" aria-live="polite">
@@ -3414,61 +3400,63 @@ function AccountPanel({
           )}
         </form>
 
-        <aside className="authBenefitCard" aria-label="CivilMCP workspace benefits">
-          <div className="planHeading">
-            <span className={`planIcon ${founderPro ? "pro" : ""}`}>
-              {founderPro ? <Crown size={19} strokeWidth={2.2} aria-hidden /> : <Sparkles size={19} strokeWidth={2.2} aria-hidden />}
-            </span>
-            <div>
-              <p className="workspaceEyebrow">Founder Pro</p>
-              <h3>{founderPro ? "Your Pro tools are ready." : "For larger research projects."}</h3>
-            </div>
-          </div>
-          <p className="planPrice"><strong>฿{billing.priceThb}</strong><span>/ month</span></p>
-          <p className="authBenefitIntro">Free includes 100 weekly credits. Founder Pro adds 150 monthly credits and advanced models.</p>
-          {signedIn && billing.creditsRemaining != null && billing.creditsIncluded != null ? (
-            <div className="creditMeter" aria-label={`${billing.creditsRemaining} of ${billing.creditsIncluded} answer credits remaining`}>
-              <div><strong>{billing.creditsRemaining}</strong><span>of {billing.creditsIncluded} credits left</span></div>
-              <progress value={billing.creditsRemaining} max={billing.creditsIncluded} />
-              <small>Resets {resetLabel}</small>
-            </div>
-          ) : null}
-          <div className="authFeatureList">
-            <div className="authFeatureRow">
-              <Crown size={17} strokeWidth={2.2} aria-hidden />
-              <span><strong>Research Workspace</strong><small>Screen, compare, and extract evidence across papers.</small></span>
-            </div>
-            <div className="authFeatureRow">
-              <FileText size={17} strokeWidth={2.2} aria-hidden />
-              <span><strong>Deep Research</strong><small>Create cited briefs across methods, findings, conflicts, and gaps.</small></span>
-            </div>
-          </div>
-          {signedIn ? (
-            <button
-              type="button"
-              className="cardAction primary planAction"
-              onClick={founderPro || billing.hasStripeCustomer ? onPortal : onCheckout}
-              disabled={billingBusy || (!billing.billingConfigured && !billing.hasStripeCustomer)}
-            >
-              <CreditCard size={17} strokeWidth={2.2} aria-hidden />
-              <span>
-                {billingBusy
-                  ? "Opening..."
-                  : founderPro || billing.hasStripeCustomer
-                    ? "Manage plan"
-                    : billing.billingConfigured
-                      ? "Upgrade to Founder Pro"
-                      : "Founder Pro coming soon"}
+        {showPlan ? (
+          <aside className="authBenefitCard" aria-label="CivilMCP workspace benefits">
+            <div className="planHeading">
+              <span className={`planIcon ${founderPro ? "pro" : ""}`}>
+                {founderPro ? <Crown size={19} strokeWidth={2.2} aria-hidden /> : <Sparkles size={19} strokeWidth={2.2} aria-hidden />}
               </span>
-            </button>
-          ) : (
-            <button type="button" className="cardAction primary planAction" onClick={() => setAuthMode("magic-link")}>
-              <Mail size={17} strokeWidth={2.2} aria-hidden />
-              <span>Sign in to upgrade</span>
-            </button>
-          )}
-          <p className="planFinePrint">Free includes DeepSeek Flash and exact-page citations.</p>
-        </aside>
+              <div>
+                <p className="workspaceEyebrow">Founder Pro</p>
+                <h3>{founderPro ? "Your Pro tools are ready." : "For larger research projects."}</h3>
+              </div>
+            </div>
+            <p className="planPrice"><strong>฿{billing.priceThb}</strong><span>/ month</span></p>
+            <p className="authBenefitIntro">Free includes 100 weekly credits. Founder Pro adds 150 monthly credits and advanced models.</p>
+            {signedIn && billing.creditsRemaining != null && billing.creditsIncluded != null ? (
+              <div className="creditMeter" aria-label={`${billing.creditsRemaining} of ${billing.creditsIncluded} answer credits remaining`}>
+                <div><strong>{billing.creditsRemaining}</strong><span>of {billing.creditsIncluded} credits left</span></div>
+                <progress value={billing.creditsRemaining} max={billing.creditsIncluded} />
+                <small>Resets {resetLabel}</small>
+              </div>
+            ) : null}
+            <div className="authFeatureList">
+              <div className="authFeatureRow">
+                <Crown size={17} strokeWidth={2.2} aria-hidden />
+                <span><strong>Research Workspace</strong><small>Screen, compare, and extract evidence across papers.</small></span>
+              </div>
+              <div className="authFeatureRow">
+                <FileText size={17} strokeWidth={2.2} aria-hidden />
+                <span><strong>Deep Research</strong><small>Create cited briefs across methods, findings, conflicts, and gaps.</small></span>
+              </div>
+            </div>
+            {signedIn ? (
+              <button
+                type="button"
+                className="cardAction primary planAction"
+                onClick={founderPro || billing.hasStripeCustomer ? onPortal : onCheckout}
+                disabled={billingBusy || (!billing.billingConfigured && !billing.hasStripeCustomer)}
+              >
+                <CreditCard size={17} strokeWidth={2.2} aria-hidden />
+                <span>
+                  {billingBusy
+                    ? "Opening..."
+                    : founderPro || billing.hasStripeCustomer
+                      ? "Manage plan"
+                      : billing.billingConfigured
+                        ? "Upgrade to Founder Pro"
+                        : "Founder Pro coming soon"}
+                </span>
+              </button>
+            ) : (
+              <button type="button" className="cardAction primary planAction" onClick={() => setAuthMode("signin")}>
+                <Mail size={17} strokeWidth={2.2} aria-hidden />
+                <span>Sign in to upgrade</span>
+              </button>
+            )}
+            <p className="planFinePrint">Free includes DeepSeek Flash and exact-page citations.</p>
+          </aside>
+        ) : null}
       </div>
     </section>
   );
@@ -3544,7 +3532,7 @@ export default function Home() {
   const [chatSessionsError, setChatSessionsError] = useState("");
   const [pendingDeleteSessionId, setPendingDeleteSessionId] = useState<string | null>(null);
   const [deletingSessionId, setDeletingSessionId] = useState<string | null>(null);
-  const [authMode, setAuthMode] = useState<AuthMode>("magic-link");
+  const [authMode, setAuthMode] = useState<AuthMode>("signin");
   const [loginName, setLoginName] = useState("");
   const [loginEmail, setLoginEmail] = useState("");
   const [loginPassword, setLoginPassword] = useState("");
@@ -4603,27 +4591,6 @@ export default function Home() {
     }
   };
 
-  const sendMagicLink = async () => {
-    const email = loginEmail.trim();
-    if (!email) {
-      setStatusText("Enter your email before requesting a secure sign-in link.");
-      return;
-    }
-
-    setAuthBusy(true);
-    try {
-      await fetchJson<{ ok: boolean; pendingEmail?: boolean }>("/api/auth", {
-        method: "POST",
-        body: JSON.stringify({ action: "magic-link", email }),
-      });
-      setStatusText("Secure sign-in link sent. Open it from your email to finish signing in.");
-    } catch (error) {
-      setStatusText(error instanceof Error ? error.message : "Failed to send magic link.");
-    } finally {
-      setAuthBusy(false);
-    }
-  };
-
   const sendPasswordRecovery = async () => {
     const email = loginEmail.trim();
     if (!email) {
@@ -4994,7 +4961,7 @@ export default function Home() {
     } else if (item === "shared") {
       setStatusText("");
     } else {
-      setStatusText(isAuthenticated ? "Your account and saved work are synced." : "Sign in to sync your work across devices.");
+      setStatusText("");
     }
   };
 
@@ -5165,7 +5132,6 @@ export default function Home() {
             setPasswordConfirm={setLoginPasswordConfirm}
             onAuthSubmit={() => void submitAuth()}
             onGoogle={() => void continueWithGoogle()}
-            onMagicLink={() => void sendMagicLink()}
             onForgotPassword={() => void sendPasswordRecovery()}
             onUpdatePassword={() => void updatePassword()}
             onProfileUpdate={() => void updateProfile()}

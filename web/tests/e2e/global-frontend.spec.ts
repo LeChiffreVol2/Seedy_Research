@@ -226,20 +226,29 @@ test("navigation resets rail scroll and account does not render the composer", a
   await expect(page.locator(".searchComposer")).toHaveCount(0);
   await expect(page.getByRole("heading", { name: "Sign in" })).toBeVisible();
   await expect(page.getByRole("button", { name: "Continue with Google" })).toBeVisible();
-  await expect(page.getByRole("button", { name: "Send sign-in link" })).toBeVisible();
-  await expect(page.getByText("฿199")).toBeVisible();
+  await expect(page.getByLabel("Email")).toBeVisible();
+  await expect(page.locator("#civilmcp-password")).toBeVisible();
+  await expect(page.getByLabel("Account and chat history login").getByRole("button", { name: "Sign in", exact: true })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Create account" })).toBeVisible();
+  await expect(page.getByText("฿199")).toHaveCount(0);
 
-  await page.getByLabel("Account and chat history login").getByRole("button", { name: "Sign in", exact: true }).click();
   await page.getByRole("button", { name: "Forgot password?" }).click();
   await expect(page.getByRole("heading", { name: "Reset password" })).toBeVisible();
   await expect(page.getByRole("button", { name: "Send recovery link" })).toBeVisible();
   await expect(page.getByLabel("Password")).toHaveCount(0);
+  await expect(page.getByRole("button", { name: "Continue with Google" })).toHaveCount(0);
 
   await page.getByLabel("Account and chat history login").getByRole("button", { name: "Sign in", exact: true }).click();
   const password = page.locator("#civilmcp-password");
   await expect(password).toHaveAttribute("type", "password");
   await page.getByRole("button", { name: "Show password" }).click();
   await expect(password).toHaveAttribute("type", "text");
+
+  await page.getByLabel("Account and chat history login").getByRole("button", { name: "Create account" }).click();
+  await expect(page.getByRole("heading", { name: "Create your account" })).toBeVisible();
+  await expect(page.getByLabel("Name")).toBeVisible();
+  await expect(page.getByLabel("Confirm password")).toBeVisible();
+  await expect(page.getByLabel("Account and chat history login").getByRole("button", { name: "Sign in", exact: true })).toBeVisible();
   await expectNoPageOverflow(page);
 });
 

@@ -34,6 +34,7 @@ pipeline/data/pdfs/
 eval/*_results.json
 harness/reports/
 citymcp/harness/reports/
+.artifacts/
 tmp/
 .playwright-cli/
 web/playwright-report/
