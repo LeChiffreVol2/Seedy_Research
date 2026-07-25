@@ -2768,7 +2768,7 @@ export async function POST(request: NextRequest) {
     return finalizeResponse(Response.json({
       error: proRequired
         ? `${selectedModel} is included in Founder Pro. Sign in and upgrade to use this model.`
-        : `Monthly answer credits are used up. Credits reset at ${creditReservation.resetAt ?? "the next billing period"}.`,
+        : `Available answer credits are used up. The next credit refresh is ${creditReservation.resetAt ?? "the next billing period"}.`,
       code: creditReservation.reason,
       plan: creditReservation.plan,
       creditsRemaining: creditReservation.creditsRemaining,

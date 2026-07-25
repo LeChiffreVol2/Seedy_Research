@@ -230,7 +230,9 @@ test("navigation resets rail scroll and account does not render the composer", a
   await expect(page.locator("#civilmcp-password")).toBeVisible();
   await expect(page.getByLabel("Account and chat history login").getByRole("button", { name: "Sign in", exact: true })).toBeVisible();
   await expect(page.getByRole("button", { name: "Create account" })).toBeVisible();
-  await expect(page.getByText("฿199")).toHaveCount(0);
+  await expect(page.getByText("฿299")).toBeVisible();
+  await expect(page.getByText(/500-credit Pro top-up every month/)).toBeVisible();
+  await expect(page.getByRole("button", { name: "Founder Pro opening soon" })).toBeDisabled();
 
   await page.getByRole("button", { name: "Forgot password?" }).click();
   await expect(page.getByRole("heading", { name: "Reset password" })).toBeVisible();
@@ -266,8 +268,8 @@ test("advanced models lead free users to the Founder Pro decision point", async 
   await expect(sol).toContainText("PRO");
   await deepseekPro.click();
   await expect(page.getByRole("heading", { name: "For larger research projects." })).toBeVisible();
-  await expect(page.getByRole("button", { name: "Sign in to upgrade" })).toBeVisible();
-  await expect(page.getByText("Free includes DeepSeek Flash and exact-page citations.")).toBeVisible();
+  await expect(page.getByRole("button", { name: "Founder Pro opening soon" })).toBeDisabled();
+  await expect(page.getByText(/500-credit Pro top-up every month/)).toBeVisible();
   await expectNoPageOverflow(page);
 });
 
@@ -385,13 +387,13 @@ test("Founder Pro can batch-run, inspect, review, and export workspace cells", a
   await page.route("**/api/billing", (route) => route.fulfill({ json: {
     plan: "founder_pro",
     status: "active",
-    creditsIncluded: 150,
+    creditsIncluded: 600,
     creditsUsed: 0,
-    creditsRemaining: 150,
+    creditsRemaining: 600,
     resetAt: "2026-08-21T00:00:00.000Z",
     premiumModels: true,
     billingConfigured: true,
-    priceThb: 199,
+    priceThb: 299,
     hasStripeCustomer: true,
   } }));
   await page.route("**/api/research-feed**", (route) => route.fulfill({ json: {
@@ -524,7 +526,7 @@ test("Evidence Mission renders a linked brief and exports Markdown", async ({ pa
         resetAt: null,
         premiumModels: false,
         billingConfigured: false,
-        priceThb: 199,
+        priceThb: 299,
         hasStripeCustomer: false,
       },
     }),
@@ -657,7 +659,7 @@ test("paper language mode translates globally, persists, and follows the paper d
     },
   }));
   await page.route("**/api/chat-sessions**", (route) => route.fulfill({ json: { sessions: [], authenticated: false } }));
-  await page.route("**/api/billing**", (route) => route.fulfill({ json: { plan: "guest", status: "active", premiumModels: false, billingConfigured: false, priceThb: 199 } }));
+  await page.route("**/api/billing**", (route) => route.fulfill({ json: { plan: "guest", status: "active", premiumModels: false, billingConfigured: false, priceThb: 299 } }));
   await page.route("**/api/research-feed**", (route) =>
     route.fulfill({
       json: {

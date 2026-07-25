@@ -47,7 +47,7 @@ Explore remains the feed-first discovery surface: search, filter, inspect a pape
 
 - Guest preview: DeepSeek Flash with the public rate limit; no login required.
 - Free account: DeepSeek Flash, synced history, and 100 weighted answer credits per week, resetting Monday at 00:00 UTC.
-- Founder Pro: ฿199/month, 150 credits, DeepSeek Pro, and GPT-5.6 family access; credits do not roll over.
+- Founder Pro: ฿299/month, the same 100 weekly free credits plus a 500-credit monthly Pro top-up, DeepSeek Pro, GPT-5.6 family access, and Pro research workflows; credits are weighted by model and unused Pro credits do not roll over.
 
 Deep Research and Research Workspace batch execution require Founder Pro. Workspace runs charge the selected model weight once per selected paper and remain capped at six papers by six columns per request; there is no unlimited or unattended background-agent quota.
 

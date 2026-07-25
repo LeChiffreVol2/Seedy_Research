@@ -139,11 +139,11 @@ class GASecurityContracts(unittest.TestCase):
         period_guard = source("supabase/migrations/20260720163000_civil_billing_period_guards.sql")
         model_policy = source("supabase/migrations/20260725120000_civil_deepseek_default_and_pro_models.sql")
         weekly_policy = source("supabase/migrations/20260725203000_civil_free_weekly_credits.sql")
-        billing = source("web/lib/billing.ts")
+        pro_top_up_policy = source("supabase/migrations/20260725205900_civil_founder_pro_500_credits.sql")
         self.assertIn('"deepseek-v4-pro", label: "DeepSeek V4 Pro", provider: "deepseek", credits: 3, requiresPro: true', models)
-        self.assertIn('"gpt-5.6-luna", label: "GPT-5.6 Luna", provider: "openai", credits: 1, requiresPro: true', models)
-        self.assertIn('"gpt-5.6-terra", label: "GPT-5.6 Terra", provider: "openai", credits: 3, requiresPro: true', models)
-        self.assertIn('"gpt-5.6-sol", label: "GPT-5.6 Sol", provider: "openai", credits: 5, requiresPro: true', models)
+        self.assertIn('"gpt-5.6-luna", label: "GPT-5.6 Luna", provider: "openai", credits: 3, requiresPro: true', models)
+        self.assertIn('"gpt-5.6-terra", label: "GPT-5.6 Terra", provider: "openai", credits: 6, requiresPro: true', models)
+        self.assertIn('"gpt-5.6-sol", label: "GPT-5.6 Sol", provider: "openai", credits: 10, requiresPro: true', models)
         self.assertIn("alter column model set default 'deepseek-v4-flash'", model_policy)
         self.assertIn("p_model in ('deepseek-v4-pro', 'gpt-5.6-luna', 'gpt-5.6-terra', 'gpt-5.6-sol')", model_policy)
         self.assertIn("if (chatModelRequiresPro(input.model))", billing)
@@ -182,6 +182,18 @@ class GASecurityContracts(unittest.TestCase):
         ):
             self.assertIn(contract, weekly_policy)
         self.assertIn("FREE_WEEKLY_CREDITS = 100", billing)
+        self.assertIn("FOUNDER_PRO_PRICE_THB = 299", billing)
+        self.assertIn("PRO_MONTHLY_TOP_UP_CREDITS = 500", billing)
+        for contract in (
+            "free_credits_included",
+            "pro_credits_included",
+            "when 'gpt-5.6-luna' then 3",
+            "when 'gpt-5.6-terra' then 6",
+            "when 'gpt-5.6-sol' then 10",
+            "pro_credits_included = case when plan = 'founder_pro' then 500",
+            "free_credits_included + case when v_is_pro then pro_credits_included",
+        ):
+            self.assertIn(contract, pro_top_up_policy)
 
     def test_agentic_evidence_mission_is_bounded_and_citation_allowlisted(self) -> None:
         chat = source("web/app/api/chat/route.ts")

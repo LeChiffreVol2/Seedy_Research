@@ -1,46 +1,45 @@
-# Authentication flow design QA
+# Founder Pro sign-in design QA
 
 - Source visual truth: `/var/folders/p7/zm_9jr1d1kq_9whrvkw8ckcc0000gn/T/codex-clipboard-0f1f4787-374e-412b-af15-0114a03bb734.png`
-- Implementation screenshot: `/Users/lechiffre/Desktop/Civil_MCP/.artifacts/auth-design-qa/implementation-desktop-signin.png`
-- Full comparison: `/Users/lechiffre/Desktop/Civil_MCP/.artifacts/auth-design-qa/source-and-implementation.png`
-- Focused controls comparison: `/Users/lechiffre/Desktop/Civil_MCP/.artifacts/auth-design-qa/focused-auth-controls.png`
-- Viewport: 1468 × 806 CSS px
-- State: signed-out default Sign in
-- Source pixels: 2936 × 1614, inferred at 2× density and normalized to 1468 × 807
-- Implementation pixels: 1468 × 806 at 1× density; extended by 1 px only for the combined comparison
+- Implementation screenshot: `/Users/lechiffre/Desktop/Civil_MCP/.artifacts/design-qa/pro-signin-desktop.jpg`
+- Full comparison: `/Users/lechiffre/Desktop/Civil_MCP/.artifacts/design-qa/pro-signin-comparison.jpg`
+- Focused comparison: `/Users/lechiffre/Desktop/Civil_MCP/.artifacts/design-qa/pro-signin-focus-comparison.jpg`
+- Implementation viewport and density: 1280 × 720 CSS px at 1×
+- Source pixels and normalization: 2936 × 1614 at 2×; 92 px browser chrome removed, then the 2936 × 1522 page was normalized to 1000 × 518
+- Implementation pixels and normalization: 1280 × 720 at 1×, normalized to 1000 × 563
+- State: signed-out default Sign in with Founder Pro visible
 
-## Full-view comparison
+## Full-view comparison evidence
 
-The old production capture and the revised local screen were placed together in one normalized comparison. The surrounding CivilMCP shell, typography, colors, controls, and navigation remain consistent. The revised page intentionally removes the always-visible Founder Pro card and aligns one focused authentication card with the page heading.
+The source and implementation were placed in one comparison image after browser-chrome removal and width normalization. The revised page preserves the CivilMCP shell, restrained neutral palette, two-card hierarchy, and existing navigation. The Sign in card is intentionally wider than Founder Pro so authentication remains the primary task while the upgrade is still discoverable.
 
-## Focused controls comparison
+## Focused comparison evidence
 
-The focused comparison verifies the requested hierarchy: Google first, then email and password, one primary Sign in action, Forgot password beside the password label, and Create account at the end. The prior magic-link choice and repeated sign-in language are removed from the default flow.
+The focused comparison verifies the complete conversion surface. The implementation keeps Google first, adds the requested email-and-password form, exposes Forgot password and Create account without duplicated sign-in choices, and restores the Pro card with ฿299 pricing and the correct “100 weekly + 500 monthly top-up” entitlement. The inactive “opening soon” CTA is an expected configuration state until Stripe is connected, not a hidden upgrade.
 
 ## Required fidelity surfaces
 
-- Fonts and typography: existing CivilMCP families and optical hierarchy are preserved; labels, links, and actions remain readable without truncation.
-- Spacing and layout rhythm: the card aligns to the content header, uses the existing 8–10 px control radii, and retains consistent 14–22 px spacing.
-- Colors and visual tokens: existing neutral surfaces, blue link color, focus treatment, and black primary action are preserved.
-- Image and icon quality: no new image assets or approximate icons were introduced; existing Lucide controls remain sharp and consistent.
-- Copy and content: the page now states the task directly and removes magic-link and pricing copy from the normal sign-in state.
+- Fonts and typography: the established CivilMCP font family, restrained weights, compact eyebrow, clear price hierarchy, and readable small print remain consistent. No visible truncation or awkward heading wrap was found.
+- Spacing and layout rhythm: the 1.15/0.85 grid makes Sign in primary and Pro secondary; card padding, 8–10 px radii, dividers, and feature-row spacing are consistent. E2E checks cover the single-column mobile collapse.
+- Colors and visual tokens: existing off-white background, neutral cards, black primary actions, blue links, disabled state, and restrained accent outline are preserved.
+- Image and icon quality: no raster placeholders, CSS drawings, or approximate assets were added. Existing Lucide icons remain optically aligned and use one stroke family.
+- Copy and content: the pricing and entitlement are explicit without claiming an inaccurate 5× monthly allowance. “500-credit Pro top-up every month” distinguishes the paid grant from the weekly Free pool.
 
-## Interaction and accessibility checks
+## Interactions and accessibility
 
-- Verified Sign in, Create account, and Reset password states in the in-app browser.
-- Verified Email, Password, Confirm password, Show password, Forgot password, and mode-switch controls through their accessible names.
-- Verified that Google is available for Sign in and Sign up but hidden from the focused recovery state.
-- Verified no browser console errors in the tested flow.
-- Mobile overflow, collisions, and auth state transitions are covered by the Playwright E2E suite.
+- Opened Sign in from the primary navigation and verified the form and Pro plan through their accessible roles and names.
+- Verified the Pro CTA is visible and correctly disabled while billing is not configured.
+- Browser logs contained development-only React/Fast Refresh information and no console errors.
+- Production build, security contracts, keyboard states, mobile overflow, and responsive collisions are covered by automated gates; the E2E suite passed 17/17.
 
 ## Comparison history
 
-1. Initial implementation finding — P2: the single auth card was centered while the page heading remained left-aligned, and a default sync message repeated the page purpose.
-2. Fix — aligned the card to the header and removed the passive status box from normal Account navigation.
-3. Post-fix evidence — the full and focused comparisons show a single aligned form with no competing pricing or status panel.
+1. Earlier implementation finding — P2: the simplified auth-only screen made Founder Pro undiscoverable.
+2. Fix — restored the Pro card beside Sign in, made the auth column wider, set ฿299, and corrected the entitlement to a separate 500-credit monthly top-up.
+3. Post-fix evidence — full and focused comparison images show a visible but secondary upgrade surface with the password-based auth flow intact.
 
 ## Remaining findings
 
-No actionable P0, P1, or P2 findings remain. Live Google redirect and credential submission are intentionally not exercised during visual QA because they create external authentication side effects; their server contracts remain covered separately.
+No actionable P0, P1, or P2 visual findings remain. Stripe configuration is still required before the visible Pro CTA can become an active checkout action.
 
 final result: passed

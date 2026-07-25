@@ -257,9 +257,9 @@ def check_product_contract() -> Check:
         "gpt_5_6_pro_gate": all(
             marker in models
             for marker in (
-                '"gpt-5.6-luna", label: "GPT-5.6 Luna", provider: "openai", credits: 1, requiresPro: true',
-                '"gpt-5.6-terra", label: "GPT-5.6 Terra", provider: "openai", credits: 3, requiresPro: true',
-                '"gpt-5.6-sol", label: "GPT-5.6 Sol", provider: "openai", credits: 5, requiresPro: true',
+                '"gpt-5.6-luna", label: "GPT-5.6 Luna", provider: "openai", credits: 3, requiresPro: true',
+                '"gpt-5.6-terra", label: "GPT-5.6 Terra", provider: "openai", credits: 6, requiresPro: true',
+                '"gpt-5.6-sol", label: "GPT-5.6 Sol", provider: "openai", credits: 10, requiresPro: true',
             )
         ),
         "deepseek_pro_gate": '"deepseek-v4-pro", label: "DeepSeek V4 Pro", provider: "deepseek", credits: 3, requiresPro: true' in models,

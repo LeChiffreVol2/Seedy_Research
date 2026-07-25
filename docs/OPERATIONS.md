@@ -63,7 +63,7 @@ Server-only keys must remain in Vercel/server env only: `OPENAI_API_KEY`, `DEEPS
 
 1. Apply `supabase/migrations/20260720160000_civil_founder_pro.sql` and `20260720163000_civil_billing_period_guards.sql` before deploying the web code.
 2. In Supabase Auth, enable Google and allow `https://civil-mcp-web.vercel.app/auth/callback` plus the local callback.
-3. Create a recurring THB 199/month Stripe Price and set `STRIPE_FOUNDER_PRO_PRICE_ID`.
+3. Create a recurring THB 299/month Stripe Price for the 500-credit monthly Pro top-up and set `STRIPE_FOUNDER_PRO_PRICE_ID`.
 4. Point a Stripe webhook at `/api/webhooks/stripe` for `customer.subscription.created`, `customer.subscription.updated`, and `customer.subscription.deleted`; set its signing secret as `STRIPE_WEBHOOK_SECRET`.
 5. Set `NEXT_PUBLIC_APP_URL=https://civil-mcp-web.vercel.app` and the three server-only Stripe variables in Vercel.
 6. Use a Vercel Pro (or higher) project before accepting payment; Hobby is for non-commercial use.

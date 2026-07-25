@@ -1,7 +1,7 @@
 export const OPENAI_CHAT_MODELS = [
-  { id: "gpt-5.6-luna", label: "GPT-5.6 Luna", provider: "openai", credits: 1, requiresPro: true },
-  { id: "gpt-5.6-terra", label: "GPT-5.6 Terra", provider: "openai", credits: 3, requiresPro: true },
-  { id: "gpt-5.6-sol", label: "GPT-5.6 Sol", provider: "openai", credits: 5, requiresPro: true },
+  { id: "gpt-5.6-luna", label: "GPT-5.6 Luna", provider: "openai", credits: 3, requiresPro: true },
+  { id: "gpt-5.6-terra", label: "GPT-5.6 Terra", provider: "openai", credits: 6, requiresPro: true },
+  { id: "gpt-5.6-sol", label: "GPT-5.6 Sol", provider: "openai", credits: 10, requiresPro: true },
 ] as const;
 
 export const DEEPSEEK_CHAT_MODELS = [

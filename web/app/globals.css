@@ -1230,7 +1230,7 @@ button {
 
 .accountGrid {
   display: grid;
-  grid-template-columns: minmax(0, 1.04fr) minmax(280px, 0.96fr);
+  grid-template-columns: minmax(0, 1.15fr) minmax(280px, 0.85fr);
   gap: 14px;
   align-items: stretch;
 }
@@ -4068,7 +4068,7 @@ button,textarea,input,select { font:inherit; }
 }
 .workspaceHeader h2,.pathHeader h2 { color:#111318; font-size:1.45rem; letter-spacing:-.02em; }
 .workspaceEyebrow { color:#707783; font-size:.65rem; letter-spacing:.08em; }
-.accountGrid { grid-template-columns:minmax(0,.95fr) minmax(300px,1.05fr); gap:20px; }
+.accountGrid { grid-template-columns:minmax(0,1.15fr) minmax(280px,.85fr); gap:20px; }
 .accountGrid.authOnly { grid-template-columns:minmax(0,560px); justify-content:start; }
 .accountCard,.authBenefitCard { border-radius:10px; padding:22px; }
 .googleAuthAction {

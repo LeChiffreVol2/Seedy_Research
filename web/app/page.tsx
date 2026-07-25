@@ -507,7 +507,7 @@ const GUEST_BILLING_STATE: BillingState = {
   resetAt: null,
   premiumModels: false,
   billingConfigured: false,
-  priceThb: 199,
+  priceThb: 299,
   hasStripeCustomer: false,
 };
 
@@ -3180,7 +3180,6 @@ function AccountPanel({
   const isForgot = authMode === "forgot-password";
   const isRecovery = authMode === "recovery";
   const signedIn = authenticated && user?.isGuest === false && !isRecovery;
-  const showPlan = signedIn || /Founder Pro|upgrade/i.test(statusText);
   const founderPro = billing.plan === "founder_pro" && billing.premiumModels;
   const resetLabel = billing.resetAt
     ? new Intl.DateTimeFormat("en-US", { month: "short", day: "numeric" }).format(new Date(billing.resetAt))
@@ -3245,7 +3244,7 @@ function AccountPanel({
         ) : null}
       </div>
 
-      <div className={`accountGrid ${showPlan ? "withPlan" : "authOnly"}`}>
+      <div className="accountGrid withPlan">
         <form className="accountCard authFormCard" onSubmit={onSubmit}>
           {signedIn ? (
             <>
@@ -3400,8 +3399,7 @@ function AccountPanel({
           )}
         </form>
 
-        {showPlan ? (
-          <aside className="authBenefitCard" aria-label="CivilMCP workspace benefits">
+        <aside className="authBenefitCard" aria-label="CivilMCP Founder Pro plan">
             <div className="planHeading">
               <span className={`planIcon ${founderPro ? "pro" : ""}`}>
                 {founderPro ? <Crown size={19} strokeWidth={2.2} aria-hidden /> : <Sparkles size={19} strokeWidth={2.2} aria-hidden />}
@@ -3412,12 +3410,12 @@ function AccountPanel({
               </div>
             </div>
             <p className="planPrice"><strong>฿{billing.priceThb}</strong><span>/ month</span></p>
-            <p className="authBenefitIntro">Free includes 100 weekly credits. Founder Pro adds 150 monthly credits and advanced models.</p>
+            <p className="authBenefitIntro">Keep 100 free credits each week, plus a 500-credit Pro top-up every month.</p>
             {signedIn && billing.creditsRemaining != null && billing.creditsIncluded != null ? (
               <div className="creditMeter" aria-label={`${billing.creditsRemaining} of ${billing.creditsIncluded} answer credits remaining`}>
                 <div><strong>{billing.creditsRemaining}</strong><span>of {billing.creditsIncluded} credits left</span></div>
                 <progress value={billing.creditsRemaining} max={billing.creditsIncluded} />
-                <small>Resets {resetLabel}</small>
+                <small>Next credit refresh {resetLabel}</small>
               </div>
             ) : null}
             <div className="authFeatureList">
@@ -3449,14 +3447,18 @@ function AccountPanel({
                 </span>
               </button>
             ) : (
-              <button type="button" className="cardAction primary planAction" onClick={() => setAuthMode("signin")}>
-                <Mail size={17} strokeWidth={2.2} aria-hidden />
-                <span>Sign in to upgrade</span>
+              <button
+                type="button"
+                className="cardAction planAction"
+                onClick={() => setAuthMode("signin")}
+                disabled={!billing.billingConfigured}
+              >
+                <LockKeyhole size={17} strokeWidth={2.2} aria-hidden />
+                <span>{billing.billingConfigured ? "Sign in to upgrade" : "Founder Pro opening soon"}</span>
               </button>
             )}
-            <p className="planFinePrint">Free includes DeepSeek Flash and exact-page citations.</p>
+            <p className="planFinePrint">Pro credits are added monthly. Usage is weighted by model; unused Pro credits do not roll over.</p>
           </aside>
-        ) : null}
       </div>
     </section>
   );
@@ -4041,7 +4043,7 @@ export default function Home() {
           option.id === DEFAULT_CHAT_MODEL
             ? "Default · 1 credit · fast research answers"
             : option.requiresPro
-              ? `${option.credits} ${option.credits === 1 ? "credit" : "credits"} · advanced reasoning`
+              ? `${option.credits} credits · advanced reasoning`
               : `${option.credits} ${option.credits === 1 ? "credit" : "credits"} · additional model`,
       })),
     [billing.premiumModels],
