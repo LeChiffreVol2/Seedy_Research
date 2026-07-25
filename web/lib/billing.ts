@@ -5,7 +5,7 @@ import { createClient } from "@supabase/supabase-js";
 import { chatModelRequiresPro, type ChatModel } from "@/lib/chat-models";
 
 export const FOUNDER_PRO_PRICE_THB = 199;
-export const FREE_MONTHLY_CREDITS = 25;
+export const FREE_WEEKLY_CREDITS = 100;
 export const PRO_MONTHLY_CREDITS = 150;
 
 export type BillingPlan = "guest" | "free" | "founder_pro";

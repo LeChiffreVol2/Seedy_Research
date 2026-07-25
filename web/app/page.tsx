@@ -3425,7 +3425,7 @@ function AccountPanel({
             </div>
           </div>
           <p className="planPrice"><strong>฿{billing.priceThb}</strong><span>/ month</span></p>
-          <p className="authBenefitIntro">150 monthly research credits and advanced models.</p>
+          <p className="authBenefitIntro">Free includes 100 weekly credits. Founder Pro adds 150 monthly credits and advanced models.</p>
           {signedIn && billing.creditsRemaining != null && billing.creditsIncluded != null ? (
             <div className="creditMeter" aria-label={`${billing.creditsRemaining} of ${billing.creditsIncluded} answer credits remaining`}>
               <div><strong>{billing.creditsRemaining}</strong><span>of {billing.creditsIncluded} credits left</span></div>
