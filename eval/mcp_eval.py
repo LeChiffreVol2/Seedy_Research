@@ -43,16 +43,20 @@ def main() -> None:
     load_dotenv(EVAL_DIR / ".env")
     load_dotenv()
 
-    api_key = os.getenv("OPENAI_API_KEY")
-    model = os.getenv("MODEL", "gpt-5.6-luna")
+    model = os.getenv("MODEL", "deepseek-v4-flash")
+    is_deepseek = model.startswith("deepseek-")
+    api_key = os.getenv("DEEPSEEK_API_KEY" if is_deepseek else "OPENAI_API_KEY")
     mcp_url = os.getenv("MCP_URL", "http://localhost:8000")
     mcp_server_api_key = os.getenv("MCP_SERVER_API_KEY")
     questions = json.loads((EVAL_DIR / "questions.json").read_text(encoding="utf-8"))
 
     if not api_key:
-        raise RuntimeError("OPENAI_API_KEY is not set.")
+        raise RuntimeError(f"{'DEEPSEEK_API_KEY' if is_deepseek else 'OPENAI_API_KEY'} is not set.")
 
-    client = OpenAI(api_key=api_key)
+    client = OpenAI(
+        api_key=api_key,
+        **({"base_url": os.getenv("DEEPSEEK_BASE_URL", "https://api.deepseek.com")} if is_deepseek else {}),
+    )
 
     tools = [
         {

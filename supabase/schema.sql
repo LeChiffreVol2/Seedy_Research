@@ -48,7 +48,7 @@ create table if not exists civil_chat_sessions (
   share_expires_at timestamptz,
   share_revoked_at timestamptz,
   mode         text not null default 'mcp',
-  model        text not null default 'gpt-5.6-luna',
+  model        text not null default 'deepseek-v4-flash',
   collection   text not null default '',
   transcript   jsonb not null default '[]'::jsonb,
   created_at   timestamptz default now(),

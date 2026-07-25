@@ -10,7 +10,7 @@ CivilMCP has three production surfaces:
 ```text
 user question
 -> web /api/chat
--> router/context planner (gpt-5.6-luna by default)
+-> router/context planner (deepseek-v4-flash by default)
 -> MCP retrieval tools
 -> evidence packet builder + dedupe + context budget
 -> selected answer model
@@ -26,7 +26,7 @@ The artifact is transcript data, so the existing history and share paths persist
 
 ## Research Workspace Pro
 
-`/api/research-workspaces` is the Founder Pro batch-research boundary. It accepts at most six selected CivilMCP papers and six AI columns, loads at most six page-linked packets per paper, and generates a typed matrix with GPT-5.6 Luna, Terra, or Sol. Evidence IDs use per-paper allow lists (`P1E1`, `P1E2`, and so on); the server removes any ID that belongs to another row or was not supplied. Unsupported cells are marked for review instead of receiving fabricated citations.
+`/api/research-workspaces` is the Founder Pro batch-research boundary. It accepts at most six selected CivilMCP papers and six AI columns, loads at most six page-linked packets per paper, and generates a typed matrix with the selected model. Evidence IDs use per-paper allow lists (`P1E1`, `P1E2`, and so on); the server removes any ID that belongs to another row or was not supplied. Unsupported cells are marked for review instead of receiving fabricated citations.
 
 Entitlement, distributed run quota, and weighted credit reservation are server-enforced. Credits are reserved once per selected paper and refunded if the batch fails. Local browser state provides the free preview. Founder Pro workspaces serialize into the existing `civil_paper_workspaces.notes` field, and every database read, write, and delete is scoped to the authenticated owner. CSV export includes the generated value, exact-page source list, and human-review state for each AI column.
 

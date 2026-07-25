@@ -17,4 +17,4 @@
 - `fail`: blocks limited rollout for the affected surface.
 
 ## Current Release Bar
-For the Build Week Public Research Preview, score must be at least `90`, no gate may fail, citation correctness must be `100%`, and data quality must meet unknown discipline `0`, weak title `0`, and missing embeddings `0`. GA candidacy keeps the stricter score target of `95`.
+For the Public Research Preview, score must be at least `90`, no gate may fail, citation correctness must be `100%`, and data quality must meet unknown discipline `0`, weak title `0`, and missing embeddings `0`. GA candidacy keeps the stricter score target of `95`.

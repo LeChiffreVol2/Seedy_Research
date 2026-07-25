@@ -20,7 +20,7 @@ import {
 } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 
-import { CHAT_MODELS, type ChatModel } from "@/lib/chat-models";
+import { CHAT_MODELS, DEFAULT_CHAT_MODEL, type ChatModel } from "@/lib/chat-models";
 import { GlassMenuSelect, type GlassMenuOption } from "@/components/glass-menu-select";
 
 export type ResearchWorkspacePaper = {
@@ -111,7 +111,7 @@ type RunResponse = {
 };
 
 const STORAGE_KEY = "civilmcp-research-workspace-v1";
-const MODEL_OPTIONS = CHAT_MODELS.filter((model) => ["gpt-5.6-luna", "gpt-5.6-terra", "gpt-5.6-sol"].includes(model.id));
+const MODEL_OPTIONS = CHAT_MODELS;
 const DEFAULT_REVIEW_PROTOCOL: ReviewProtocol = {
   question: "What does this evidence show, where does it disagree, and what remains uncertain?",
   inclusion: "Relevant civil engineering studies with page-level evidence.",
@@ -253,7 +253,7 @@ export function ResearchWorkspacePanel({
   const [workspaceId, setWorkspaceId] = useState("workspace-local");
   const [title, setTitle] = useState("Thai civil engineering matrix");
   const [template, setTemplate] = useState<WorkspaceTemplate>("literature_matrix");
-  const [model, setModel] = useState<ChatModel>("gpt-5.6-luna");
+  const [model, setModel] = useState<ChatModel>(DEFAULT_CHAT_MODEL);
   const [rows, setRows] = useState<WorkspaceRow[]>([]);
   const [columns, setColumns] = useState<WorkspaceColumn[]>(defaultColumns);
   const [selectedSources, setSelectedSources] = useState<string[]>([]);
@@ -740,7 +740,7 @@ export function ResearchWorkspacePanel({
       {!proEnabled ? (
         <div className="workspaceProNotice" role="note">
           <ShieldCheck size={18} aria-hidden />
-          <span><strong>Preview for free.</strong> Pro runs batches, syncs work, and adds Terra and Sol.</span>
+          <span><strong>Preview for free.</strong> Pro runs batches, syncs work, and unlocks advanced models.</span>
           <button type="button" onClick={() => onUpgrade("Research Workspace is included in Founder Pro. Sign in or upgrade to continue.")}>View Pro</button>
         </div>
       ) : null}

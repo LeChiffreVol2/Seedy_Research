@@ -1,4 +1,4 @@
-import { openai } from "@ai-sdk/openai";
+import { createOpenAI, openai } from "@ai-sdk/openai";
 import { generateObject } from "ai";
 import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
@@ -6,7 +6,12 @@ import { z } from "zod";
 import { applyChatIdentityCookies, chatIdentityErrorResponse, resolveChatIdentity } from "@/lib/chat-auth";
 import { getBillingState, refundAnswerCredits, reserveAnswerCredits } from "@/lib/billing";
 import { consumeChatQuota } from "@/lib/chat-store";
-import { type ChatModel } from "@/lib/chat-models";
+import {
+  DEFAULT_CHAT_MODEL,
+  isDeepSeekChatModel,
+  isOpenAIChatModel,
+  type ChatModel,
+} from "@/lib/chat-models";
 import { getPaperDetail } from "@/lib/research-feed";
 import {
   deleteResearchWorkspace,
@@ -20,7 +25,27 @@ export const maxDuration = 60;
 export const preferredRegion = ["sin1"];
 export const dynamic = "force-dynamic";
 
-const modelSchema = z.enum(["gpt-5.6-luna", "gpt-5.6-terra", "gpt-5.6-sol"]);
+const modelSchema = z.enum(["deepseek-v4-flash", "deepseek-v4-pro", "gpt-5.6-luna", "gpt-5.6-terra", "gpt-5.6-sol"]);
+const deepseek = createOpenAI({
+  name: "deepseek",
+  baseURL: (process.env.DEEPSEEK_BASE_URL ?? "https://api.deepseek.com").replace(/\/+$/, ""),
+  apiKey: process.env.DEEPSEEK_API_KEY,
+  compatibility: "compatible",
+  fetch: async (input, init) => {
+    if (typeof init?.body === "string") {
+      try {
+        const body = JSON.parse(init.body) as Record<string, unknown>;
+        if (typeof body.model === "string" && body.model.startsWith("deepseek-v4-")) {
+          body.thinking = { type: "disabled" };
+          return fetch(input, { ...init, body: JSON.stringify(body) });
+        }
+      } catch {
+        // Fall through to the unmodified request body.
+      }
+    }
+    return fetch(input, init);
+  },
+});
 const workspaceRowSchema = z.object({
   source: z.string().trim().min(1).max(320),
   title: z.string().trim().min(1).max(320),
@@ -45,7 +70,7 @@ const runSchema = z.object({
   workspaceId: z.string().trim().min(8).max(96),
   runId: z.string().trim().min(8).max(96),
   title: z.string().trim().min(1).max(160),
-  model: modelSchema.default("gpt-5.6-luna"),
+  model: modelSchema.default(DEFAULT_CHAT_MODEL),
   rows: z.array(workspaceRowSchema).min(1).max(6),
   columns: z.array(workspaceColumnSchema).min(1).max(6),
 });
@@ -96,6 +121,9 @@ async function consumeWorkspaceRunQuota(request: NextRequest, userId: string) {
 }
 
 async function buildWorkspaceRun(input: RunRequest) {
+  if (isDeepSeekChatModel(input.model) && !process.env.DEEPSEEK_API_KEY) {
+    throw new Error("DeepSeek is not configured.");
+  }
   const details = (await Promise.all(input.rows.map(async (row) => ({ row, detail: await getPaperDetail(row.source) })))).filter(
     (item): item is { row: RunRequest["rows"][number]; detail: NonNullable<Awaited<ReturnType<typeof getPaperDetail>>> } => Boolean(item.detail),
   );
@@ -134,7 +162,7 @@ async function buildWorkspaceRun(input: RunRequest) {
 
   const columnInstructions = input.columns.map((column) => `- ${column.id} (${column.label}): ${column.prompt}`).join("\n");
   const result = await generateObject({
-    model: openai(input.model),
+    model: isOpenAIChatModel(input.model) ? openai(input.model) : deepseek(input.model),
     schema: generatedWorkspaceSchema,
     system: [
       "You are CivilMCP's bounded batch research agent.",
@@ -153,7 +181,7 @@ async function buildWorkspaceRun(input: RunRequest) {
       paperContexts.join("\n\n---\n\n"),
     ].join("\n\n"),
     maxTokens: 6_000,
-    providerOptions: { openai: { reasoningEffort: "low" } },
+    ...(isOpenAIChatModel(input.model) ? { providerOptions: { openai: { reasoningEffort: "low" } } } : {}),
   });
 
   const generatedBySource = new Map(result.object.rows.map((row) => [row.source, row]));

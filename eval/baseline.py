@@ -43,17 +43,21 @@ def main() -> None:
     load_dotenv(EVAL_DIR / ".env")
     load_dotenv()
 
-    api_key = os.getenv("OPENAI_API_KEY")
-    model = os.getenv("MODEL", "gpt-5.6-luna")
+    model = os.getenv("MODEL", "deepseek-v4-flash")
+    is_deepseek = model.startswith("deepseek-")
+    api_key = os.getenv("DEEPSEEK_API_KEY" if is_deepseek else "OPENAI_API_KEY")
     md_dir = Path(os.getenv("MD_DIR", str(ROOT_DIR / "pipeline" / "data" / "markdown")))
     questions = json.loads((EVAL_DIR / "questions.json").read_text(encoding="utf-8"))
 
     if not api_key:
-        raise RuntimeError("OPENAI_API_KEY is not set.")
+        raise RuntimeError(f"{'DEEPSEEK_API_KEY' if is_deepseek else 'OPENAI_API_KEY'} is not set.")
     if not md_dir.exists():
         raise RuntimeError(f"Markdown directory not found: {md_dir}")
 
-    client = OpenAI(api_key=api_key)
+    client = OpenAI(
+        api_key=api_key,
+        **({"base_url": os.getenv("DEEPSEEK_BASE_URL", "https://api.deepseek.com")} if is_deepseek else {}),
+    )
     results: list[dict] = []
 
     for q in questions:

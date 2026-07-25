@@ -63,9 +63,9 @@ jobs:
           MCP_URL: http://localhost:8000
           NEXT_PUBLIC_MCP_URL: http://localhost:8000
           AGENTIC_CONTEXT_ENABLED: "true"
-          ROUTER_PROVIDER: openai
-          ROUTER_MODEL: gpt-5.6-luna
-          TRANSLATION_MODEL: gpt-5.6-luna
+          ROUTER_PROVIDER: deepseek
+          ROUTER_MODEL: deepseek-v4-flash
+          TRANSLATION_MODEL: deepseek-v4-flash
           MAX_AGENT_STEPS: "3"
           MAX_TOOL_CALLS: "4"
           MAX_CONTEXT_CHUNKS: "8"

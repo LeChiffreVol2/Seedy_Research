@@ -34,20 +34,20 @@ The brief is stored in the existing chat history/share transcript and exports as
 
 Explore remains the feed-first discovery surface: search, filter, inspect a paper, open its evidence, and continue into chat. It keeps page-citable evidence separate from ThaiJO discovery metadata, learns a lightweight `For you` ranking from saved papers, and syncs a personal library with notes, labels/folders, BibTeX, RIS/Zotero export, and related Thai evidence. Paper detail and `Research Path` bridge to global metadata through OpenAlex without presenting external metadata as CivilMCP evidence. `Deep Research` is the Founder Pro workflow for a rigorous one-question brief.
 
-`Research Workspace Pro` is a separate, spreadsheet-style automated-research surface rather than a chat mode. Papers are rows and bounded AI instructions are columns. A run can process up to six selected papers across six columns, attaches allow-listed exact-page evidence to every supported cell, exposes confidence and human-review states, and exports a source-bearing CSV. The browser keeps a local draft; Founder Pro adds account sync and batch execution. Luna, Terra, and Sol consume 1, 3, or 5 credits per selected paper respectively.
+`Research Workspace Pro` is a separate, spreadsheet-style automated-research surface rather than a chat mode. Papers are rows and bounded AI instructions are columns. A run can process up to six selected papers across six columns, attaches allow-listed exact-page evidence to every supported cell, exposes confidence and human-review states, and exports a source-bearing CSV. The browser keeps a local draft; Founder Pro adds account sync and batch execution. Models consume weighted credits per selected paper.
 
 ## Model behavior
 
-- `gpt-5.6-luna` is the default for answers, retrieval planning, memory compaction, and paper translation.
-- The answer-model picker also offers `gpt-5.6-terra`, `gpt-5.6-sol`, `deepseek-v4-flash`, and `deepseek-v4-pro`. Terra and Sol require Founder Pro.
-- DeepSeek is optional. The default product path only requires OpenAI.
+- `deepseek-v4-flash` is the default for answers, retrieval planning, memory compaction, paper translation, and Research Workspace runs.
+- The model picker also offers `deepseek-v4-pro` and the GPT-5.6 family. Every model except DeepSeek Flash requires Founder Pro.
+- Paper translation uses the same server-side model catalog and defaults to DeepSeek Flash.
 - Retrieval remains bounded by `MAX_AGENT_STEPS`, `MAX_TOOL_CALLS`, `MAX_CONTEXT_CHUNKS`, and `MAX_CONTEXT_TOKENS`.
 
 ## Research Preview plans
 
-- Guest preview: Luna with the public judge/demo rate limit; no login required.
-- Free account: Luna, synced history, and 25 weighted answer credits per month.
-- Founder Pro: ฿199/month, 150 credits, and Terra/Sol access. Luna uses 1 credit, Terra 3, and Sol 5; credits do not roll over.
+- Guest preview: DeepSeek Flash with the public rate limit; no login required.
+- Free account: DeepSeek Flash, synced history, and 25 weighted answer credits per month.
+- Founder Pro: ฿199/month, 150 credits, DeepSeek Pro, and GPT-5.6 family access; credits do not roll over.
 
 Deep Research and Research Workspace batch execution require Founder Pro. Workspace runs charge the selected model weight once per selected paper and remain capped at six papers by six columns per request; there is no unlimited or unattended background-agent quota.
 
@@ -63,7 +63,7 @@ data-rights review is complete.
 ```text
 question
   -> Next.js /api/chat
-  -> GPT-5.6 Luna retrieval plan
+  -> DeepSeek V4 Flash retrieval plan
   -> read-only MCP retrieval tools
   -> bounded evidence packet with exact pages
   -> selected answer model / structured Evidence Brief
@@ -100,7 +100,7 @@ Required server-only environment variables:
 - `MCP_SERVER_API_KEY`
 - `GUEST_SESSION_HMAC_KEY`
 
-`DEEPSEEK_API_KEY` is required only when a DeepSeek answer model is selected. `OPENALEX_API_KEY` is optional and server-only; without it, Research Path keeps a safe link-only bridge to OpenAlex search. Never expose provider, service-role, or MCP keys through `NEXT_PUBLIC_*` variables.
+`DEEPSEEK_API_KEY` powers the default chat, router, translation, and Workspace path. `OPENAI_API_KEY` remains server-only for Pro GPT models and embedding jobs. `OPENALEX_API_KEY` is optional and server-only; without it, Research Path keeps a safe link-only bridge to OpenAlex search. Never expose provider, service-role, or MCP keys through `NEXT_PUBLIC_*` variables.
 
 Founder Pro additionally requires `STRIPE_SECRET_KEY`, `STRIPE_WEBHOOK_SECRET`, and `STRIPE_FOUNDER_PRO_PRICE_ID`. Without them, the free Research Preview remains fully available and the upgrade control shows “opening soon”. Configure Google as a Supabase Auth provider and allow `/auth/callback` on the deployed application origin.
 

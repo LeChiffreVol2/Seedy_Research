@@ -57,7 +57,7 @@ test("desktop feed keeps the approved research hierarchy", async ({ page }) => {
   await expect(page.getByLabel("CivilMCP corpus coverage")).toContainText("papers");
   await expect(page.getByLabel("CivilMCP corpus coverage")).toContainText("cited passages");
   await expect(page.getByLabel("CivilMCP corpus coverage")).toContainText("Exact-page citations");
-  await expect(page.getByText(/Powered by GPT-5.6 Luna/)).toBeVisible();
+  await expect(page.getByText("Thai + English · Page-linked sources")).toBeVisible();
   const runControl = page.getByRole("button", { name: /Evidence Review/ });
   await expect(runControl).toContainText("Evidence Review");
   await runControl.click();
@@ -243,18 +243,22 @@ test("navigation resets rail scroll and account does not render the composer", a
   await expectNoPageOverflow(page);
 });
 
-test("Terra and Sol lead free users to the Founder Pro decision point", async ({ page }) => {
+test("advanced models lead free users to the Founder Pro decision point", async ({ page }) => {
   await page.setViewportSize({ width: 390, height: 844 });
   await page.goto("/");
   await page.getByRole("button", { name: "Model" }).click();
+  const deepseekPro = page.getByRole("menuitemradio", { name: /DeepSeek V4 Pro/ });
+  const luna = page.getByRole("menuitemradio", { name: /GPT-5.6 Luna/ });
   const terra = page.getByRole("menuitemradio", { name: /GPT-5.6 Terra/ });
   const sol = page.getByRole("menuitemradio", { name: /GPT-5.6 Sol/ });
+  await expect(deepseekPro).toContainText("PRO");
+  await expect(luna).toContainText("PRO");
   await expect(terra).toContainText("PRO");
   await expect(sol).toContainText("PRO");
-  await terra.click();
+  await deepseekPro.click();
   await expect(page.getByRole("heading", { name: "For larger research projects." })).toBeVisible();
   await expect(page.getByRole("button", { name: "Sign in to upgrade" })).toBeVisible();
-  await expect(page.getByText("Free includes Luna and exact-page citations.")).toBeVisible();
+  await expect(page.getByText("Free includes DeepSeek Flash and exact-page citations.")).toBeVisible();
   await expectNoPageOverflow(page);
 });
 
@@ -477,7 +481,7 @@ test("model menu supports keyboard navigation and focus return", async ({ page }
   const options = page.getByRole("menuitemradio");
   const selectedOption = page.getByRole("menuitemradio", { checked: true });
   await expect(selectedOption).toBeFocused();
-  await expect(selectedOption).toContainText("GPT-5.6 Luna");
+  await expect(selectedOption).toContainText("DeepSeek V4 Flash");
   await selectedOption.press("End");
   await expect(options.last()).toBeFocused();
   await options.last().press("Escape");
@@ -494,7 +498,7 @@ test("Evidence Mission renders a linked brief and exports Markdown", async ({ pa
       json:
         route.request().method() === "POST"
           ? { ok: true, sessionId }
-          : { sessionId, title: "Untitled chat", mode: "mcp", model: "gpt-5.6-luna", collection: "", messages: [], user: guestUser, authenticated: false },
+          : { sessionId, title: "Untitled chat", mode: "mcp", model: "deepseek-v4-flash", collection: "", messages: [], user: guestUser, authenticated: false },
     }),
   );
   await page.route("**/api/chat-sessions", (route) =>
@@ -636,7 +640,7 @@ test("paper language mode translates globally, persists, and follows the paper d
       sessionId: "00000000-0000-4000-8000-000000000002",
       title: "Untitled chat",
       mode: "mcp",
-      model: "gpt-5.6-luna",
+      model: "deepseek-v4-flash",
       collection: "",
       messages: [],
       user: { userId: "guest-test", displayName: "Guest researcher", isGuest: true },

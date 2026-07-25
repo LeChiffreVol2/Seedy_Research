@@ -139,6 +139,19 @@ export async function reserveAnswerCredits(input: {
       reason: chatModelRequiresPro(input.model) ? "pro_required" : "guest",
     };
   }
+  if (chatModelRequiresPro(input.model)) {
+    const billing = await getBillingState(input.userId);
+    if (!billing.premiumModels) {
+      return {
+        allowed: false,
+        charged: 0,
+        plan: billing.plan,
+        creditsRemaining: billing.creditsRemaining,
+        resetAt: billing.resetAt,
+        reason: "pro_required",
+      };
+    }
+  }
 
   const { data, error } = await getSupabaseAdmin().rpc("civil_consume_answer_credits", {
     p_user_id: input.userId,

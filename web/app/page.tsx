@@ -3399,7 +3399,7 @@ function AccountPanel({
             </div>
           </div>
           <p className="planPrice"><strong>฿{billing.priceThb}</strong><span>/ month</span></p>
-          <p className="authBenefitIntro">150 monthly credits. Luna 1 · Terra 3 · Sol 5.</p>
+          <p className="authBenefitIntro">150 monthly research credits and advanced models.</p>
           {signedIn && billing.creditsRemaining != null && billing.creditsIncluded != null ? (
             <div className="creditMeter" aria-label={`${billing.creditsRemaining} of ${billing.creditsIncluded} answer credits remaining`}>
               <div><strong>{billing.creditsRemaining}</strong><span>of {billing.creditsIncluded} credits left</span></div>
@@ -3441,7 +3441,7 @@ function AccountPanel({
               <span>Sign in to upgrade</span>
             </button>
           )}
-          <p className="planFinePrint">Free includes Luna and exact-page citations.</p>
+          <p className="planFinePrint">Free includes DeepSeek Flash and exact-page citations.</p>
         </aside>
       </div>
     </section>
@@ -4025,12 +4025,10 @@ export default function Home() {
         badge: option.requiresPro ? (billing.premiumModels ? `${option.credits} credits` : "PRO") : undefined,
         description:
           option.id === DEFAULT_CHAT_MODEL
-            ? "Default · 1 credit · fast, high-volume reasoning"
+            ? "Default · 1 credit · fast research answers"
             : option.requiresPro
-              ? `${option.credits} credits · deeper evidence synthesis`
-            : option.provider === "openai"
-              ? "OpenAI GPT-5.6 reasoning model"
-              : `${option.credits} ${option.credits === 1 ? "credit" : "credits"} · optional DeepSeek model`,
+              ? `${option.credits} ${option.credits === 1 ? "credit" : "credits"} · advanced reasoning`
+              : `${option.credits} ${option.credits === 1 ? "credit" : "credits"} · additional model`,
       })),
     [billing.premiumModels],
   );
@@ -4986,7 +4984,7 @@ export default function Home() {
                   {feedMetadataOnlyTotal ? <span><strong>{feedMetadataOnlyTotal.toLocaleString("en-US")}</strong> discovery records</span> : null}
                   <span>Exact-page citations</span>
                 </div>
-                <p className="corpusContext">Thai + English · Powered by GPT-5.6 Luna</p>
+                <p className="corpusContext">Thai + English · Page-linked sources</p>
               </>
             ) : null}
             <SearchComposer

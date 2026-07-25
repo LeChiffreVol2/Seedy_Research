@@ -1,7 +1,14 @@
-import { openai } from "@ai-sdk/openai";
+import { createOpenAI, openai } from "@ai-sdk/openai";
 import { generateObject } from "ai";
 import { z } from "zod";
 
+import {
+  DEFAULT_CHAT_MODEL,
+  isDeepSeekChatModel,
+  isOpenAIChatModel,
+  normalizeChatModel,
+  type ChatModel,
+} from "@/lib/chat-models";
 import {
   checkRateLimit,
   clampEnvNumber,
@@ -20,6 +27,26 @@ const MAX_BODY_BYTES = clampEnvNumber(process.env.TRANSLATION_MAX_BODY_BYTES, 8_
 const MAX_INPUT_CHARS = clampEnvNumber(process.env.TRANSLATION_MAX_INPUT_CHARS, 2_000, 30_000, 18_000);
 const RATE_LIMIT_WINDOW_SECONDS = clampEnvNumber(process.env.TRANSLATION_RATE_LIMIT_WINDOW_SECONDS, 10, 3_600, 60);
 const RATE_LIMIT_MAX_CALLS = clampEnvNumber(process.env.TRANSLATION_RATE_LIMIT_MAX_CALLS, 1, 120, 20);
+const deepseek = createOpenAI({
+  name: "deepseek",
+  baseURL: (process.env.DEEPSEEK_BASE_URL ?? "https://api.deepseek.com").replace(/\/+$/, ""),
+  apiKey: process.env.DEEPSEEK_API_KEY,
+  compatibility: "compatible",
+  fetch: async (input, init) => {
+    if (typeof init?.body === "string") {
+      try {
+        const body = JSON.parse(init.body) as Record<string, unknown>;
+        if (typeof body.model === "string" && body.model.startsWith("deepseek-v4-")) {
+          body.thinking = { type: "disabled" };
+          return fetch(input, { ...init, body: JSON.stringify(body) });
+        }
+      } catch {
+        // Fall through to the unmodified request body.
+      }
+    }
+    return fetch(input, init);
+  },
+});
 
 const TranslationRequestSchema = z.object({
   targetLanguage: z.literal("en").default("en"),
@@ -43,10 +70,17 @@ const TranslationResultSchema = z.object({
   ),
 });
 
-function translationModel() {
-  const configuredModel = process.env.TRANSLATION_MODEL?.trim();
-  if (!process.env.OPENAI_API_KEY) throw new Error("Translation provider is not configured.");
-  return openai(configuredModel?.startsWith("gpt-5.6-") ? configuredModel : "gpt-5.6-luna");
+function translationModelName(): ChatModel {
+  return normalizeChatModel(process.env.TRANSLATION_MODEL ?? DEFAULT_CHAT_MODEL);
+}
+
+function translationModel(model: ChatModel) {
+  if (isOpenAIChatModel(model)) {
+    if (!process.env.OPENAI_API_KEY) throw new Error("Translation provider is not configured.");
+    return openai(model);
+  }
+  if (isDeepSeekChatModel(model) && process.env.DEEPSEEK_API_KEY) return deepseek(model);
+  throw new Error("Translation provider is not configured.");
 }
 
 export async function POST(request: Request) {
@@ -80,8 +114,9 @@ export async function POST(request: Request) {
       );
     }
 
+    const selectedModel = translationModelName();
     const result = await generateObject({
-      model: translationModel(),
+      model: translationModel(selectedModel),
       schema: TranslationResultSchema,
       system:
         "You translate Thai civil-engineering paper content into precise, natural English. " +
@@ -89,7 +124,7 @@ export async function POST(request: Request) {
         "Keep text that is already English when it is part of a mixed-language segment. Return exactly one translation for every supplied segment id.",
       prompt: JSON.stringify({ targetLanguage: body.targetLanguage, segments: thaiSegments }),
       maxTokens: 7_000,
-      providerOptions: { openai: { reasoningEffort: "low" } },
+      ...(isOpenAIChatModel(selectedModel) ? { providerOptions: { openai: { reasoningEffort: "low" } } } : {}),
     });
 
     const requestedIds = new Set(thaiSegments.map((segment) => segment.id));

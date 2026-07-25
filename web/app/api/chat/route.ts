@@ -43,8 +43,8 @@ const DEEPSEEK_BASE_URL = (process.env.DEEPSEEK_BASE_URL ?? "https://api.deepsee
 
 const AGENTIC_CONTEXT_ENABLED = process.env.AGENTIC_CONTEXT_ENABLED !== "false";
 const SIMPLE_RAG_FALLBACK = process.env.SIMPLE_RAG_FALLBACK !== "false";
-const ROUTER_PROVIDER = normalizeRouterProvider(process.env.ROUTER_PROVIDER, process.env.ROUTER_MODEL);
-const ROUTER_MODEL = process.env.ROUTER_MODEL ?? "gpt-5.6-luna";
+const ROUTER_MODEL = process.env.ROUTER_MODEL ?? DEFAULT_CHAT_MODEL;
+const ROUTER_PROVIDER = normalizeRouterProvider(process.env.ROUTER_PROVIDER, ROUTER_MODEL);
 const MAX_AGENT_STEPS = clampNumber(process.env.MAX_AGENT_STEPS, 1, 5, 3);
 const MAX_TOOL_CALLS = clampNumber(process.env.MAX_TOOL_CALLS, 1, 8, 4);
 const MAX_CONTEXT_CHUNKS = clampNumber(process.env.MAX_CONTEXT_CHUNKS, 1, 16, 8);
@@ -474,7 +474,7 @@ function resolveLanguageModel(selectedModel: ChatModel) {
     return deepseek(selectedModel);
   }
 
-  return openai(DEFAULT_CHAT_MODEL);
+  throw new Error("Unsupported chat model.");
 }
 
 function answerGenerationOptions(selectedModel: ChatModel) {

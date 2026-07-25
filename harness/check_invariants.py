@@ -233,7 +233,7 @@ def check_generated_feed_artifacts() -> Check:
     )
 
 
-def check_build_week_contract() -> Check:
+def check_product_contract() -> Check:
     models = (ROOT / "web" / "lib" / "chat-models.ts").read_text(encoding="utf-8", errors="replace")
     chat = (ROOT / "web" / "app" / "api" / "chat" / "route.ts").read_text(encoding="utf-8", errors="replace")
     translation = (ROOT / "web" / "app" / "api" / "paper-translation" / "route.ts").read_text(encoding="utf-8", errors="replace")
@@ -248,11 +248,24 @@ def check_build_week_contract() -> Check:
     billing = (ROOT / "web" / "lib" / "billing.ts").read_text(encoding="utf-8", errors="replace")
     billing_migration = (ROOT / "supabase" / "migrations" / "20260720160000_civil_founder_pro.sql").read_text(encoding="utf-8", errors="replace")
     billing_period_guard = (ROOT / "supabase" / "migrations" / "20260720163000_civil_billing_period_guards.sql").read_text(encoding="utf-8", errors="replace")
+    model_policy_migration = (ROOT / "supabase" / "migrations" / "20260725120000_civil_deepseek_default_and_pro_models.sql").read_text(encoding="utf-8", errors="replace")
     required = {
-        "luna_default": 'DEFAULT_CHAT_MODEL: ChatModel = "gpt-5.6-luna"' in models,
+        "deepseek_default": 'DEFAULT_CHAT_MODEL: ChatModel = "deepseek-v4-flash"' in models,
         "gpt_5_6_picker": all(model in models for model in ("gpt-5.6-luna", "gpt-5.6-terra", "gpt-5.6-sol")),
-        "luna_router": 'process.env.ROUTER_MODEL ?? "gpt-5.6-luna"' in chat,
-        "luna_translation": '"gpt-5.6-luna"' in translation,
+        "deepseek_router": "process.env.ROUTER_MODEL ?? DEFAULT_CHAT_MODEL" in chat,
+        "deepseek_translation": "process.env.TRANSLATION_MODEL ?? DEFAULT_CHAT_MODEL" in translation,
+        "gpt_5_6_pro_gate": all(
+            marker in models
+            for marker in (
+                '"gpt-5.6-luna", label: "GPT-5.6 Luna", provider: "openai", credits: 1, requiresPro: true',
+                '"gpt-5.6-terra", label: "GPT-5.6 Terra", provider: "openai", credits: 3, requiresPro: true',
+                '"gpt-5.6-sol", label: "GPT-5.6 Sol", provider: "openai", credits: 5, requiresPro: true',
+            )
+        ),
+        "deepseek_pro_gate": '"deepseek-v4-pro", label: "DeepSeek V4 Pro", provider: "deepseek", credits: 3, requiresPro: true' in models,
+        "database_model_policy": "alter column model set default 'deepseek-v4-flash'" in model_policy_migration
+        and "p_model in ('deepseek-v4-pro', 'gpt-5.6-luna', 'gpt-5.6-terra', 'gpt-5.6-sol')" in model_policy_migration,
+        "provider_neutral_product_copy": "Powered by GPT" not in page and "Page-linked sources" in page,
         "guest_hour_quota": "CHAT_GUEST_REQUESTS_PER_HOUR, 1, 500, 30" in chat,
         "corpus_facets": all(marker in feed for marker in ("totalSections", "totalChunks")),
         "verified_corpus_fallback": all(
@@ -274,7 +287,6 @@ def check_build_week_contract() -> Check:
         "build_week_evidence": (ROOT / "BUILD_WEEK.md").exists() and (ROOT / "DATA_SOURCES.md").exists(),
         "code_license": (ROOT / "LICENSE").exists(),
         "synthetic_fixture": (ROOT / "fixtures" / "synthetic-civil-paper.json").exists(),
-        "pro_model_gate": all(marker in models for marker in ("credits: 3, requiresPro: true", "credits: 5, requiresPro: true")),
         "atomic_credit_ledger": all(marker in billing_migration for marker in ("civil_credit_ledger", "for update", "civil_refund_answer_credits")),
         "expired_pro_downgrade": all(marker in billing_period_guard for marker in ("civil_expire_billing_account", "plan = 'free'", "current_period_end <= clock_timestamp()")),
         "signed_stripe_webhook": "timingSafeEqual(received, expected)" in billing,
@@ -330,8 +342,8 @@ def check_build_week_contract() -> Check:
     }
     missing = [name for name, present in required.items() if not present]
     if missing:
-        return Check("build_week_product_contract", "fail", f"missing={missing}", "Restore the approved Build Week product and release contract.")
-    return Check("build_week_product_contract", "pass", "Luna, corpus proof, data rights, and Civil/City release boundaries are present.")
+        return Check("product_contract", "fail", f"missing={missing}", "Restore the approved product, model, and release contract.")
+    return Check("product_contract", "pass", "DeepSeek defaults, GPT Pro gates, corpus proof, data rights, and Civil/City boundaries are present.")
 
 
 def check_no_static_feed() -> Check:
@@ -361,7 +373,7 @@ def main() -> None:
         check_agent_bounds_and_annotations(),
         check_backbone_guardrails(),
         check_generated_feed_artifacts(),
-        check_build_week_contract(),
+        check_product_contract(),
         check_no_static_feed(),
         check_reports_ignored(),
     ]
