@@ -66,6 +66,14 @@ Production default is `RETRIEVAL_VERSION=v2`:
 - section -> chunk two-stage retrieval
 - page-aware NCCE citations when page metadata exists
 
+If query embedding fails, v2 search calls the indexed
+`search_civil_*_lexical_v2` RPCs and returns the normal evidence contract with
+`retrieval_mode=lexical_fallback`, `degraded=true`, and a bounded reason code.
+The short embedding circuit breaker prevents a provider outage from causing a
+retry storm. `/metrics` and `/health/ready` expose the current circuit state.
+If both semantic and lexical retrieval fail, the original typed tool error is
+preserved; the web route returns a retryable error and restores answer credits.
+
 Rollback is env-only: set `RETRIEVAL_VERSION=v1` and redeploy. v1 tables/RPCs remain intact.
 
 ## Auth
@@ -75,6 +83,8 @@ Set in `.env`:
 ```bash
 REQUIRE_TOOL_AUTH=true
 MCP_SERVER_API_KEY=your-random-secret
+# Optional dedicated CivilMCP web client; store only the raw key's SHA-256 here.
+MCP_WEB_API_KEY_SHA256=sha256-hex-without-prefix
 ```
 
 Send either header:

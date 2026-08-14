@@ -67,13 +67,15 @@ test("desktop feed keeps the approved research hierarchy", async ({ page }) => {
   await expect(page.getByRole("menuitemradio", { name: /Quick Answer/ })).toBeVisible();
   await expect(page.getByRole("button", { name: "Workspace" })).toBeVisible();
   await page.keyboard.press("Escape");
-  await expect(page.getByRole("region", { name: "CivilMCP research feed" })).toBeVisible();
+  await expect(page.getByRole("region", { name: "CivilMCP research feed", exact: true })).toBeVisible({ timeout: 20_000 });
   await expect.poll(() => page.locator(".researchCard").count()).toBeGreaterThan(0);
   await expect
     .poll(() =>
       page.locator(".researchCard").evaluateAll((cards) => {
         if (cards.length < 2) return false;
-        return cards.slice(0, 2).every((card) => card.getBoundingClientRect().bottom <= window.innerHeight);
+        const first = cards[0].getBoundingClientRect();
+        const second = cards[1].getBoundingClientRect();
+        return first.bottom <= window.innerHeight && second.top < window.innerHeight;
       }),
     )
     .toBe(true);
@@ -87,7 +89,7 @@ test("Explore separates ThaiJO discovery metadata from citable evidence", async 
 
   await page.getByRole("button", { name: /^Thai journals/ }).click();
   const feed = page.getByRole("region", { name: "CivilMCP research feed" });
-  await expect(feed.getByText("Discovery metadata", { exact: true }).first()).toBeVisible();
+  await expect(feed.getByText("Discovery metadata", { exact: true }).first()).toBeVisible({ timeout: 15_000 });
   await expect(feed.getByText("Not used for AI answers or citations", { exact: true }).first()).toBeVisible();
   await expect(feed.getByRole("link", { name: "Open publisher record" }).first()).toHaveAttribute("href", /^https:\/\//);
   await expect(feed.getByRole("button", { name: "Ask with evidence" })).toHaveCount(0);
@@ -121,6 +123,76 @@ test("Explore separates ThaiJO discovery metadata from citable evidence", async 
   expect(knownPaper.document?.title).toMatch(/^การศึกษาการบริหารจัดการความเสี่ยง/);
 });
 
+test("global discovery is explicit, metadata-only, and recoverable", async ({ page }) => {
+  let requestCount = 0;
+  let receivedQuery = "";
+  await page.route("**/api/global-discovery", async (route) => {
+    requestCount += 1;
+    receivedQuery = String((route.request().postDataJSON() as { query?: unknown }).query ?? "");
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({
+        status: "connected",
+        provider: "openalex",
+        generatedAt: "2026-08-13T00:00:00.000Z",
+        searchUrl: "https://openalex.org/works?search=flood%20resilience",
+        works: [
+          {
+            id: "https://openalex.org/W123",
+            doi: "https://doi.org/10.1000/flood",
+            title: "Flood resilience across infrastructure systems",
+            year: 2025,
+            citedByCount: 18,
+            topic: "Climate adaptation",
+            url: "https://openalex.org/W123",
+            citable: false,
+          },
+          {
+            id: "https://openalex.org/W456",
+            doi: null,
+            title: "Evidence synthesis for resilient cities",
+            year: 2024,
+            citedByCount: 7,
+            topic: "Urban resilience",
+            url: "https://openalex.org/W456",
+            citable: false,
+          },
+        ],
+      }),
+    });
+  });
+
+  await page.goto("/");
+  await page.getByLabel("Ask or search civil engineering papers").fill("flood resilience");
+  const expand = page.getByRole("button", { name: "Expand globally" });
+  await expect(expand).toBeVisible();
+  expect(requestCount).toBe(0);
+
+  await expand.click();
+  await expect.poll(() => requestCount).toBe(1);
+  expect(receivedQuery).toBe("flood resilience");
+
+  const panel = page.getByRole("region", { name: "Global research discovery" });
+  await expect(panel.getByText("OpenAlex metadata", { exact: true })).toBeVisible();
+  await expect(panel.getByRole("link", { name: "Open global metadata: Flood resilience across infrastructure systems" })).toHaveAttribute(
+    "href",
+    "https://openalex.org/W123",
+  );
+  await expect(panel.getByText("OpenAlex · metadata only", { exact: true }).first()).toBeVisible();
+  await expect(panel.getByRole("button", { name: /ask|save|evidence/i })).toHaveCount(0);
+
+  await page.setViewportSize({ width: 390, height: 844 });
+  await panel.scrollIntoViewIfNeeded();
+  await expectNoPageOverflow(page);
+  await expectNoInteractiveOverlap(page);
+
+  await page.getByLabel("Ask or search civil engineering papers").fill("seismic retrofit");
+  await expect(page.getByRole("button", { name: "Expand globally" })).toBeVisible();
+  await expect(panel.getByRole("link", { name: /Open global metadata:/ })).toHaveCount(0);
+  expect(requestCount).toBe(1);
+});
+
 test("paper detail exposes library, citation export, global comparison, and related evidence", async ({ page }) => {
   await page.setViewportSize({ width: 1440, height: 1000 });
   await page.goto("/");
@@ -131,6 +203,22 @@ test("paper detail exposes library, citation export, global comparison, and rela
   await expect(page.getByRole("link", { name: "Compare globally" })).toHaveAttribute("href", /^https:\/\/openalex\.org\//);
   await expect(page.getByRole("heading", { name: "Library notes" })).toBeVisible();
   await expect(page.getByRole("heading", { name: "Related Thai evidence" })).toBeVisible();
+
+  const knownPaperResponse = await page.request.get("/api/papers/NCCE31_CEM-06.md");
+  expect(knownPaperResponse.ok()).toBe(true);
+  const knownPaper = await knownPaperResponse.json() as {
+    evidence?: Array<{ id?: string; sectionIndex?: number | null; chunkIndex?: number | null; pageStart?: number | null }>;
+  };
+  const targetEvidence = knownPaper.evidence?.at(-1);
+  expect(targetEvidence?.id).toBeTruthy();
+  const targetParams = new URLSearchParams({ evidence: targetEvidence?.id ?? "" });
+  if (targetEvidence?.sectionIndex != null) targetParams.set("section", String(targetEvidence.sectionIndex));
+  if (targetEvidence?.chunkIndex != null) targetParams.set("chunk", String(targetEvidence.chunkIndex));
+  if (targetEvidence?.pageStart != null) targetParams.set("page", String(targetEvidence.pageStart));
+  const targetedResponse = await page.request.get(`/api/papers/NCCE31_CEM-06.md?${targetParams.toString()}`);
+  expect(targetedResponse.ok()).toBe(true);
+  const targetedPaper = await targetedResponse.json() as { evidence?: Array<{ id?: string }> };
+  expect(targetedPaper.evidence?.[0]?.id).toBe(targetEvidence?.id);
 });
 
 test("personal library saves a paper and enables notes and folders", async ({ page }) => {
@@ -231,7 +319,7 @@ test("navigation resets rail scroll and account does not render the composer", a
   await expect(page.getByLabel("Account and chat history login").getByRole("button", { name: "Sign in", exact: true })).toBeVisible();
   await expect(page.getByRole("button", { name: "Create account" })).toBeVisible();
   await expect(page.getByText("฿299")).toBeVisible();
-  await expect(page.getByText(/500-credit Pro top-up every month/)).toBeVisible();
+  await expect(page.getByText(/Free includes 100 weekly credits.*GPT-5.6 Luna/)).toBeVisible();
   await expect(page.getByRole("button", { name: "Founder Pro opening soon" })).toBeDisabled();
 
   await page.getByRole("button", { name: "Forgot password?" }).click();
@@ -254,7 +342,7 @@ test("navigation resets rail scroll and account does not render the composer", a
   await expectNoPageOverflow(page);
 });
 
-test("advanced models lead free users to the Founder Pro decision point", async ({ page }) => {
+test("free and advanced models expose the correct plan boundary", async ({ page }) => {
   await page.setViewportSize({ width: 390, height: 844 });
   await page.goto("/");
   await page.getByRole("button", { name: "Model" }).click();
@@ -263,13 +351,16 @@ test("advanced models lead free users to the Founder Pro decision point", async 
   const terra = page.getByRole("menuitemradio", { name: /GPT-5.6 Terra/ });
   const sol = page.getByRole("menuitemradio", { name: /GPT-5.6 Sol/ });
   await expect(deepseekPro).toContainText("PRO");
-  await expect(luna).toContainText("PRO");
+  await expect(luna).toContainText("FREE");
+  await expect(luna).toContainText("1 credit");
   await expect(terra).toContainText("PRO");
+  await expect(terra).toContainText("5 credits");
   await expect(sol).toContainText("PRO");
+  await expect(sol).toContainText("10 credits");
   await deepseekPro.click();
   await expect(page.getByRole("heading", { name: "For larger research projects." })).toBeVisible();
   await expect(page.getByRole("button", { name: "Founder Pro opening soon" })).toBeDisabled();
-  await expect(page.getByText(/500-credit Pro top-up every month/)).toBeVisible();
+  await expect(page.getByText(/Free includes 100 weekly credits.*GPT-5.6 Luna/)).toBeVisible();
   await expectNoPageOverflow(page);
 });
 
@@ -446,10 +537,21 @@ test("Founder Pro can batch-run, inspect, review, and export workspace cells", a
       })),
     } });
   });
+  await page.addInitScript((savedCards) => {
+    window.localStorage.setItem(
+      "civilmcp-bookmarks",
+      JSON.stringify(Object.fromEntries(savedCards.map((card) => [card.id, card]))),
+    );
+  }, cards);
 
   await page.setViewportSize({ width: 1440, height: 1000 });
   await page.goto("/");
-  await page.getByRole("button", { name: "Workspace" }).click();
+  await page.getByRole("button", { name: /^Saved/ }).click();
+  const savedFeed = page.getByRole("region", { name: "CivilMCP research feed" });
+  await savedFeed.getByRole("button", { name: "Compare", exact: true }).nth(0).click();
+  await savedFeed.getByRole("button", { name: "Compare", exact: true }).nth(0).click();
+  await expect(page.getByLabel("Compare saved papers")).toContainText("2 selected");
+  await page.getByRole("button", { name: "Compare in Workspace" }).click();
   const workspace = page.getByLabel("Research Workspace Pro");
   await expect(workspace.locator("tbody tr")).toHaveCount(2);
   await workspace.getByRole("button", { name: /Run selected/ }).click();
@@ -468,6 +570,7 @@ test("Founder Pro can batch-run, inspect, review, and export workspace cells", a
   await workspace.getByRole("menuitemradio", { name: /PRISMA scoping review/ }).click();
   const prisma = workspace.getByLabel("PRISMA-guided scoping review");
   await expect(prisma).toContainText("Review protocol");
+  await expect(prisma.getByText("Search strategy")).toBeVisible();
   await prisma.getByRole("group", { name: "Screen Thai road safety evidence 1" }).getByRole("button", { name: "Include" }).click();
   await prisma.getByRole("group", { name: "Screen Thai road safety evidence 2" }).getByRole("button", { name: "Exclude" }).click();
   await prisma.getByLabel("Exclusion reason for Thai road safety evidence 2").fill("Outside the review context");
@@ -536,6 +639,10 @@ test("Evidence Mission renders a linked brief and exports Markdown", async ({ pa
   );
   const evidenceItem = {
     evidenceId: "E1",
+    id: "chunk-road-safety-1",
+    sectionId: "section-road-safety",
+    sectionIndex: 2,
+    chunkIndex: 1,
     citation: "NCCE29_TRL40.md p.3",
     source: "NCCE29_TRL40.md",
     collection: "ncce",
@@ -588,7 +695,19 @@ test("Evidence Mission renders a linked brief and exports Markdown", async ({ pa
   };
   await page.route("**/api/chat", async (route) => {
     const body = [
-      `8:${JSON.stringify([{ type: "civilmcp_context", traceId: "trace-test", evidenceItems: [evidenceItem] }])}`,
+      `8:${JSON.stringify([{
+        type: "civilmcp_context",
+        traceId: "trace-test",
+        intent: "compare",
+        searchQuery: "Thai road safety factors",
+        queryExpansions: ["truck crash", "road safety"],
+        discipline: "transport",
+        collection: "ncce",
+        retrievalMode: "semantic",
+        sectionsUsed: 2,
+        chunksUsed: 4,
+        evidenceItems: [evidenceItem],
+      }])}`,
       `8:${JSON.stringify([{ type: "civilmcp_mission", traceId: "trace-test", artifact }])}`,
       `0:${JSON.stringify("## Evidence Review\nThe brief is grounded in [E1].")}`,
       `d:${JSON.stringify({ finishReason: "stop", usage: { promptTokens: 10, completionTokens: 20 } })}`,
@@ -599,6 +718,44 @@ test("Evidence Mission renders a linked brief and exports Markdown", async ({ pa
       contentType: "text/plain; charset=utf-8",
       headers: { "x-vercel-ai-data-stream": "v1" },
       body,
+    });
+  });
+  await page.route("**/api/papers/NCCE29_TRL40.md**", async (route) => {
+    await route.fulfill({
+      json: {
+        document: {
+          id: "paper-road-safety",
+          source: "NCCE29_TRL40.md",
+          sourcePdf: "NCCE29_TRL40.pdf",
+          collection: "ncce",
+          paperCode: "TRL40",
+          discipline: "transport",
+          title: "Thai road safety evidence",
+          date: "2026",
+          sourceLabel: "NCCE29",
+          summary: "Mocked road safety paper.",
+          tags: ["Transportation"],
+          filters: ["hot", "evidence", "ncce"],
+          evidenceCount: 1,
+          pages: 8,
+          pageLabel: "p.1-8",
+          preview: "traffic",
+          prompt: "Ask this road safety paper.",
+          citable: true,
+        },
+        sections: [],
+        evidence: [{
+          id: "chunk-road-safety-1",
+          sectionIndex: 2,
+          chunkIndex: 1,
+          sectionTitle: "Results",
+          pageStart: 3,
+          pageEnd: 3,
+          snippet: "Representative exact-page evidence for the mission contract.",
+        }],
+        counts: { sections: 1, chunks: 1 },
+        related: [],
+      },
     });
   });
 
@@ -617,6 +774,22 @@ test("Evidence Mission renders a linked brief and exports Markdown", async ({ pa
   await expect(mission.getByRole("button", { name: /What does E1 directly support/ })).toBeVisible();
   await mission.getByText("Inspect agent run").click();
   await expect(mission).toContainText("Saved as a linked Evidence Brief");
+
+  const audit = page.getByLabel("Evidence audit");
+  await expect(audit).toContainText("Provenance complete");
+  await audit.locator("summary").click();
+  await expect(audit).toContainText("1/1 citation IDs resolve");
+  await expect(audit).toContainText("Thai road safety factors");
+  await expect(audit).toContainText("Cross-paper comparison");
+  await expect(audit).toContainText("Expanded · truck crash");
+  const auditDownload = page.waitForEvent("download");
+  await audit.getByRole("button", { name: "Export audit" }).click();
+  await expect((await auditDownload).suggestedFilename()).toMatch(/^civilmcp-evidence-audit-\d+\.md$/);
+  await audit.getByRole("button", { name: /\[E1\] p\.3/ }).first().click();
+  await expect(page.getByLabel("Cited evidence packet")).toBeVisible();
+  await expect(page).toHaveURL(/paper=NCCE29_TRL40\.md/);
+  await expect(page).toHaveURL(/evidence=chunk-road-safety-1/);
+  await page.getByRole("button", { name: "Close paper detail" }).click();
 
   const downloadPromise = page.waitForEvent("download");
   await mission.getByRole("button", { name: "Export Evidence Brief" }).click();

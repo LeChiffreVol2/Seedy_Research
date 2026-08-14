@@ -47,6 +47,20 @@ eligible for the page-linked evidence index only after its article/journal
 license or written permission is verified, a stable source URL is retained, and
 full text passes page-provenance and OCR quality gates.
 
+As of 13 August 2026, five reviewed civil-engineering sets contribute 780
+metadata-only records: 689 geotechnical and 91 structural/concrete. The catalog
+stores publisher links for all 780 and DOI values for 682. A versioned,
+default-deny rights manifest records each allowed operation separately;
+provider-supplied license strings are retained as provenance but do not
+automatically authorize embedding, summarization, translation, redistribution,
+commercial use, or model training.
+
+ThaiJO OAI deleted-record headers are also retained. They become non-citable
+catalog tombstones with the provider identifier, deletion datestamp, endpoint,
+and set provenance. Applying a tombstone marks a matching catalog record
+`evidence_status=removed` without hard-deleting prior metadata, reviewed rights,
+or linked evidence; reactivation is a separate reviewed action.
+
 This distinction is intentional: discoverability in CivilMCP does not imply
 permission to redistribute or process a journal's full text.
 

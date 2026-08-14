@@ -1,3 +1,4 @@
+import { createClient } from "@supabase/supabase-js";
 import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 
@@ -55,10 +56,21 @@ const authPayloadSchema = z.discriminatedUnion("action", [
     action: z.literal("profile"),
     displayName: displayNameSchema,
   }),
+  z.object({
+    action: z.literal("delete-account"),
+    confirmation: z.literal("DELETE"),
+  }),
 ]);
 
 function errorResponse(message: string, status = 400) {
   return NextResponse.json({ error: message }, { status });
+}
+
+function createAdminClient() {
+  const url = process.env.SUPABASE_URL;
+  const key = process.env.SUPABASE_SERVICE_KEY;
+  if (!url || !key) throw new Error("Account deletion is not configured.");
+  return createClient(url, key, { auth: { persistSession: false } });
 }
 
 async function finalizeAuthenticatedResponse(
@@ -119,7 +131,12 @@ export async function POST(request: NextRequest) {
     return errorResponse("Invalid auth payload.");
   }
 
-  const auth = createRouteAuthClient(request);
+  let auth: ReturnType<typeof createRouteAuthClient>;
+  try {
+    auth = createRouteAuthClient(request);
+  } catch (error) {
+    return chatIdentityErrorResponse(error, request);
+  }
   const payload = parsed.data;
 
   if (payload.action === "oauth") {
@@ -199,6 +216,43 @@ export async function POST(request: NextRequest) {
     return applyChatIdentityCookies(response, { userId: data.user.id, isAuthenticated: true }, auth.applyCookies);
   }
 
+  if (payload.action === "delete-account") {
+    const { data, error } = await auth.supabase.auth.getUser();
+    if (error || !data.user) {
+      return auth.applyCookies(errorResponse("Sign in before deleting your account.", 401));
+    }
+    const admin = createAdminClient();
+    const { data: billing, error: billingError } = await admin
+      .from("civil_billing_accounts")
+      .select("status, stripe_subscription_id")
+      .eq("user_id", data.user.id)
+      .maybeSingle();
+    if (billingError) {
+      return auth.applyCookies(errorResponse("Account status could not be verified. Please retry.", 503));
+    }
+    const activeBillingStatuses = new Set(["active", "trialing", "past_due", "unpaid", "incomplete", "paused"]);
+    if (billing?.stripe_subscription_id && activeBillingStatuses.has(billing.status)) {
+      return auth.applyCookies(errorResponse("Cancel the active subscription from Manage plan before deleting this account.", 409));
+    }
+
+    const userId = data.user.id;
+    const { error: dataDeleteError } = await admin.rpc("civil_delete_account_data", { p_user_id: userId });
+    if (dataDeleteError) {
+      console.error(JSON.stringify({ event: "civilmcp_account_data_delete_failed", userId, code: dataDeleteError.code }));
+      return auth.applyCookies(errorResponse("Account data could not be deleted safely. Please retry.", 503));
+    }
+    const { error: authDeleteError } = await admin.auth.admin.deleteUser(userId);
+    if (authDeleteError) {
+      console.error(JSON.stringify({ event: "civilmcp_auth_user_delete_failed", userId, message: authDeleteError.message }));
+      return auth.applyCookies(errorResponse("Research data was removed, but sign-in removal needs support. Submit an account deletion request.", 503));
+    }
+
+    const response = NextResponse.json({ ok: true, deleted: true });
+    auth.applyCookies(response);
+    clearChatCookies(response);
+    return response;
+  }
+
   if (payload.action === "signup") {
     const { data, error } = await auth.supabase.auth.signUp({
       email: payload.email,
@@ -241,7 +295,12 @@ export async function POST(request: NextRequest) {
 }
 
 export async function DELETE(request: NextRequest) {
-  const auth = createRouteAuthClient(request);
+  let auth: ReturnType<typeof createRouteAuthClient>;
+  try {
+    auth = createRouteAuthClient(request);
+  } catch (error) {
+    return chatIdentityErrorResponse(error, request);
+  }
   await auth.supabase.auth.signOut();
 
   const response = NextResponse.json({ ok: true });

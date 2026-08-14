@@ -52,6 +52,8 @@ CHUNK_TOP_K = int(os.getenv("CHUNK_TOP_K", "8"))
 CONTEXT_MAX_CHUNKS = int(os.getenv("CONTEXT_MAX_CHUNKS", "8"))
 
 OPENAI_TIMEOUT_SECONDS = float(os.getenv("OPENAI_TIMEOUT_SECONDS", "20"))
+OPENAI_MAX_RETRIES = max(0, min(int(os.getenv("OPENAI_MAX_RETRIES", "1")), 3))
+EMBEDDING_CIRCUIT_SECONDS = max(5, min(int(os.getenv("EMBEDDING_CIRCUIT_SECONDS", "300")), 3600))
 TOOL_TIMEOUT_SECONDS = float(os.getenv("TOOL_TIMEOUT_SECONDS", "20"))
 
 RATE_LIMIT_WINDOW_SECONDS = int(os.getenv("RATE_LIMIT_WINDOW_SECONDS", "60"))
@@ -61,6 +63,7 @@ MCP_DISTRIBUTED_RATE_LIMIT = os.getenv("MCP_DISTRIBUTED_RATE_LIMIT", "true").low
 REQUIRE_TOOL_AUTH = os.getenv("REQUIRE_TOOL_AUTH", "true").lower() == "true"
 MCP_SERVER_API_KEY = os.getenv("MCP_SERVER_API_KEY", "")
 MCP_CLIENT_KEYS_JSON = os.getenv("MCP_CLIENT_KEYS_JSON", "").strip()
+MCP_WEB_API_KEY_SHA256 = os.getenv("MCP_WEB_API_KEY_SHA256", "").strip().lower()
 PLACEHOLDER_MCP_KEYS = {
     "replace-with-random-secret",
     "change-me",
@@ -124,6 +127,14 @@ if RETRIEVAL_VERSION not in {"v1", "v2"}:
 if RETRIEVAL_VERSION == "v2" and EMBEDDING_DIMENSIONS != 768:
     raise RuntimeError("RETRIEVAL_VERSION=v2 requires EMBEDDING_DIMENSIONS=768")
 MCP_CLIENT_KEYS = load_mcp_client_keys(MCP_CLIENT_KEYS_JSON)
+if MCP_WEB_API_KEY_SHA256:
+    if not re.fullmatch(r"[0-9a-f]{64}", MCP_WEB_API_KEY_SHA256):
+        raise RuntimeError("MCP_WEB_API_KEY_SHA256 must be a SHA-256 hex digest")
+    web_client_key = f"sha256:{MCP_WEB_API_KEY_SHA256}"
+    configured_web_client_key = MCP_CLIENT_KEYS.get("civilmcp-web")
+    if configured_web_client_key and configured_web_client_key != web_client_key:
+        raise RuntimeError("MCP web client key conflicts with MCP_CLIENT_KEYS_JSON")
+    MCP_CLIENT_KEYS.setdefault("civilmcp-web", web_client_key)
 
 if REQUIRE_TOOL_AUTH:
     key = MCP_SERVER_API_KEY.strip()
@@ -133,7 +144,7 @@ if REQUIRE_TOOL_AUTH:
             "MCP_CLIENT_KEYS_JSON or a non-placeholder MCP_SERVER_API_KEY is required when REQUIRE_TOOL_AUTH=true"
         )
 
-oa = OpenAI(api_key=OPENAI_API_KEY, timeout=OPENAI_TIMEOUT_SECONDS)
+oa = OpenAI(api_key=OPENAI_API_KEY, timeout=OPENAI_TIMEOUT_SECONDS, max_retries=OPENAI_MAX_RETRIES)
 sb = create_client(SUPABASE_URL, SUPABASE_SERVICE_KEY)
 mcp = FastMCP("civil-engineering-mcp")
 
@@ -241,6 +252,11 @@ class RateLimitedToolCall(ToolCallError):
         self.retry_after_seconds = retry_after_seconds
 
 
+class EmbeddingUnavailableToolCall(ToolCallError):
+    def __init__(self, message: str, error_code: str = "embedding_unavailable") -> None:
+        super().__init__(message, status_code=503, error_code=error_code)
+
+
 class UpstreamTimeoutToolCall(ToolCallError):
     def __init__(self, message: str) -> None:
         super().__init__(message, status_code=504, error_code="upstream_timeout")
@@ -284,6 +300,9 @@ class MetricsStore:
         self.tool_calls_total = 0
         self.tool_errors_total = 0
         self.tool_timeouts_total = 0
+        self.retrieval_fallbacks_total = 0
+        self.embedding_unavailable_total = 0
+        self.tool_errors_by_code: dict[str, int] = defaultdict(int)
         self.tools: dict[str, dict[str, float]] = defaultdict(
             lambda: {"calls": 0, "errors": 0, "latency_ms_sum": 0.0}
         )
@@ -309,8 +328,16 @@ class MetricsStore:
             if not ok:
                 self.tool_errors_total += 1
                 tool_stat["errors"] += 1
+                if error_code:
+                    self.tool_errors_by_code[error_code] += 1
                 if error_code == "upstream_timeout":
                     self.tool_timeouts_total += 1
+
+    def record_retrieval_fallback(self, reason: str) -> None:
+        with self._lock:
+            self.retrieval_fallbacks_total += 1
+            if reason in {"embedding_unavailable", "embedding_quota_exhausted", "rate_limited", "upstream_timeout"}:
+                self.embedding_unavailable_total += 1
 
     def snapshot(self) -> dict[str, Any]:
         with self._lock:
@@ -338,6 +365,9 @@ class MetricsStore:
                 "tool_calls_total": self.tool_calls_total,
                 "tool_errors_total": self.tool_errors_total,
                 "tool_timeouts_total": self.tool_timeouts_total,
+                "retrieval_fallbacks_total": self.retrieval_fallbacks_total,
+                "embedding_unavailable_total": self.embedding_unavailable_total,
+                "tool_errors_by_code": dict(self.tool_errors_by_code),
                 "tool_error_rate": round(total_error_rate, 4),
                 "tools": per_tool,
             }
@@ -348,6 +378,9 @@ RATE_LIMITER = SlidingWindowRateLimiter(
     window_seconds=RATE_LIMIT_WINDOW_SECONDS,
 )
 METRICS = MetricsStore()
+EMBEDDING_CIRCUIT_LOCK = Lock()
+EMBEDDING_CIRCUIT_UNTIL = 0.0
+EMBEDDING_CIRCUIT_REASON = ""
 
 
 @dataclass
@@ -583,19 +616,138 @@ def tool_error_response(exc: ToolCallError, request_id: str) -> JSONResponse:
 
 
 def embed(text: str, dimensions: int | None = None) -> list[float]:
+    global EMBEDDING_CIRCUIT_REASON, EMBEDDING_CIRCUIT_UNTIL
+    with EMBEDDING_CIRCUIT_LOCK:
+        if EMBEDDING_CIRCUIT_UNTIL > time.time():
+            raise EmbeddingUnavailableToolCall(
+                "Embedding service is temporarily unavailable",
+                error_code=EMBEDDING_CIRCUIT_REASON or "embedding_unavailable",
+            )
     try:
         kwargs: dict[str, Any] = {"model": EMBED_MODEL, "input": [text]}
         if dimensions is not None:
             kwargs["dimensions"] = dimensions
-        return oa.embeddings.create(**kwargs).data[0].embedding
+        embedding = oa.embeddings.create(**kwargs).data[0].embedding
+        with EMBEDDING_CIRCUIT_LOCK:
+            EMBEDDING_CIRCUIT_UNTIL = 0.0
+            EMBEDDING_CIRCUIT_REASON = ""
+        return embedding
     except RateLimitError as exc:
-        raise RateLimitedToolCall("OpenAI embedding rate limit exceeded") from exc
+        body = getattr(exc, "body", None)
+        error_code = body.get("code") if isinstance(body, dict) else None
+        if not error_code and isinstance(body, dict) and isinstance(body.get("error"), dict):
+            error_code = body["error"].get("code")
+        error_type = body.get("type") if isinstance(body, dict) else None
+        if error_code in {"insufficient_quota", "credit_balance_exhausted"} or error_type == "insufficient_quota":
+            with EMBEDDING_CIRCUIT_LOCK:
+                EMBEDDING_CIRCUIT_UNTIL = time.time() + EMBEDDING_CIRCUIT_SECONDS
+                EMBEDDING_CIRCUIT_REASON = "embedding_quota_exhausted"
+            raise EmbeddingUnavailableToolCall(
+                "Embedding service quota is exhausted",
+                error_code="embedding_quota_exhausted",
+            ) from exc
+        retry_after = None
+        response = getattr(exc, "response", None)
+        retry_header = response.headers.get("retry-after") if response is not None else None
+        if retry_header:
+            try:
+                retry_after = float(retry_header)
+            except (TypeError, ValueError):
+                pass
+        with EMBEDDING_CIRCUIT_LOCK:
+            EMBEDDING_CIRCUIT_UNTIL = time.time() + max(5.0, min(retry_after or 15.0, 60.0))
+            EMBEDDING_CIRCUIT_REASON = "rate_limited"
+        raise RateLimitedToolCall("Embedding service rate limit exceeded", retry_after_seconds=retry_after) from exc
     except APITimeoutError as exc:
+        with EMBEDDING_CIRCUIT_LOCK:
+            EMBEDDING_CIRCUIT_UNTIL = time.time() + 15
+            EMBEDDING_CIRCUIT_REASON = "upstream_timeout"
         raise UpstreamTimeoutToolCall("OpenAI embedding request timed out") from exc
     except APIError as exc:
+        with EMBEDDING_CIRCUIT_LOCK:
+            EMBEDDING_CIRCUIT_UNTIL = time.time() + 30
+            EMBEDDING_CIRCUIT_REASON = "embedding_unavailable"
         raise UpstreamToolCallError(f"OpenAI embedding API error: {exc}") from exc
     except Exception as exc:  # noqa: BLE001
         raise UpstreamToolCallError(f"Unexpected OpenAI embedding failure: {exc}") from exc
+
+
+LEXICAL_CONCEPTS: tuple[tuple[re.Pattern[str], tuple[str, ...]], ...] = (
+    (re.compile(r"road|traffic|transport|crash|accident|collision|ถนน|จราจร|ขนส่ง|อุบัติเหตุ|ทางแยก", re.I),
+     ("road", "traffic", "accident", "ถนน", "อุบัติเหตุ", "ทางแยก")),
+    (re.compile(r"concrete|cement|reinforced|rebar|structur|คอนกรีต|ซีเมนต์|เสริมเหล็ก|โครงสร้าง", re.I),
+     ("concrete", "structural", "reinforced", "คอนกรีต", "เสริมเหล็ก", "โครงสร้าง")),
+    (re.compile(r"construction|project|delay|schedule|cost|ก่อสร้าง|โครงการ|ล่าช้า|ระยะเวลา|ต้นทุน", re.I),
+     ("construction", "delay", "cost", "ก่อสร้าง", "ล่าช้า", "ต้นทุน")),
+    (re.compile(r"flood|drainage|water|hydraulic|น้ำท่วม|ระบายน้ำ|อุทก|ชลศาสตร์", re.I),
+     ("flood", "drainage", "water", "น้ำท่วม", "ระบายน้ำ", "ชลศาสตร์")),
+    (re.compile(r"soil|foundation|geotechnical|ดิน|ฐานราก|ปฐพี", re.I),
+     ("soil", "foundation", "geotechnical", "ดิน", "ฐานราก", "ปฐพี")),
+)
+
+LEXICAL_STOPWORDS = {
+    "about", "across", "and", "answer", "evidence", "find", "from", "paper", "papers", "research", "study", "the", "with",
+    "การ", "ค้น", "งาน", "จาก", "ด้วย", "ที่", "และ", "หรือ", "หลักฐาน", "เกี่ยวกับ", "พร้อม", "สรุป",
+}
+
+
+def lexical_search_query(query: str) -> str:
+    terms: list[str] = []
+    for pattern, expansions in LEXICAL_CONCEPTS:
+        if pattern.search(query):
+            terms.extend(expansions)
+    terms.extend(re.findall(r"[A-Za-z0-9][A-Za-z0-9_-]{1,39}|[ก-๙]{2,40}", query.lower()))
+    seen: set[str] = set()
+    bounded: list[str] = []
+    for term in terms:
+        cleaned = term.strip().lower()
+        if len(cleaned) < 2 or cleaned in seen or cleaned in LEXICAL_STOPWORDS:
+            continue
+        seen.add(cleaned)
+        bounded.append(cleaned)
+        if len(bounded) >= 8:
+            break
+    return " ".join(bounded) or query.strip()[:500]
+
+
+def retrieval_meta(mode: str = "semantic", reason: str | None = None) -> dict[str, Any]:
+    return {
+        "retrieval_mode": mode,
+        "degraded": mode != "semantic",
+        "degraded_reason": reason,
+    }
+
+
+def run_lexical_rpc(
+    rpc_name: str,
+    params: dict[str, Any],
+    semantic_error: ToolCallError,
+) -> Any:
+    reason = semantic_error.error_code
+    try:
+        result = sb.rpc(rpc_name, params).execute()
+    except Exception as fallback_error:  # noqa: BLE001
+        log_event(
+            logging.ERROR,
+            "lexical_retrieval_failed",
+            rpc=rpc_name,
+            semantic_error=reason,
+            fallback_error=type(fallback_error).__name__,
+        )
+        raise semantic_error from fallback_error
+    METRICS.record_retrieval_fallback(reason)
+    log_event(logging.WARNING, "lexical_retrieval_fallback", rpc=rpc_name, reason=reason)
+    return result
+
+
+def embedding_circuit_status() -> dict[str, Any]:
+    with EMBEDDING_CIRCUIT_LOCK:
+        remaining = max(0.0, EMBEDDING_CIRCUIT_UNTIL - time.time())
+        return {
+            "open": remaining > 0,
+            "reason": EMBEDDING_CIRCUIT_REASON if remaining > 0 else None,
+            "retry_after_seconds": round(remaining, 2),
+        }
 
 
 def _search_civil_knowledge_impl(
@@ -635,6 +787,8 @@ def _search_civil_knowledge_v1_impl(
                 "filter_disc": disc,
             },
         ).execute()
+    except ToolCallError:
+        raise
     except Exception as exc:  # noqa: BLE001
         raise UpstreamToolCallError(f"Supabase RPC failed: {exc}") from exc
 
@@ -696,18 +850,36 @@ def _search_civil_sections_impl(
     coll = normalize_collection(collection)
     safe_max_results = max(1, min(int(max_results), 20))
 
+    meta = retrieval_meta()
     try:
-        rpc_result = sb.rpc(
-            "match_civil_sections_v2",
+        query_embedding = embed(cleaned_query, dimensions=EMBEDDING_DIMENSIONS)
+    except ToolCallError as semantic_error:
+        rpc_result = run_lexical_rpc(
+            "search_civil_sections_lexical_v2",
             {
-                "query_embedding": embed(cleaned_query, dimensions=EMBEDDING_DIMENSIONS),
+                "search_query": lexical_search_query(cleaned_query),
                 "match_count": safe_max_results,
                 "filter_disc": disc,
                 "filter_collection": coll,
             },
-        ).execute()
-    except Exception as exc:  # noqa: BLE001
-        raise UpstreamToolCallError(f"Supabase v2 section RPC failed: {exc}") from exc
+            semantic_error,
+        )
+        meta = retrieval_meta("lexical_fallback", semantic_error.error_code)
+    else:
+        try:
+            rpc_result = sb.rpc(
+                "match_civil_sections_v2",
+                {
+                    "query_embedding": query_embedding,
+                    "match_count": safe_max_results,
+                    "filter_disc": disc,
+                    "filter_collection": coll,
+                },
+            ).execute()
+        except ToolCallError:
+            raise
+        except Exception as exc:  # noqa: BLE001
+            raise UpstreamToolCallError(f"Supabase v2 section RPC failed: {exc}") from exc
 
     rows = rpc_result.data or []
     results = [
@@ -740,11 +912,12 @@ def _search_civil_sections_impl(
                 "discipline": disc or "",
                 "collection": coll or "",
                 "retrieval_version": "v2",
+                **meta,
                 "result_count": 0,
                 "results": [],
             },
             content_text="No relevant sections found in the v2 knowledge base.",
-            meta={"result_count": 0},
+            meta={"result_count": 0, **meta},
         )
 
     text_blocks = [
@@ -758,11 +931,12 @@ def _search_civil_sections_impl(
             "discipline": disc or "",
             "collection": coll or "",
             "retrieval_version": "v2",
+            **meta,
             "result_count": len(results),
             "results": results,
         },
         content_text="\n\n---\n\n".join(text_blocks),
-        meta={"result_count": len(results)},
+        meta={"result_count": len(results), **meta},
     )
 
 
@@ -787,20 +961,40 @@ def _search_civil_chunks_impl(
     doc_filter = normalize_string_list(document_ids)
     section_filter = normalize_string_list(section_ids)
 
+    meta = retrieval_meta()
     try:
-        rpc_result = sb.rpc(
-            "match_civil_chunks_v2",
+        query_embedding = embed(cleaned_query, dimensions=EMBEDDING_DIMENSIONS)
+    except ToolCallError as semantic_error:
+        rpc_result = run_lexical_rpc(
+            "search_civil_chunks_lexical_v2",
             {
-                "query_embedding": embed(cleaned_query, dimensions=EMBEDDING_DIMENSIONS),
+                "search_query": lexical_search_query(cleaned_query),
                 "match_count": safe_max_results,
                 "filter_disc": disc,
                 "filter_document_ids": doc_filter,
                 "filter_section_ids": section_filter,
                 "filter_collection": coll,
             },
-        ).execute()
-    except Exception as exc:  # noqa: BLE001
-        raise UpstreamToolCallError(f"Supabase v2 chunk RPC failed: {exc}") from exc
+            semantic_error,
+        )
+        meta = retrieval_meta("lexical_fallback", semantic_error.error_code)
+    else:
+        try:
+            rpc_result = sb.rpc(
+                "match_civil_chunks_v2",
+                {
+                    "query_embedding": query_embedding,
+                    "match_count": safe_max_results,
+                    "filter_disc": disc,
+                    "filter_document_ids": doc_filter,
+                    "filter_section_ids": section_filter,
+                    "filter_collection": coll,
+                },
+            ).execute()
+        except ToolCallError:
+            raise
+        except Exception as exc:  # noqa: BLE001
+            raise UpstreamToolCallError(f"Supabase v2 chunk RPC failed: {exc}") from exc
 
     results = [chunk_result_from_row(row) for row in (rpc_result.data or [])]
     if not results:
@@ -811,11 +1005,12 @@ def _search_civil_chunks_impl(
                 "discipline": disc or "",
                 "collection": coll or "",
                 "retrieval_version": "v2",
+                **meta,
                 "result_count": 0,
                 "results": [],
             },
             content_text="No relevant chunks found in the v2 knowledge base.",
-            meta={"result_count": 0},
+            meta={"result_count": 0, **meta},
         )
 
     text_blocks = [
@@ -829,6 +1024,7 @@ def _search_civil_chunks_impl(
             "discipline": disc or "",
             "collection": coll or "",
             "retrieval_version": "v2",
+            **meta,
             "result_count": len(results),
             "filters": {
                 "document_ids": doc_filter or [],
@@ -837,7 +1033,7 @@ def _search_civil_chunks_impl(
             "results": results,
         },
         content_text="\n\n---\n\n".join(text_blocks),
-        meta={"result_count": len(results)},
+        meta={"result_count": len(results), **meta},
     )
 
 
@@ -854,20 +1050,39 @@ def _search_civil_knowledge_v2_impl(
     disc = normalize_discipline(discipline)
     coll = normalize_collection(collection)
     safe_max_results = max(1, min(int(max_results), CONTEXT_MAX_CHUNKS))
-    query_embedding = embed(cleaned_query, dimensions=EMBEDDING_DIMENSIONS)
-
+    meta = retrieval_meta()
+    fallback_semantic_error: ToolCallError | None = None
     try:
-        section_rpc = sb.rpc(
-            "match_civil_sections_v2",
+        query_embedding = embed(cleaned_query, dimensions=EMBEDDING_DIMENSIONS)
+    except ToolCallError as semantic_error:
+        fallback_semantic_error = semantic_error
+        section_rpc = run_lexical_rpc(
+            "search_civil_sections_lexical_v2",
             {
-                "query_embedding": query_embedding,
+                "search_query": lexical_search_query(cleaned_query),
                 "match_count": max(1, min(SECTION_TOP_K, 50)),
                 "filter_disc": disc,
                 "filter_collection": coll,
             },
-        ).execute()
-    except Exception as exc:  # noqa: BLE001
-        raise UpstreamToolCallError(f"Supabase v2 section RPC failed: {exc}") from exc
+            semantic_error,
+        )
+        meta = retrieval_meta("lexical_fallback", semantic_error.error_code)
+        query_embedding = None
+    else:
+        try:
+            section_rpc = sb.rpc(
+                "match_civil_sections_v2",
+                {
+                    "query_embedding": query_embedding,
+                    "match_count": max(1, min(SECTION_TOP_K, 50)),
+                    "filter_disc": disc,
+                    "filter_collection": coll,
+                },
+            ).execute()
+        except ToolCallError:
+            raise
+        except Exception as exc:  # noqa: BLE001
+            raise UpstreamToolCallError(f"Supabase v2 section RPC failed: {exc}") from exc
 
     section_rows = section_rpc.data or []
     if not section_rows:
@@ -878,12 +1093,13 @@ def _search_civil_knowledge_v2_impl(
                 "discipline": disc or "",
                 "collection": coll or "",
                 "retrieval_version": "v2",
+                **meta,
                 "result_count": 0,
                 "sections_considered": 0,
                 "results": [],
             },
             content_text="No relevant content found in the v2 knowledge base.",
-            meta={"result_count": 0, "sections_considered": 0},
+            meta={"result_count": 0, "sections_considered": 0, **meta},
         )
 
     section_ids = [str(row["id"]) for row in section_rows if row.get("id")]
@@ -893,20 +1109,36 @@ def _search_civil_knowledge_v2_impl(
         if row.get("id")
     }
 
-    try:
-        chunk_rpc = sb.rpc(
-            "match_civil_chunks_v2",
+    if meta["degraded"]:
+        chunk_rpc = run_lexical_rpc(
+            "search_civil_chunks_lexical_v2",
             {
-                "query_embedding": query_embedding,
+                "search_query": lexical_search_query(cleaned_query),
                 "match_count": max(CHUNK_TOP_K, safe_max_results),
                 "filter_disc": disc,
                 "filter_document_ids": None,
                 "filter_section_ids": section_ids,
                 "filter_collection": coll,
             },
-        ).execute()
-    except Exception as exc:  # noqa: BLE001
-        raise UpstreamToolCallError(f"Supabase v2 chunk RPC failed: {exc}") from exc
+            fallback_semantic_error or EmbeddingUnavailableToolCall("Semantic retrieval is unavailable"),
+        )
+    else:
+        try:
+            chunk_rpc = sb.rpc(
+                "match_civil_chunks_v2",
+                {
+                    "query_embedding": query_embedding,
+                    "match_count": max(CHUNK_TOP_K, safe_max_results),
+                    "filter_disc": disc,
+                    "filter_document_ids": None,
+                    "filter_section_ids": section_ids,
+                    "filter_collection": coll,
+                },
+            ).execute()
+        except ToolCallError:
+            raise
+        except Exception as exc:  # noqa: BLE001
+            raise UpstreamToolCallError(f"Supabase v2 chunk RPC failed: {exc}") from exc
 
     chunk_rows = chunk_rpc.data or []
     seen: set[tuple[str, int, int]] = set()
@@ -955,12 +1187,13 @@ def _search_civil_knowledge_v2_impl(
                 "discipline": disc or "",
                 "collection": coll or "",
                 "retrieval_version": "v2",
+                **meta,
                 "result_count": 0,
                 "sections_considered": len(section_rows),
                 "results": [],
             },
             content_text="Relevant sections were found, but no matching chunks were available.",
-            meta={"result_count": 0, "sections_considered": len(section_rows)},
+            meta={"result_count": 0, "sections_considered": len(section_rows), **meta},
         )
 
     text_blocks = [
@@ -978,6 +1211,7 @@ def _search_civil_knowledge_v2_impl(
             "discipline": disc or "",
             "collection": coll or "",
             "retrieval_version": "v2",
+            **meta,
             "result_count": len(results),
             "sections_considered": len(section_rows),
             "results": results,
@@ -987,6 +1221,7 @@ def _search_civil_knowledge_v2_impl(
             "result_count": len(results),
             "sections_considered": len(section_rows),
             "embedding_dimensions": EMBEDDING_DIMENSIONS,
+            **meta,
         },
     )
 
@@ -1196,36 +1431,73 @@ def _search_source_catalog_impl(
     safe_limit = max(1, min(int(max_results), 20))
     fields = (
         "id, provider, provider_record_id, collection, source_type, title_local, title_en, "
-        "abstract_local, abstract_en, authors, keywords, canonical_url, journal_title, publisher, "
+        "authors, keywords, canonical_url, journal_title, publisher, "
         "published_at, language, discipline, license, rights_status, access_level, evidence_status, document_id"
     )
-    search_filter = ",".join(
-        f"{column}.ilike.%{cleaned_query}%"
-        for column in ("title_local", "title_en", "abstract_local", "abstract_en", "journal_title", "publisher")
-    )
     try:
-        catalog_query = (
-            sb.table("civil_source_catalog")
-            .select(fields)
-            .neq("evidence_status", "removed")
-            .or_(search_filter)
-            .order("published_at", desc=True)
-            .limit(safe_limit)
-        )
-        if normalized_provider:
-            catalog_query = catalog_query.eq("provider", normalized_provider)
-        if normalized_discipline:
-            catalog_query = catalog_query.eq("discipline", normalized_discipline)
-        rows = catalog_query.execute().data or []
+        rpc_result = sb.rpc(
+            "search_civil_source_catalog_public_v1",
+            {
+                "search_query": cleaned_query,
+                "filter_provider": normalized_provider,
+                "filter_discipline": normalized_discipline,
+                "match_count": safe_limit,
+                "match_offset": 0,
+            },
+        ).execute()
     except Exception as exc:  # noqa: BLE001
-        raise UpstreamToolCallError(f"Supabase source catalog search failed: {exc}") from exc
+        error_code = str(getattr(exc, "code", "")).upper()
+        error_message = str(exc).lower()
+        rpc_missing = error_code in {"PGRST202", "42883"} or (
+            "search_civil_source_catalog_public_v1" in error_message
+            and any(marker in error_message for marker in ("could not find", "does not exist", "schema cache"))
+        )
+        if not rpc_missing:
+            raise UpstreamToolCallError(f"Supabase source catalog search failed: {exc}") from exc
+
+        # Temporary compatibility path for deployments that have not received
+        # the additive search RPC. The database still performs the search and
+        # returns at most 20 rows; no catalog-wide scan is loaded into MCP.
+        search_filter = ",".join(
+            f"{column}.ilike.%{cleaned_query}%"
+            for column in (
+                "title_local",
+                "title_en",
+                "journal_title",
+                "publisher",
+            )
+        )
+        try:
+            catalog_query = (
+                sb.table("civil_source_catalog")
+                .select(fields)
+                .neq("evidence_status", "removed")
+                .or_(search_filter)
+                .order("published_at", desc=True)
+                .limit(safe_limit)
+            )
+            if normalized_provider:
+                catalog_query = catalog_query.eq("provider", normalized_provider)
+            if normalized_discipline:
+                catalog_query = catalog_query.eq("discipline", normalized_discipline)
+            rows = catalog_query.execute().data or []
+        except Exception as fallback_exc:  # noqa: BLE001
+            raise UpstreamToolCallError(
+                f"Supabase source catalog compatibility search failed: {fallback_exc}"
+            ) from fallback_exc
+        log_event(logging.WARNING, "source_catalog_rpc_fallback", reason=error_code or "rpc_missing")
+    else:
+        rows = rpc_result.data or []
+
+    public_fields = {field.strip() for field in fields.split(",")}
 
     results = [
         {
-            **row,
+            **{key: value for key, value in row.items() if key in public_fields},
             "citable": row.get("evidence_status") == "indexed" and bool(row.get("document_id")),
         }
         for row in rows
+        if isinstance(row, dict)
     ]
     lines = [
         (
@@ -2019,7 +2291,8 @@ async def readiness() -> JSONResponse:
         readiness_data = readiness_response.data
         readiness_row = readiness_data[0] if isinstance(readiness_data, list) and readiness_data else readiness_data
         if not isinstance(readiness_row, dict) or not all(
-            readiness_row.get(key) is True for key in ("quota_table", "quota_rpc", "retention_rpc")
+            readiness_row.get(key) is True
+            for key in ("quota_table", "quota_rpc", "retention_rpc", "lexical_section_rpc", "lexical_chunk_rpc")
         ):
             raise RuntimeError("CivilMCP backbone migration is incomplete")
         return {"documents": int(docs.count or 0), "backbone": readiness_row}
@@ -2031,6 +2304,11 @@ async def readiness() -> JSONResponse:
                 "status": "ready",
                 "dependencies": dependencies,
                 "retrieval_version": RETRIEVAL_VERSION,
+                "retrieval": {
+                    "semantic": not embedding_circuit_status()["open"],
+                    "lexical_fallback": True,
+                    "circuit": embedding_circuit_status(),
+                },
                 "auth_clients": len(MCP_CLIENT_KEYS) + (1 if MCP_SERVER_API_KEY.strip() else 0),
             }
         )
@@ -2062,7 +2340,7 @@ async def root_info() -> JSONResponse:
 
 @app.get("/metrics")
 async def metrics() -> dict[str, Any]:
-    return METRICS.snapshot()
+    return {**METRICS.snapshot(), "embedding_circuit": embedding_circuit_status()}
 
 
 @app.get("/tools/list")

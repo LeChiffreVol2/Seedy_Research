@@ -1,6 +1,7 @@
 import { defineConfig, devices } from "@playwright/test";
 
-const port = 3100;
+const configuredPort = Number.parseInt(process.env.PLAYWRIGHT_PORT ?? "3210", 10);
+const port = Number.isFinite(configuredPort) ? configuredPort : 3210;
 
 export default defineConfig({
   testDir: "./tests/e2e",

@@ -19,7 +19,7 @@ Open `http://localhost:3000`.
 
 - `MCP off` = model-only answer
 - `MCP on` = bounded Agentic Context Engine over MCP retrieval tools
-- Model dropdown: `deepseek-v4-flash` (default); DeepSeek Pro and the GPT-5.6 family require Founder Pro
+- Model dropdown: `deepseek-v4-flash` (default) and GPT-5.6 Luna on Free; DeepSeek Pro, GPT-5.6 Terra, and GPT-5.6 Sol require Founder Pro
 - Account: Supabase Google OAuth, email magic link, and password fallback
 - Founder Pro: Stripe-hosted subscription checkout, portal, and weighted monthly credits
 - Collection dropdown: `All`, `CE Project`, `NCCE`

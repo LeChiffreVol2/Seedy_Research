@@ -22,6 +22,42 @@ concurrency:
 
 env:
   VERCEL_CLI_VERSION: 56.3.1
+  CIVIL_BILLING_MIGRATIONS: >-
+    supabase/migrations/20260720160000_civil_founder_pro.sql
+    supabase/migrations/20260720163000_civil_billing_period_guards.sql
+    supabase/migrations/20260725120000_civil_deepseek_default_and_pro_models.sql
+    supabase/migrations/20260725203000_civil_free_weekly_credits.sql
+    supabase/migrations/20260725205900_civil_founder_pro_500_credits.sql
+  CIVIL_BILLING_STATE_SQL: >-
+    select case
+    when to_regclass('public.civil_billing_accounts') is null
+      and to_regclass('public.civil_credit_ledger') is null then 'absent'
+    when to_regclass('public.civil_billing_accounts') is not null
+      and to_regclass('public.civil_credit_ledger') is not null
+      and to_regprocedure('public.civil_get_billing_state(text)') is not null
+      and to_regprocedure('public.civil_consume_answer_credits(text,text,text)') is not null
+      and to_regprocedure('public.civil_refund_answer_credits(text,text)') is not null
+      and to_regprocedure('public.civil_sync_stripe_subscription(text,text,text,text,timestamptz,timestamptz,text,timestamptz)') is not null
+      and exists (select 1 from information_schema.columns where table_schema = 'public'
+        and table_name = 'civil_billing_accounts' and column_name = 'pro_credits_included')
+      and exists (select 1 from information_schema.columns where table_schema = 'public'
+        and table_name = 'civil_credit_ledger' and column_name = 'credit_pool') then 'ready'
+    else 'partial' end;
+  CIVIL_BILLING_HARDENING_SQL: >-
+    select case when to_regclass('public.civil_stripe_event_ledger') is not null
+      and to_regprocedure('public.civil_apply_stripe_subscription_event(text,text,text,text,timestamptz,timestamptz,text,timestamptz,text,text)') is not null
+      and exists (select 1 from information_schema.columns where table_schema = 'public'
+        and table_name = 'civil_billing_accounts' and column_name = 'stripe_event_id')
+      and exists (select 1 from information_schema.columns where table_schema = 'public'
+        and table_name = 'civil_billing_accounts' and column_name = 'stripe_event_type')
+      then 'ready' else 'partial' end;
+  CIVIL_DATA_RPC_STATE_SQL: >-
+    select case when to_regprocedure('public.search_civil_source_catalog_public_v1(text,text,text,integer,integer)') is not null
+      and to_regprocedure('public.civil_delete_account_data(text)') is not null
+      and to_regprocedure('public.list_civil_evidence_feed_v1(text,text,integer,integer)') is not null
+      and to_regprocedure('public.civil_evidence_feed_facets_v1()') is not null
+      and to_regprocedure('public.civil_evidence_feed_previews_v1(text[],integer,integer)') is not null
+      then 'ready' else 'missing' end;
 
 jobs:
   source-gate:
@@ -71,7 +107,7 @@ jobs:
           persist-credentials: false
       - name: Pin release commit
         run: test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
-      - name: Apply additive migration to preview database
+      - name: Apply CivilMCP migrations to preview database
         env:
           SUPABASE_PREVIEW_DB_URL: ${{ secrets.SUPABASE_PREVIEW_DB_URL }}
         run: |
@@ -82,6 +118,32 @@ jobs:
           fi
           psql "$SUPABASE_PREVIEW_DB_URL" -v ON_ERROR_STOP=1 -f supabase/migrations/20260718090000_civil_ga_backbone_p0.sql
           psql "$SUPABASE_PREVIEW_DB_URL" -v ON_ERROR_STOP=1 -f supabase/migrations/20260720120000_civil_discipline_and_luna_defaults.sql
+          billing_state=$(psql "$SUPABASE_PREVIEW_DB_URL" -v ON_ERROR_STOP=1 -Atqc "$CIVIL_BILLING_STATE_SQL")
+          if [[ "$billing_state" == "absent" ]]; then
+            for migration in $CIVIL_BILLING_MIGRATIONS; do
+              psql "$SUPABASE_PREVIEW_DB_URL" -v ON_ERROR_STOP=1 -f "$migration"
+            done
+          elif [[ "$billing_state" != "ready" ]]; then
+            echo "Refusing to replay stateful billing migrations over a partial schema." >&2
+            exit 1
+          fi
+          test "$(psql "$SUPABASE_PREVIEW_DB_URL" -v ON_ERROR_STOP=1 -Atqc "$CIVIL_BILLING_STATE_SQL")" = "ready"
+          psql "$SUPABASE_PREVIEW_DB_URL" -v ON_ERROR_STOP=1 -f supabase/migrations/20260813120000_civil_stripe_event_idempotency.sql
+          test "$(psql "$SUPABASE_PREVIEW_DB_URL" -v ON_ERROR_STOP=1 -Atqc "$CIVIL_BILLING_HARDENING_SQL")" = "ready"
+          psql "$SUPABASE_PREVIEW_DB_URL" -v ON_ERROR_STOP=1 -f supabase/migrations/20260724120000_civil_source_catalog.sql
+          psql "$SUPABASE_PREVIEW_DB_URL" -v ON_ERROR_STOP=1 -f supabase/migrations/20260812160000_civil_lexical_retrieval_fallback.sql
+          psql "$SUPABASE_PREVIEW_DB_URL" -v ON_ERROR_STOP=1 -f supabase/migrations/20260812170000_civil_public_support.sql
+          psql "$SUPABASE_PREVIEW_DB_URL" -v ON_ERROR_STOP=1 -f supabase/migrations/20260812180000_civil_product_events.sql
+          psql "$SUPABASE_PREVIEW_DB_URL" -v ON_ERROR_STOP=1 -f supabase/migrations/20260812190000_bound_civil_lexical_fallback.sql
+          psql "$SUPABASE_PREVIEW_DB_URL" -v ON_ERROR_STOP=1 -f supabase/migrations/20260812200000_remove_lexical_candidate_sort.sql
+          psql "$SUPABASE_PREVIEW_DB_URL" -v ON_ERROR_STOP=1 -f supabase/migrations/20260813090000_civil_source_rights_manifest.sql
+          psql "$SUPABASE_PREVIEW_DB_URL" -v ON_ERROR_STOP=1 -f supabase/migrations/20260813091000_civil_federated_discovery.sql
+          psql "$SUPABASE_PREVIEW_DB_URL" -v ON_ERROR_STOP=1 -f supabase/migrations/20260813100000_civil_catalog_public_rights_boundary.sql
+          psql "$SUPABASE_PREVIEW_DB_URL" -v ON_ERROR_STOP=1 -f supabase/migrations/20260813110000_civil_transactional_account_deletion.sql
+          psql "$SUPABASE_PREVIEW_DB_URL" -v ON_ERROR_STOP=1 -f supabase/migrations/20260813140000_civil_bounded_evidence_feed.sql
+          psql "$SUPABASE_PREVIEW_DB_URL" -v ON_ERROR_STOP=1 -f supabase/migrations/20260814090000_civil_luna_free_credit_ladder.sql
+          psql "$SUPABASE_PREVIEW_DB_URL" -v ON_ERROR_STOP=1 -f supabase/migrations/20260814100000_civil_terra_sol_credit_correction.sql
+          test "$(psql "$SUPABASE_PREVIEW_DB_URL" -v ON_ERROR_STOP=1 -Atqc "$CIVIL_DATA_RPC_STATE_SQL")" = "ready"
 
   deploy-mcp-preview:
     needs: migrate-preview
@@ -207,7 +269,7 @@ jobs:
           test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
           test "${{ vars.GA_PROMOTION_ENABLED }}" = "true"
       - run: npm install --global vercel@${VERCEL_CLI_VERSION}
-      - name: Apply additive CivilMCP migration
+      - name: Apply CivilMCP migrations to production database
         env:
           SUPABASE_DB_URL: ${{ secrets.SUPABASE_DB_URL }}
         run: |
@@ -218,6 +280,32 @@ jobs:
           fi
           psql "$SUPABASE_DB_URL" -v ON_ERROR_STOP=1 -f supabase/migrations/20260718090000_civil_ga_backbone_p0.sql
           psql "$SUPABASE_DB_URL" -v ON_ERROR_STOP=1 -f supabase/migrations/20260720120000_civil_discipline_and_luna_defaults.sql
+          billing_state=$(psql "$SUPABASE_DB_URL" -v ON_ERROR_STOP=1 -Atqc "$CIVIL_BILLING_STATE_SQL")
+          if [[ "$billing_state" == "absent" ]]; then
+            for migration in $CIVIL_BILLING_MIGRATIONS; do
+              psql "$SUPABASE_DB_URL" -v ON_ERROR_STOP=1 -f "$migration"
+            done
+          elif [[ "$billing_state" != "ready" ]]; then
+            echo "Refusing to replay stateful billing migrations over a partial schema." >&2
+            exit 1
+          fi
+          test "$(psql "$SUPABASE_DB_URL" -v ON_ERROR_STOP=1 -Atqc "$CIVIL_BILLING_STATE_SQL")" = "ready"
+          psql "$SUPABASE_DB_URL" -v ON_ERROR_STOP=1 -f supabase/migrations/20260813120000_civil_stripe_event_idempotency.sql
+          test "$(psql "$SUPABASE_DB_URL" -v ON_ERROR_STOP=1 -Atqc "$CIVIL_BILLING_HARDENING_SQL")" = "ready"
+          psql "$SUPABASE_DB_URL" -v ON_ERROR_STOP=1 -f supabase/migrations/20260724120000_civil_source_catalog.sql
+          psql "$SUPABASE_DB_URL" -v ON_ERROR_STOP=1 -f supabase/migrations/20260812160000_civil_lexical_retrieval_fallback.sql
+          psql "$SUPABASE_DB_URL" -v ON_ERROR_STOP=1 -f supabase/migrations/20260812170000_civil_public_support.sql
+          psql "$SUPABASE_DB_URL" -v ON_ERROR_STOP=1 -f supabase/migrations/20260812180000_civil_product_events.sql
+          psql "$SUPABASE_DB_URL" -v ON_ERROR_STOP=1 -f supabase/migrations/20260812190000_bound_civil_lexical_fallback.sql
+          psql "$SUPABASE_DB_URL" -v ON_ERROR_STOP=1 -f supabase/migrations/20260812200000_remove_lexical_candidate_sort.sql
+          psql "$SUPABASE_DB_URL" -v ON_ERROR_STOP=1 -f supabase/migrations/20260813090000_civil_source_rights_manifest.sql
+          psql "$SUPABASE_DB_URL" -v ON_ERROR_STOP=1 -f supabase/migrations/20260813091000_civil_federated_discovery.sql
+          psql "$SUPABASE_DB_URL" -v ON_ERROR_STOP=1 -f supabase/migrations/20260813100000_civil_catalog_public_rights_boundary.sql
+          psql "$SUPABASE_DB_URL" -v ON_ERROR_STOP=1 -f supabase/migrations/20260813110000_civil_transactional_account_deletion.sql
+          psql "$SUPABASE_DB_URL" -v ON_ERROR_STOP=1 -f supabase/migrations/20260813140000_civil_bounded_evidence_feed.sql
+          psql "$SUPABASE_DB_URL" -v ON_ERROR_STOP=1 -f supabase/migrations/20260814090000_civil_luna_free_credit_ladder.sql
+          psql "$SUPABASE_DB_URL" -v ON_ERROR_STOP=1 -f supabase/migrations/20260814100000_civil_terra_sol_credit_correction.sql
+          test "$(psql "$SUPABASE_DB_URL" -v ON_ERROR_STOP=1 -Atqc "$CIVIL_DATA_RPC_STATE_SQL")" = "ready"
       - name: Stage MCP production deployment
         id: stage_mcp
         working-directory: mcp-server

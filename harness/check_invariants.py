@@ -19,6 +19,7 @@ REQUIRED_ENV_KEYS = [
     "DEEPSEEK_API_KEY",
     "SUPABASE_URL",
     "SUPABASE_SERVICE_KEY",
+    "SUPABASE_ANON_KEY",
     "MCP_SERVER_API_KEY",
     "MCP_CLIENT_KEYS_JSON",
     "GUEST_SESSION_HMAC_KEY",
@@ -162,17 +163,47 @@ def check_agent_bounds_and_annotations() -> Check:
 def check_backbone_guardrails() -> Check:
     server_text = (ROOT / "mcp-server" / "server.py").read_text(encoding="utf-8", errors="replace")
     chat_text = (ROOT / "web" / "app" / "api" / "chat" / "route.ts").read_text(encoding="utf-8", errors="replace")
+    translation_text = (ROOT / "web" / "app" / "api" / "paper-translation" / "route.ts").read_text(encoding="utf-8", errors="replace")
+    research_path_text = (ROOT / "web" / "app" / "api" / "research-path" / "route.ts").read_text(encoding="utf-8", errors="replace")
+    workspace_run_text = (ROOT / "web" / "app" / "api" / "research-workspaces" / "route.ts").read_text(encoding="utf-8", errors="replace")
     schema_text = (ROOT / "supabase" / "schema.sql").read_text(encoding="utf-8", errors="replace")
     auth_text = (ROOT / "web" / "lib" / "chat-auth.ts").read_text(encoding="utf-8", errors="replace")
+    auth_route_text = (ROOT / "web" / "app" / "api" / "auth" / "route.ts").read_text(encoding="utf-8", errors="replace")
     cookie_text = (ROOT / "web" / "lib" / "chat-cookies.ts").read_text(encoding="utf-8", errors="replace")
     store_text = (ROOT / "web" / "lib" / "chat-store.ts").read_text(encoding="utf-8", errors="replace")
     history_text = (ROOT / "web" / "app" / "api" / "history" / "route.ts").read_text(encoding="utf-8", errors="replace")
     release_text = (ROOT / ".github" / "workflows" / "preview-release.yml").read_text(encoding="utf-8", errors="replace")
+    page_text = (ROOT / "web" / "app" / "page.tsx").read_text(encoding="utf-8", errors="replace")
+    mcp_requirements = (ROOT / "mcp-server" / "requirements.txt").read_text(encoding="utf-8", errors="replace")
+    catalog_boundary = (ROOT / "supabase" / "migrations" / "20260813100000_civil_catalog_public_rights_boundary.sql").read_text(encoding="utf-8", errors="replace")
+    account_deletion = (ROOT / "supabase" / "migrations" / "20260813110000_civil_transactional_account_deletion.sql").read_text(encoding="utf-8", errors="replace")
+    billing_release_chain = [
+        "20260720160000_civil_founder_pro.sql",
+        "20260720163000_civil_billing_period_guards.sql",
+        "20260725120000_civil_deepseek_default_and_pro_models.sql",
+        "20260725203000_civil_free_weekly_credits.sql",
+        "20260725205900_civil_founder_pro_500_credits.sql",
+    ]
+    billing_release_positions = [release_text.find(migration) for migration in billing_release_chain]
     required = {
         "mcp_transport_guard": "is_mounted_transport_request" in server_text and "record_transport" in server_text,
         "mcp_named_clients": "MCP_CLIENT_KEYS_JSON" in server_text and "enforce_mcp_rate_limit" in server_text,
+        "mcp_sdk_compatibility_pin": "mcp>=1.9.0,<2" in mcp_requirements,
         "signed_guest_identity": "verifySignedGuestCookie" in cookie_text and "signedGuestIdFromRequest" in auth_text,
         "expired_auth_fail_closed": "ChatIdentityError" in auth_text and "hasSupabaseAuthCookie" in auth_text,
+        "auth_anon_key_fail_closed": (
+            'payload.role === "anon"' in auth_text
+            and 'value.startsWith("sb_publishable_")' in auth_text
+            and "process.env.SUPABASE_SERVICE_KEY" not in auth_text
+        ),
+        "transactional_account_deletion": (
+            'admin.rpc("civil_delete_account_data"' in auth_route_text
+            and auth_route_text.index('admin.rpc("civil_delete_account_data"')
+            < auth_route_text.index("admin.auth.admin.deleteUser")
+            and "security definer" in account_deletion
+            and "grant execute on function public.civil_delete_account_data(text) to service_role" in account_deletion
+            and "civil_delete_account_data" in schema_text
+        ),
         "guest_secret_strength": (
             "assertGuestCookieConfigured" in chat_text
             and "configured.length >= 32" in cookie_text
@@ -180,8 +211,41 @@ def check_backbone_guardrails() -> Check:
             and 'update(`civilmcp:${purpose}:v1`)' in cookie_text
         ),
         "chat_rate_limit": "consumeChatQuota" in chat_text and "CHAT_GUEST_REQUESTS_PER_HOUR" in chat_text,
+        "server_owned_credit_ids": (
+            "const requestId = safeTraceId();" in chat_text
+            and 'request.headers.get("x-request-id")' not in chat_text
+            and "const billingExecutionId = safeTraceId();" in workspace_run_text
+            and "`${billingExecutionId}:paper:${index + 1}`" in workspace_run_text
+            and "`${parsed.data.runId}:paper:${index + 1}`" not in workspace_run_text
+        ),
+        "translation_distributed_quota": (
+            "resolveChatIdentity" in translation_text
+            and "consumeChatQuota" in translation_text
+            and 'scope: "paper_translation"' in translation_text
+            and "checkRateLimit(" not in translation_text
+            and "requestIdentityKey(" not in translation_text
+        ),
+        "research_path_distributed_quota": (
+            "resolveChatIdentity" in research_path_text
+            and 'scope: "research_path"' in research_path_text
+            and "consumeChatQuota" in research_path_text
+        ),
+        "metadata_abstract_public_boundary": (
+            "search_civil_source_catalog_public_v1" in server_text
+            and "search_civil_source_catalog_public_v1" in catalog_boundary
+            and "Stored abstracts are intentionally omitted" in catalog_boundary
+        ),
+        "bounded_evidence_feed_rpc": (
+            "20260813140000_civil_bounded_evidence_feed.sql" in release_text
+            and "list_civil_evidence_feed_v1" in (ROOT / "web" / "lib" / "research-feed.ts").read_text(encoding="utf-8", errors="replace")
+            and "civil_evidence_feed_previews_v1" in (ROOT / "web" / "lib" / "research-feed.ts").read_text(encoding="utf-8", errors="replace")
+        ),
         "distributed_quota_rpc": "consume_civil_quota" in schema_text,
         "backbone_readiness_rpc": "civil_backbone_readiness" in schema_text and '"/health/ready"' in server_text,
+        "lexical_retrieval_fallback": all(
+            marker in server_text
+            for marker in ("search_civil_sections_lexical_v2", "search_civil_chunks_lexical_v2", "lexical_retrieval_fallback")
+        ) and all(marker in schema_text for marker in ("civil_sections_v2_lexical_trgm_idx", "civil_chunks_v2_lexical_trgm_idx")),
         "chat_body_cap": "readBoundedJson" in chat_text and "CHAT_MAX_BODY_BYTES" in chat_text,
         "history_write_bounds": "readBoundedJson" in history_text and "HISTORY_MAX_MESSAGES" in history_text,
         "lazy_guest_persistence": "createEmptyChatSession" in history_text and "storedUser ??" in auth_text,
@@ -194,10 +258,29 @@ def check_backbone_guardrails() -> Check:
         "share_expiry": "share_expires_at" in schema_text and "share_revoked_at" in schema_text,
         "workspace_table": "civil_paper_workspace_items" in schema_text,
         "feedback_api": (ROOT / "web" / "app" / "api" / "feedback" / "route.ts").exists(),
+        "public_support": (ROOT / "web" / "app" / "api" / "support" / "route.ts").exists()
+        and "civil_support_requests" in schema_text,
+        "product_events": (ROOT / "web" / "app" / "api" / "events" / "route.ts").exists()
+        and "civil_product_events" in schema_text,
+        "privacy_and_account_deletion": all(
+            (ROOT / "web" / "app" / route / "page.tsx").exists() for route in ("privacy", "terms", "support")
+        ) and 'action: "delete-account"' in page_text,
         "data_quality_harness": (ROOT / "harness" / "run_data_quality.py").exists(),
         "staged_production_release": all(
             marker in release_text
             for marker in ("stage-production:", "production-candidate-smoke:", "--prod --skip-domain", "GA_PROMOTION_ENABLED")
+        ),
+        "release_billing_migration_chain": (
+            all(position >= 0 for position in billing_release_positions)
+            and billing_release_positions == sorted(billing_release_positions)
+            and release_text.count("for migration in $CIVIL_BILLING_MIGRATIONS") == 2
+            and release_text.count('-Atqc "$CIVIL_BILLING_STATE_SQL"') == 4
+            and "civil_sync_stripe_subscription" in release_text
+            and release_text.count("20260813120000_civil_stripe_event_idempotency.sql") == 2
+            and release_text.count("20260814090000_civil_luna_free_credit_ladder.sql") == 2
+            and release_text.count("20260814100000_civil_terra_sol_credit_correction.sql") == 2
+            and release_text.count('-Atqc "$CIVIL_BILLING_HARDENING_SQL"') == 2
+            and "civil_apply_stripe_subscription_event" in release_text
         ),
     }
     missing = [name for name, ok in required.items() if not ok]
@@ -247,24 +330,31 @@ def check_product_contract() -> Check:
     score = (ROOT / "harness" / "score_quality.py").read_text(encoding="utf-8", errors="replace")
     billing = (ROOT / "web" / "lib" / "billing.ts").read_text(encoding="utf-8", errors="replace")
     billing_migration = (ROOT / "supabase" / "migrations" / "20260720160000_civil_founder_pro.sql").read_text(encoding="utf-8", errors="replace")
+    stripe_idempotency = (ROOT / "supabase" / "migrations" / "20260813120000_civil_stripe_event_idempotency.sql").read_text(encoding="utf-8", errors="replace")
     billing_period_guard = (ROOT / "supabase" / "migrations" / "20260720163000_civil_billing_period_guards.sql").read_text(encoding="utf-8", errors="replace")
     model_policy_migration = (ROOT / "supabase" / "migrations" / "20260725120000_civil_deepseek_default_and_pro_models.sql").read_text(encoding="utf-8", errors="replace")
+    credit_ladder_migration = (ROOT / "supabase" / "migrations" / "20260814100000_civil_terra_sol_credit_correction.sql").read_text(encoding="utf-8", errors="replace")
     required = {
         "deepseek_default": 'DEFAULT_CHAT_MODEL: ChatModel = "deepseek-v4-flash"' in models,
         "gpt_5_6_picker": all(model in models for model in ("gpt-5.6-luna", "gpt-5.6-terra", "gpt-5.6-sol")),
         "deepseek_router": "process.env.ROUTER_MODEL ?? DEFAULT_CHAT_MODEL" in chat,
         "deepseek_translation": "process.env.TRANSLATION_MODEL ?? DEFAULT_CHAT_MODEL" in translation,
-        "gpt_5_6_pro_gate": all(
+        "gpt_5_6_credit_ladder": all(
             marker in models
             for marker in (
-                '"gpt-5.6-luna", label: "GPT-5.6 Luna", provider: "openai", credits: 3, requiresPro: true',
-                '"gpt-5.6-terra", label: "GPT-5.6 Terra", provider: "openai", credits: 6, requiresPro: true',
+                '"gpt-5.6-luna", label: "GPT-5.6 Luna", provider: "openai", credits: 1, requiresPro: false',
+                '"gpt-5.6-terra", label: "GPT-5.6 Terra", provider: "openai", credits: 5, requiresPro: true',
                 '"gpt-5.6-sol", label: "GPT-5.6 Sol", provider: "openai", credits: 10, requiresPro: true',
             )
         ),
-        "deepseek_pro_gate": '"deepseek-v4-pro", label: "DeepSeek V4 Pro", provider: "deepseek", credits: 3, requiresPro: true' in models,
+        "deepseek_pro_gate": '"deepseek-v4-pro", label: "DeepSeek V4 Pro", provider: "deepseek", credits: 2, requiresPro: true' in models,
         "database_model_policy": "alter column model set default 'deepseek-v4-flash'" in model_policy_migration
-        and "p_model in ('deepseek-v4-pro', 'gpt-5.6-luna', 'gpt-5.6-terra', 'gpt-5.6-sol')" in model_policy_migration,
+        and all(marker in credit_ladder_migration for marker in (
+            "when 'deepseek-v4-pro' then 2",
+            "when 'gpt-5.6-terra' then 5",
+            "when 'gpt-5.6-sol' then 10",
+            "p_model in ('deepseek-v4-pro', 'gpt-5.6-terra', 'gpt-5.6-sol')",
+        )),
         "provider_neutral_product_copy": "Powered by GPT" not in page and "Page-linked sources" in page,
         "guest_hour_quota": "CHAT_GUEST_REQUESTS_PER_HOUR, 1, 500, 30" in chat,
         "corpus_facets": all(marker in feed for marker in ("totalSections", "totalChunks")),
@@ -288,6 +378,25 @@ def check_product_contract() -> Check:
         "code_license": (ROOT / "LICENSE").exists(),
         "synthetic_fixture": (ROOT / "fixtures" / "synthetic-civil-paper.json").exists(),
         "atomic_credit_ledger": all(marker in billing_migration for marker in ("civil_credit_ledger", "for update", "civil_refund_answer_credits")),
+        "verified_credit_refunds": all(
+            marker in billing
+            for marker in ("if (data !== true) throw new Error", "Answer credit restoration was not confirmed")
+        ) and all(
+            marker in chat
+            for marker in ("civilmcp_credit_refund_pending", "Credit restoration is pending. Contact support with trace")
+        ) and all(
+            marker in research_workspace
+            for marker in ("restoreWorkspaceCredits", "Credit restoration is pending. Contact support with trace")
+        ),
+        "stripe_event_idempotency": all(
+            marker in stripe_idempotency
+            for marker in (
+                "civil_stripe_event_ledger",
+                "on conflict (event_id) do nothing",
+                "p_event_created_at = v_account.stripe_event_created_at",
+                "p_event_id <= coalesce(v_account.stripe_event_id, '')",
+            )
+        ) and 'rpc("civil_apply_stripe_subscription_event"' in billing,
         "expired_pro_downgrade": all(marker in billing_period_guard for marker in ("civil_expire_billing_account", "plan = 'free'", "current_period_end <= clock_timestamp()")),
         "signed_stripe_webhook": "timingSafeEqual(received, expected)" in billing,
         "agentic_evidence_mission": all(
@@ -311,7 +420,7 @@ def check_product_contract() -> Check:
         ),
         "personalized_research_path": all(
             marker in research_path
-            for marker in ("civilmcp-research-path-v2", "Map the field", "openAlexBridge", "readBoundedJson")
+            for marker in ("civilmcp-research-path-v2", "Map the field", "discoverOpenAlex", "readBoundedJson")
         ) and all(marker in page for marker in ("PersonalizedResearchPathPanel", 'label: "Research Path"')),
         "deep_research_pro_gate": all(
             marker in chat

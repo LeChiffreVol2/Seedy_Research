@@ -1,4 +1,4 @@
-import { getPaperDetail } from "@/lib/research-feed";
+import { getPaperDetail, type PaperEvidenceTarget } from "@/lib/research-feed";
 
 export const runtime = "nodejs";
 export const preferredRegion = ["sin1"];
@@ -9,7 +9,12 @@ type RouteContext = {
   params: Promise<{ source: string }>;
 };
 
-export async function GET(_request: Request, context: RouteContext) {
+function boundedIndex(value: string | null): number | null {
+  const parsed = Number.parseInt(value ?? "", 10);
+  return Number.isFinite(parsed) && parsed >= 0 && parsed <= 100_000 ? parsed : null;
+}
+
+export async function GET(request: Request, context: RouteContext) {
   try {
     const params = await context.params;
     const source = params.source?.trim();
@@ -17,7 +22,14 @@ export async function GET(_request: Request, context: RouteContext) {
       return Response.json({ error: "Paper source is required." }, { status: 400, headers: { "Cache-Control": "no-store" } });
     }
 
-    const payload = await getPaperDetail(source, true);
+    const url = new URL(request.url);
+    const evidenceTarget: PaperEvidenceTarget = {
+      id: url.searchParams.get("evidence")?.trim().slice(0, 120) || null,
+      sectionIndex: boundedIndex(url.searchParams.get("section")),
+      chunkIndex: boundedIndex(url.searchParams.get("chunk")),
+      pageStart: boundedIndex(url.searchParams.get("page")),
+    };
+    const payload = await getPaperDetail(source, true, evidenceTarget);
     if (!payload) {
       return Response.json({ error: "Paper not found." }, { status: 404, headers: { "Cache-Control": "no-store" } });
     }

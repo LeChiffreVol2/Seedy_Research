@@ -73,6 +73,8 @@ const CHAT_GUEST_REQUESTS_PER_HOUR = clampEnvNumber(process.env.CHAT_GUEST_REQUE
 const CHAT_AUTH_REQUESTS_PER_MINUTE = clampEnvNumber(process.env.CHAT_AUTH_REQUESTS_PER_MINUTE, 1, 120, 10);
 const CHAT_AUTH_REQUESTS_PER_HOUR = clampEnvNumber(process.env.CHAT_AUTH_REQUESTS_PER_HOUR, 1, 2000, 60);
 const ANSWER_MAX_TOKENS = clampEnvNumber(process.env.ANSWER_MAX_TOKENS, 400, 4000, 1500);
+const ROUTER_TIMEOUT_MS = clampEnvNumber(process.env.ROUTER_TIMEOUT_MS, 1_000, 15_000, 6_000);
+const ANSWER_TIMEOUT_MS = clampEnvNumber(process.env.ANSWER_TIMEOUT_MS, 5_000, 50_000, 35_000);
 const OPENAI_ANSWER_MIN_TOKENS = 2400;
 
 type Intent = "simple_lookup" | "compare" | "summarize" | "methodology" | "citation_search";
@@ -103,6 +105,12 @@ type McpToolPayload = {
   content?: Array<{ type?: string; text?: string }>;
   structuredContent?: unknown;
   _meta?: Record<string, unknown>;
+};
+
+type RetrievalState = {
+  mode: "semantic" | "lexical_fallback" | "unavailable";
+  degraded: boolean;
+  reason?: string | null;
 };
 
 type SectionResult = {
@@ -174,6 +182,39 @@ type ContextPlan = {
   needsNeighbors: boolean;
   reason: string;
 };
+
+const CIVIL_QUERY_CONCEPTS: ReadonlyArray<{ pattern: RegExp; terms: string[] }> = [
+  { pattern: /คอนกรีตเสริมเหล็ก|reinforced\s+concrete/iu, terms: ["reinforced concrete", "rebar"] },
+  { pattern: /ท่อพลาสติก|plastic\s+pipe|\bpvc\b|\bhdpe\b/iu, terms: ["plastic pipe", "PVC", "HDPE"] },
+  { pattern: /ความล่าช้า|delay|schedule\s+overrun/iu, terms: ["construction delay", "schedule overrun"] },
+  { pattern: /ต้นทุน(?:บานปลาย|เกิน)|cost\s+overrun/iu, terms: ["construction cost overrun"] },
+  { pattern: /อุบัติเหตุ(?:รถบรรทุก|ทางถนน)|truck\s+crash|road\s+safety/iu, terms: ["truck crash", "road safety"] },
+  { pattern: /น้ำท่วม|flood(?:ing)?/iu, terms: ["flood", "drainage", "flood resilience"] },
+  { pattern: /ฐานราก|foundation|bearing\s+capacity/iu, terms: ["foundation", "bearing capacity"] },
+  { pattern: /ชั้นดิน|ปฐพี|geotechnical|\bsoil\b/iu, terms: ["soil", "geotechnical"] },
+  { pattern: /แอสฟัลต์|ยางมะตอย|asphalt|bituminous/iu, terms: ["asphalt pavement", "bituminous"] },
+  { pattern: /มยผ\.?/iu, terms: ["DPT standard", "มยผ"] },
+  { pattern: /วสท\.?/iu, terms: ["EIT standard", "วสท"] },
+];
+
+function civilQueryExpansions(question: string): string[] {
+  return uniqueStrings(
+    CIVIL_QUERY_CONCEPTS.flatMap((concept) => concept.pattern.test(question) ? concept.terms : []),
+    12,
+  );
+}
+
+function applyCivilQueryInterpretation(plan: ContextPlan, question: string): ContextPlan {
+  const expansions = civilQueryExpansions(question);
+  if (!expansions.length) return plan;
+  const lowerQuery = plan.searchQuery.toLocaleLowerCase("en-US");
+  const additions = expansions.filter((term) => !lowerQuery.includes(term.toLocaleLowerCase("en-US")));
+  if (!additions.length) return plan;
+  return {
+    ...plan,
+    searchQuery: `${plan.searchQuery} ${additions.join(" ")}`.replace(/\s+/g, " ").trim().slice(0, 500),
+  };
+}
 
 type ConversationAnchor = {
   type: "explicit_evidence" | "implicit_followup";
@@ -248,6 +289,7 @@ type BuiltContext = {
   estimatedTokens: number;
   evidenceItems: EvidenceItem[];
   contextLatencyMs?: number;
+  retrieval: RetrievalState;
 };
 
 type TraceTimings = {
@@ -590,6 +632,21 @@ function citationMarkers(answer: string): string[] {
   return [...new Set(Array.from(answer.matchAll(/\[(E\d+)\]/g)).map((match) => match[1]))];
 }
 
+function citationAudit(answer: string, evidenceItems: EvidenceItem[]) {
+  const markers = citationMarkers(answer);
+  const allowed = new Set(evidenceItems.map((item) => item.evidenceId));
+  const resolvedCitationMarkers = markers.filter((marker) => allowed.has(marker));
+  const unresolvedCitationMarkers = markers.filter((marker) => !allowed.has(marker));
+  return {
+    citationMarkers: markers,
+    resolvedCitationMarkers,
+    unresolvedCitationMarkers,
+    citationGroundingPassed: evidenceItems.length
+      ? resolvedCitationMarkers.length > 0 && unresolvedCitationMarkers.length === 0
+      : markers.length === 0,
+  };
+}
+
 async function saveChatTraceSafe(trace: Parameters<typeof saveChatTrace>[0]): Promise<boolean> {
   try {
     await saveChatTrace(trace);
@@ -925,6 +982,7 @@ async function generateRunningSummary(
     const transcript = formatMessagesForCompaction(messagesToCompact, MEMORY_MAX_COMPACTION_INPUT_TOKENS);
     const result = await generateText({
       model: resolveRouterLanguageModel(routerProvider, routerModel),
+      abortSignal: AbortSignal.timeout(ROUTER_TIMEOUT_MS),
       system:
         "You compact long CivilMCP chat history into durable working memory. " +
         "Keep user goals, decisions, unresolved questions, important paper/source references, and constraints. " +
@@ -1073,6 +1131,30 @@ function getStructuredResults<T>(payload: McpToolPayload): T[] {
   return Array.isArray(structured?.results) ? (structured.results as T[]) : [];
 }
 
+function retrievalStateFromPayload(payload: McpToolPayload): RetrievalState {
+  const meta = payload._meta;
+  const mode = meta?.retrieval_mode === "lexical_fallback" ? "lexical_fallback" : "semantic";
+  return {
+    mode,
+    degraded: meta?.degraded === true || mode === "lexical_fallback",
+    reason: typeof meta?.degraded_reason === "string" ? meta.degraded_reason : null,
+  };
+}
+
+function mergeRetrievalState(current: RetrievalState, next: RetrievalState): RetrievalState {
+  if (current.mode === "unavailable" || next.mode === "unavailable") {
+    return current.mode === "unavailable" ? current : next;
+  }
+  if (current.degraded || next.degraded) {
+    return {
+      mode: "lexical_fallback",
+      degraded: true,
+      reason: current.reason ?? next.reason ?? "semantic_retrieval_unavailable",
+    };
+  }
+  return current;
+}
+
 function cleanEvidenceText(value: string | undefined, maxChars = EVIDENCE_SNIPPET_CHARS): string {
   const text = (value ?? "")
     .replace(/\r/g, "\n")
@@ -1115,6 +1197,7 @@ async function callSimpleRagContext(
       max_results: Math.min(5, MAX_CONTEXT_CHUNKS),
       collection,
     });
+    const retrieval = retrievalStateFromPayload(payload);
     const fallbackChunks = getStructuredResults<ChunkResult>(payload);
     const rerankedFallbackChunks = rerankChunks(dedupeChunks(fallbackChunks), query, "simple_lookup");
     const evidenceItems = buildEvidenceItems([], rerankedFallbackChunks, query, "simple_lookup");
@@ -1131,6 +1214,7 @@ async function callSimpleRagContext(
       sectionsSent: 0,
       estimatedTokens: estimateTokens(text),
       evidenceItems,
+      retrieval,
     };
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
@@ -1144,6 +1228,7 @@ async function callSimpleRagContext(
       sectionsSent: 0,
       estimatedTokens: estimateTokens(message),
       evidenceItems: [],
+      retrieval: { mode: "unavailable", degraded: true, reason: "mcp_unavailable" },
     };
   }
 }
@@ -1274,6 +1359,7 @@ async function planContext(
   try {
     const result = await generateObject({
       model: resolveRouterLanguageModel(routerProvider, routerModel),
+      abortSignal: AbortSignal.timeout(ROUTER_TIMEOUT_MS),
       schema: RouterPlanSchema,
       prompt:
         "Classify a Civil Engineering paper QA request into a bounded retrieval plan. " +
@@ -1305,6 +1391,7 @@ async function planContextWithDeepSeek(question: string, routerModel: string): P
   try {
     const response = await fetch(`${DEEPSEEK_BASE_URL}/chat/completions`, {
       method: "POST",
+      signal: AbortSignal.timeout(ROUTER_TIMEOUT_MS),
       headers: {
         "Content-Type": "application/json",
         Authorization: `Bearer ${process.env.DEEPSEEK_API_KEY}`,
@@ -1800,6 +1887,9 @@ function buildAnswerSystemPrompt(
     "Use short evidence markers [E1], [E2] in prose. Do not use long filename citations inside paragraphs.",
     "",
     `Context mode: ${builtContext.mode}`,
+    builtContext.retrieval.degraded
+      ? "Retrieval notice: semantic matching is temporarily unavailable. The supplied packets came from a narrower keyword fallback; state this limitation once and avoid completeness claims."
+      : "Retrieval notice: semantic matching is available.",
     `Collection filter: ${collectionLabel}`,
     `Intent: ${intent}`,
     `Answer guide: ${intentAnswerGuide(intent)}`,
@@ -1834,7 +1924,8 @@ function evidenceSourceLabel(item: EvidenceItem): string {
 
 function shouldUseAnswerFallback(answer: string, evidenceItems: EvidenceItem[]): boolean {
   if (!evidenceItems.length) return !answer.trim();
-  return answer.trim().length < 40 || citationMarkers(answer).length === 0;
+  const audit = citationAudit(answer, evidenceItems);
+  return answer.trim().length < 40 || !audit.citationGroundingPassed;
 }
 
 function fallbackThemeLabel(intent: Intent): string {
@@ -2185,6 +2276,7 @@ async function generateMissionArtifact(
   try {
     const result = await generateObject({
       model: languageModel,
+      abortSignal: AbortSignal.timeout(ANSWER_TIMEOUT_MS),
       schema: MissionArtifactSchema,
       system: [
         "You are CivilMCP's bounded Evidence Mission synthesizer.",
@@ -2256,16 +2348,25 @@ function buildMissionMarkdown(artifact: MissionArtifact): string {
 }
 
 function buildContextAnnotation(builtContext: BuiltContext, conversation: ConversationContext | undefined, traceId: string) {
+  const interpretedFrom = conversation?.retrievalQuestion ?? builtContext.plan?.searchQuery ?? "";
   return {
     type: "civilmcp_context",
     traceId,
     mode: builtContext.mode,
     collection: builtContext.collection,
     intent: builtContext.plan?.intent ?? null,
+    searchQuery: builtContext.plan?.searchQuery ?? conversation?.retrievalQuestion ?? null,
+    queryExpansions: civilQueryExpansions(interpretedFrom),
+    discipline: builtContext.plan?.discipline ?? null,
+    sectionsUsed: builtContext.sectionsSent,
+    chunksUsed: builtContext.chunksSent,
     routerSource: builtContext.router.source,
     routerLatencyMs: builtContext.router.latencyMs,
     contextLatencyMs: builtContext.contextLatencyMs ?? null,
     toolCalls: builtContext.toolCalls,
+    retrievalMode: builtContext.retrieval.mode,
+    retrievalDegraded: builtContext.retrieval.degraded,
+    retrievalDegradedReason: builtContext.retrieval.reason ?? null,
     evidenceItems: builtContext.evidenceItems,
     anchor: conversation?.anchor?.evidence
       ? {
@@ -2296,6 +2397,9 @@ function buildContextStats(
     chunksSent: builtContext.chunksSent,
     sectionsSent: builtContext.sectionsSent,
     estimatedTokens: builtContext.estimatedTokens,
+    retrievalMode: builtContext.retrieval.mode,
+    retrievalDegraded: builtContext.retrieval.degraded,
+    retrievalDegradedReason: builtContext.retrieval.reason ?? null,
     intent: builtContext.plan?.intent ?? null,
     conversationAnchor: conversation.anchor
       ? {
@@ -2325,6 +2429,7 @@ function buildContextText(
   toolCalls: number,
   collection: CollectionFilter,
   anchor?: ConversationAnchor,
+  retrieval: RetrievalState = { mode: "semantic", degraded: false },
 ): BuiltContext {
   const rerankedSections = rerankSections(sections, plan.searchQuery, plan.intent);
   const rerankedChunks = rerankChunks(dedupeChunks(chunks), plan.searchQuery, plan.intent);
@@ -2365,6 +2470,7 @@ function buildContextText(
     sectionsSent: selectedSections.length,
     estimatedTokens: estimateTokens(context),
     evidenceItems,
+    retrieval,
   };
 }
 
@@ -2376,14 +2482,17 @@ async function buildAgenticContext(
   anchor?: ConversationAnchor,
 ): Promise<BuiltContext> {
   const routerPlan = await planContext(question, routerProvider, routerModel);
-  const plan = routerPlan.plan;
+  const plan = applyCivilQueryInterpretation(routerPlan.plan, question);
   let toolCalls = 0;
+  let retrieval: RetrievalState = { mode: "semantic", degraded: false };
   const callTool = async (name: string, args: Record<string, unknown>) => {
     if (toolCalls >= MAX_TOOL_CALLS) {
       throw new Error(`Tool budget exceeded (${MAX_TOOL_CALLS})`);
     }
     toolCalls += 1;
-    return callMcpToolPayload(name, args);
+    const payload = await callMcpToolPayload(name, args);
+    retrieval = mergeRetrievalState(retrieval, retrievalStateFromPayload(payload));
+    return payload;
   };
 
   const sectionTopKByIntent: Record<Intent, number> = {
@@ -2534,8 +2643,11 @@ async function buildAgenticContext(
     );
     const documentIds = explicitAnchor ? uniqueStrings([anchorEvidence?.documentId], 4) : [];
 
+    // Section fallback results already carry exact page provenance. Avoid a
+    // second broad lexical scan while semantic retrieval is unavailable.
     const shouldFetchChunks =
-      plan.intent !== "summarize" || sections.length < 5 || Number(sections[0]?.similarity ?? 0) < 0.2;
+      !retrieval.degraded &&
+      (plan.intent !== "summarize" || sections.length < 5 || Number(sections[0]?.similarity ?? 0) < 0.2);
 
     if (shouldFetchChunks && toolCalls < Math.min(MAX_TOOL_CALLS, MAX_AGENT_STEPS)) {
       const chunkTopKByIntent: Record<Intent, number> = {
@@ -2577,7 +2689,7 @@ async function buildAgenticContext(
     chunks = dedupeChunks([...neighbors, ...chunks]);
   }
 
-  const built = buildContextText(plan, sections, chunks, toolCalls, collection, anchor);
+  const built = buildContextText(plan, sections, chunks, toolCalls, collection, anchor, retrieval);
   return {
     ...built,
     router: {
@@ -2615,8 +2727,9 @@ async function buildMcpContext(
 
 export async function POST(request: NextRequest) {
   const totalStarted = performance.now();
-  const providedRequestId = request.headers.get("x-request-id")?.trim() ?? "";
-  const requestId = /^[a-zA-Z0-9:_-]{8,160}$/.test(providedRequestId) ? providedRequestId : safeTraceId();
+  // A credit reservation identifies one server-side model execution. Never let a
+  // caller choose it: replaying a client request id must not replay a paid charge.
+  const requestId = safeTraceId();
   const traceId = safeTraceId();
 
   let body: ChatBody;
@@ -2776,12 +2889,46 @@ export async function POST(request: NextRequest) {
     }, { status: 402, headers: rateLimitHeaders(rate) }));
   }
 
-  let creditRefunded = false;
-  const refundCredits = async () => {
-    if (creditRefunded) return;
-    creditRefunded = true;
-    await refundAnswerCredits(userId, requestId, creditReservation.charged);
+  let creditRefunded = creditReservation.charged <= 0;
+  let creditRefundPromise: Promise<boolean> | null = null;
+  const refundCredits = async (): Promise<boolean> => {
+    if (creditRefunded) return true;
+    if (creditRefundPromise) return creditRefundPromise;
+    creditRefundPromise = refundAnswerCredits(userId, requestId, creditReservation.charged)
+      .then(() => {
+        creditRefunded = true;
+        return true;
+      })
+      .catch((error) => {
+        console.error(JSON.stringify({
+          event: "civilmcp_credit_refund_pending",
+          traceId,
+          requestId,
+          reason: error instanceof Error ? error.message : String(error),
+        }));
+        return false;
+      })
+      .finally(() => {
+        creditRefundPromise = null;
+      });
+    return creditRefundPromise;
   };
+  const creditRecoveryState = (restored: boolean) => creditReservation.charged <= 0
+    ? "not_charged"
+    : restored
+      ? "restored"
+      : "pending";
+  const creditRecoveryMessage = (restored: boolean) => creditReservation.charged <= 0
+    ? "No answer credits were charged."
+    : restored
+      ? "Your answer credits were restored."
+      : `Credit restoration is pending. Contact support with trace ${traceId}.`;
+  const creditRecoveryAnnotation = (restored: boolean) => ({
+    type: "civilmcp_credit_recovery",
+    traceId,
+    state: creditRecoveryState(restored),
+    message: creditRecoveryMessage(restored),
+  });
 
   try {
   const latestUserForTrace = getLatestUserText(messages ?? []);
@@ -2806,6 +2953,7 @@ export async function POST(request: NextRequest) {
       const answerStarted = performance.now();
       const result = await generateText({
         model: languageModel,
+        abortSignal: AbortSignal.timeout(ANSWER_TIMEOUT_MS),
         system,
         messages: coreMessages,
         ...answerGenerationOptions(selectedModel),
@@ -2852,10 +3000,15 @@ export async function POST(request: NextRequest) {
     const answerStarted = performance.now();
     const result = streamText({
       model: languageModel,
+      abortSignal: AbortSignal.timeout(ANSWER_TIMEOUT_MS),
       system,
       messages: coreMessages,
       ...answerGenerationOptions(selectedModel),
-      onError: refundCredits,
+      onError: async () => {
+        const restored = await refundCredits();
+        baselineData.appendMessageAnnotation(creditRecoveryAnnotation(restored));
+        await baselineData.close();
+      },
       onFinish: async (event) => {
         const answer = typeof event.text === "string" ? event.text : "";
         const usage = normalizeUsage(event.usage ?? null);
@@ -2921,6 +3074,68 @@ export async function POST(request: NextRequest) {
     ...rawBuiltContext,
     contextLatencyMs: roundLatencyMs(performance.now() - contextStarted),
   };
+  if (builtContext.retrieval.mode === "unavailable") {
+    const creditsRestored = await refundCredits();
+    const timings: TraceTimings = {
+      contextLatencyMs: builtContext.contextLatencyMs ?? null,
+      totalLatencyMs: roundLatencyMs(performance.now() - totalStarted),
+    };
+    console.error(JSON.stringify({
+      event: "civilmcp_retrieval_unavailable",
+      traceId,
+      requestId,
+      collection: collectionFilter || "all",
+      reason: builtContext.retrieval.reason ?? "unknown",
+    }));
+    await saveChatTraceSafe({
+      traceId,
+      requestId,
+      sessionId: traceSessionId,
+      userId,
+      mode: "mcp",
+      model: selectedModel,
+      collection: collectionFilter,
+      question: latestUserForTrace,
+      answer: null,
+      contextStats: {
+        retrievalMode: builtContext.retrieval.mode,
+        retrievalDegraded: true,
+        retrievalDegradedReason: builtContext.retrieval.reason ?? null,
+      },
+      evidenceItems: [],
+      usage: null,
+      timings,
+      costUsd: null,
+      status: "error",
+      errorClass: "retrieval_unavailable",
+    });
+    return finalizeResponse(Response.json({
+      error: `Evidence search is temporarily unavailable. Please retry shortly. ${creditRecoveryMessage(creditsRestored)}`,
+      code: "retrieval_unavailable",
+      traceId,
+      creditRecovery: creditRecoveryState(creditsRestored),
+      retryable: true,
+    }, { status: 503, headers: rateLimitHeaders(rate) }));
+  }
+  if (builtContext.retrieval.degraded) {
+    console.warn(JSON.stringify({
+      event: "civilmcp_retrieval_degraded",
+      traceId,
+      requestId,
+      collection: collectionFilter || "all",
+      reason: builtContext.retrieval.reason ?? "unknown",
+      evidenceCount: builtContext.evidenceItems.length,
+    }));
+  }
+  if (!builtContext.evidenceItems.length) {
+    console.warn(JSON.stringify({
+      event: "civilmcp_zero_evidence",
+      traceId,
+      requestId,
+      collection: collectionFilter || "all",
+      retrievalMode: builtContext.retrieval.mode,
+    }));
+  }
   const system = buildAnswerSystemPrompt(builtContext, effectiveConversationContext, memoryPreparation.memory);
   const contextAnnotation = buildContextAnnotation(builtContext, effectiveConversationContext, traceId);
   const contextStats = buildContextStats(builtContext, effectiveConversationContext, memoryPreparation.memory);
@@ -2973,7 +3188,12 @@ export async function POST(request: NextRequest) {
       languageModel,
       selectedModel,
     );
-    const answer = buildMissionMarkdown(missionResult.artifact);
+    const missionCreditsRestored = missionResult.usedFallback ? await refundCredits() : null;
+    const missionRecovery = missionCreditsRestored == null ? null : creditRecoveryAnnotation(missionCreditsRestored);
+    const missionAnswer = buildMissionMarkdown(missionResult.artifact);
+    const answer = missionRecovery?.state === "pending"
+      ? `${missionAnswer}\n\n> ${missionRecovery.message}`
+      : missionAnswer;
     const usage = missionResult.usage;
     const timings: TraceTimings = {
       contextLatencyMs: builtContext.contextLatencyMs ?? null,
@@ -2986,6 +3206,7 @@ export async function POST(request: NextRequest) {
       artifactVersion: missionResult.artifact.version,
       artifactVerdict: missionResult.artifact.verdict.status,
       artifactFallback: missionResult.usedFallback,
+      creditRecovery: missionRecovery?.state ?? null,
       citationMarkers: citationMarkers(answer),
     };
     const tracePersisted = await saveChatTraceSafe({
@@ -3023,6 +3244,7 @@ export async function POST(request: NextRequest) {
         plan: builtContext.plan ?? null,
         timings,
         memory: memoryPreparation.memory,
+        creditRecovery: missionRecovery,
       }, { headers: rateLimitHeaders(rate) }));
     }
 
@@ -3036,6 +3258,7 @@ export async function POST(request: NextRequest) {
           traceId,
           artifact: missionResult.artifact,
         });
+        if (missionRecovery) writer.writeMessageAnnotation(missionRecovery);
         writer.write(formatDataStreamPart("text", answer));
         writer.write(
           formatDataStreamPart("finish_message", {
@@ -3054,17 +3277,38 @@ export async function POST(request: NextRequest) {
 
   if (debug) {
     const answerStarted = performance.now();
-    const result = await generateText({
-      model: languageModel,
-      system,
-      messages: coreMessages,
-      ...answerGenerationOptions(selectedModel),
-    });
-    const generatedAnswer = result.text ?? "";
-    const answer = shouldUseAnswerFallback(generatedAnswer, builtContext.evidenceItems)
+    let generatedAnswer = "";
+    let usage: Record<string, unknown> | null = null;
+    let generationFailed = false;
+    let debugRecovery: ReturnType<typeof creditRecoveryAnnotation> | null = null;
+    try {
+      const result = await generateText({
+        model: languageModel,
+        abortSignal: AbortSignal.timeout(ANSWER_TIMEOUT_MS),
+        system,
+        messages: coreMessages,
+        ...answerGenerationOptions(selectedModel),
+      });
+      generatedAnswer = result.text ?? "";
+      usage = normalizeUsage(result.usage ?? null);
+    } catch (error) {
+      generationFailed = true;
+      debugRecovery = creditRecoveryAnnotation(await refundCredits());
+      console.warn(JSON.stringify({
+        event: "civilmcp_answer_fallback",
+        traceId,
+        requestId,
+        model: selectedModel,
+        reason: error instanceof Error && error.name === "TimeoutError" ? "provider_timeout" : "provider_error",
+      }));
+    }
+    const fallbackAnswer = generationFailed || shouldUseAnswerFallback(generatedAnswer, builtContext.evidenceItems)
       ? buildFallbackResearchBrief(latestUserForTrace, builtContext)
       : generatedAnswer;
-    const usage = normalizeUsage(result.usage ?? null);
+    const answer = debugRecovery?.state === "pending"
+      ? `${fallbackAnswer}\n\n> ${debugRecovery.message}`
+      : fallbackAnswer;
+    const answerFallback = generationFailed || answer !== generatedAnswer;
     const timings: TraceTimings = {
       contextLatencyMs: builtContext.contextLatencyMs ?? null,
       answerLatencyMs: roundLatencyMs(performance.now() - answerStarted),
@@ -3080,7 +3324,7 @@ export async function POST(request: NextRequest) {
       collection: collectionFilter,
       question: latestUserForTrace,
       answer,
-      contextStats: { ...contextStats, citationMarkers: citationMarkers(answer), answerFallback: answer !== generatedAnswer },
+      contextStats: { ...contextStats, citationMarkers: citationMarkers(answer), answerFallback },
       evidenceItems: builtContext.evidenceItems,
       plan: builtContext.plan ? { ...builtContext.plan } : null,
       usage,
@@ -3096,11 +3340,12 @@ export async function POST(request: NextRequest) {
       model: selectedModel,
       answer,
       usage,
-      contextStats: { ...contextStats, citationMarkers: citationMarkers(answer), answerFallback: answer !== generatedAnswer },
+      contextStats: { ...contextStats, citationMarkers: citationMarkers(answer), answerFallback },
       evidenceItems: builtContext.evidenceItems,
       plan: builtContext.plan ?? null,
       timings,
       memory: memoryPreparation.memory,
+      creditRecovery: debugRecovery,
     }, { headers: rateLimitHeaders(rate) }));
   }
 
@@ -3113,15 +3358,21 @@ export async function POST(request: NextRequest) {
   const answerStarted = performance.now();
   const result = streamText({
     model: languageModel,
+    abortSignal: AbortSignal.timeout(ANSWER_TIMEOUT_MS),
     system,
     messages: coreMessages,
     ...answerGenerationOptions(selectedModel),
-    onError: refundCredits,
+    onError: async () => {
+      const restored = await refundCredits();
+      data.appendMessageAnnotation(creditRecoveryAnnotation(restored));
+      await data.close();
+    },
     onFinish: async (event) => {
       const generatedAnswer = typeof event.text === "string" ? event.text : "";
-      const answer = shouldUseAnswerFallback(generatedAnswer, builtContext.evidenceItems)
-        ? buildFallbackResearchBrief(latestUserForTrace, builtContext)
-        : generatedAnswer;
+      // The stream has already reached the user. Persist exactly that text so
+      // evaluation cannot silently substitute a cleaner deterministic answer.
+      const answerValidationFailed = shouldUseAnswerFallback(generatedAnswer, builtContext.evidenceItems);
+      const answerCitationAudit = citationAudit(generatedAnswer, builtContext.evidenceItems);
       const usage = normalizeUsage(event.usage ?? null);
       await saveChatTraceSafe({
         traceId,
@@ -3132,8 +3383,13 @@ export async function POST(request: NextRequest) {
         model: selectedModel,
         collection: collectionFilter,
         question: latestUserForTrace,
-        answer,
-        contextStats: { ...contextStats, citationMarkers: citationMarkers(answer), answerFallback: answer !== generatedAnswer },
+        answer: generatedAnswer,
+        contextStats: {
+          ...contextStats,
+          ...answerCitationAudit,
+          answerFallback: false,
+          answerValidationFailed,
+        },
         evidenceItems: builtContext.evidenceItems,
         plan: builtContext.plan ? { ...builtContext.plan } : null,
         usage,
@@ -3151,10 +3407,14 @@ export async function POST(request: NextRequest) {
 
   return finalizeResponse(result.toDataStreamResponse({ data, headers: rateLimitHeaders(rate) }));
   } catch (error) {
-    await refundCredits();
+    const creditsRestored = await refundCredits();
     console.error("civilmcp_chat_generation_failed", error instanceof Error ? error.message : String(error));
     return finalizeResponse(Response.json(
-      { error: "CivilMCP could not generate this answer. Your credits were restored." },
+      {
+        error: `CivilMCP could not generate this answer. ${creditRecoveryMessage(creditsRestored)}`,
+        traceId,
+        creditRecovery: creditRecoveryState(creditsRestored),
+      },
       { status: 503, headers: rateLimitHeaders(rate) },
     ));
   }

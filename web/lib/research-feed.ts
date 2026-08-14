@@ -41,6 +41,10 @@ export type ResearchFeedCard = {
   canonicalUrl?: string | null;
   journalTitle?: string | null;
   authors?: string[];
+  doi?: string | null;
+  rightsStatus?: string | null;
+  accessLevel?: string | null;
+  discoveryLayer?: "evidence" | "thai_discovery";
 };
 
 export type ResearchFeedResponse = {
@@ -148,10 +152,9 @@ type CatalogRow = {
   source_type: string;
   title_local?: string | null;
   title_en?: string | null;
-  abstract_local?: string | null;
-  abstract_en?: string | null;
   authors?: unknown;
   keywords?: unknown;
+  doi?: string | null;
   canonical_url?: string | null;
   journal_title?: string | null;
   publisher?: string | null;
@@ -159,6 +162,7 @@ type CatalogRow = {
   language?: string | null;
   discipline?: string | null;
   rights_status: string;
+  access_level: string;
   evidence_status: "metadata_only" | "extracted" | "indexed" | "quarantined" | "removed";
   document_id?: string | null;
   source_updated_at?: string | null;
@@ -177,10 +181,9 @@ const DOCUMENT_SELECT =
   "id, source, source_pdf, collection, source_type, parent_source_pdf, paper_code, page_start, page_end, proceeding_no, proceeding_year, discipline, section_count, chunk_count, indexed_at, created_at, updated_at";
 const SECTION_SELECT = "id, document_id, source, collection, paper_code, page_start, page_end, discipline, section_index, section_title, content";
 const CHUNK_SELECT = "id, document_id, section_id, source, collection, paper_code, page_start, page_end, section_index, section_title, chunk_index, content";
-const CATALOG_SELECT = "id, provider, provider_record_id, collection, source_type, title_local, title_en, abstract_local, abstract_en, authors, keywords, canonical_url, journal_title, publisher, published_at, language, discipline, rights_status, evidence_status, document_id, source_updated_at, updated_at";
-// ponytail: in-memory ranking is intentionally bounded; move ranking into SQL when the evidence corpus exceeds this ceiling.
-const MAX_DOCS_FOR_FEED = 2000;
-const MAX_CATALOG_RECORDS = 5000;
+// Public discovery is deliberately metadata-only. Abstracts may be retained for
+// permitted server-side indexing, but are never selected into a public card.
+const CATALOG_SELECT = "id, provider, provider_record_id, collection, source_type, title_local, title_en, authors, keywords, doi, canonical_url, journal_title, publisher, published_at, language, discipline, rights_status, access_level, evidence_status, document_id, source_updated_at, updated_at";
 const MAX_QUERY_MATCHES = 500;
 const QUERY_STOP_WORDS = new Set([
   "a", "an", "and", "are", "as", "at", "be", "by", "for", "from", "how", "in", "into", "is", "of", "on", "or", "the", "to", "what", "with",
@@ -709,6 +712,7 @@ function cardFromDocument(doc: DocumentRow, sections: SectionRow[], chunks: Chun
     provider: collection === "ce_project" ? "student_transport_projects" : "ncce",
     evidenceStatus: "indexed",
     citable: true,
+    discoveryLayer: "evidence",
   };
   return { ...card, prompt: buildPrompt(card) };
 }
@@ -728,8 +732,7 @@ function stringArray(value: unknown, limit = 8): string[] {
 }
 
 function cardFromCatalog(row: CatalogRow): ResearchFeedCard {
-  const title = cleanText(row.title_en || row.title_local || row.provider_record_id, 320);
-  const abstract = cleanText(row.abstract_en || row.abstract_local || "", 520);
+  const title = cleanText(row.title_local || row.title_en || row.provider_record_id, 320);
   const authors = stringArray(row.authors);
   const journalTitle = cleanText((row.journal_title || "").split(/\s*[;|]\s*/)[0] || row.publisher || "", 120);
   const keywordTags = stringArray(row.keywords, 12)
@@ -742,7 +745,7 @@ function cardFromCatalog(row: CatalogRow): ResearchFeedCard {
     providerLabel(row.provider),
     ...keywordTags,
   ].filter(Boolean).slice(0, 6);
-  const summary = abstract || [
+  const summary = [
     journalTitle,
     authors.length ? `By ${authors.slice(0, 3).join(", ")}` : "",
     "Discovery metadata. Open the publisher record to verify the full text and reuse terms.",
@@ -779,6 +782,10 @@ function cardFromCatalog(row: CatalogRow): ResearchFeedCard {
     canonicalUrl: row.canonical_url,
     journalTitle,
     authors,
+    doi: row.doi,
+    rightsStatus: row.rights_status,
+    accessLevel: row.access_level,
+    discoveryLayer: "thai_discovery",
   };
 }
 
@@ -793,110 +800,253 @@ function sortDocuments(docs: DocumentRow[], filter: FeedFilter): DocumentRow[] {
   return copy.sort((a, b) => hotScore(b) - hotScore(a));
 }
 
-async function fetchDocuments(collection: CollectionFilter): Promise<DocumentRow[]> {
+function rpcUnavailable(error: { code?: string; message?: string } | null | undefined, functionName: string): boolean {
+  const code = (error?.code ?? "").toUpperCase();
+  const message = (error?.message ?? "").toLowerCase();
+  return code === "PGRST202" || code === "42883" || (
+    message.includes(functionName.toLowerCase())
+    && (message.includes("could not find") || message.includes("does not exist") || message.includes("schema cache"))
+  );
+}
+
+async function fetchDocumentPage(
+  collection: CollectionFilter,
+  filter: FeedFilter,
+  offset: number,
+  limit: number,
+): Promise<{ rows: DocumentRow[]; total: number }> {
   const supabase = getSupabaseAdmin() as any;
+  const { data, error } = await supabase.rpc("list_civil_evidence_feed_v1", {
+    filter_name: filter === "recent" || filter === "evidence" ? filter : "hot",
+    filter_collection: collection || null,
+    match_count: limit,
+    match_offset: offset,
+  });
+  if (!error) {
+    const rows = (data ?? []) as Array<DocumentRow & { total_count?: number | string }>;
+    return { rows, total: Number(rows[0]?.total_count ?? 0) };
+  }
+  if (!rpcUnavailable(error, "list_civil_evidence_feed_v1")) {
+    throw new Error(`Failed to read evidence feed: ${error.message}`);
+  }
+
+  // Compatibility for a deployment rolling forward before the additive RPC.
+  let query = supabase
+    .from("civil_documents_v2")
+    .select(DOCUMENT_SELECT, { count: "exact" });
+  if (collection) query = query.eq("collection", collection);
+  if (filter === "recent") {
+    query = query
+      .gte("indexed_at", new Date(Date.now() - 45 * 86_400_000).toISOString())
+      .order("indexed_at", { ascending: false, nullsFirst: false });
+  } else if (filter === "evidence") {
+    query = query
+      .gte("chunk_count", 6)
+      .order("chunk_count", { ascending: false })
+      .order("section_count", { ascending: false });
+  } else {
+    query = query
+      .order("chunk_count", { ascending: false })
+      .order("section_count", { ascending: false })
+      .order("indexed_at", { ascending: false, nullsFirst: false });
+  }
+  const fallback = await query.range(offset, offset + limit - 1);
+  if (fallback.error) throw new Error(`Failed to read evidence feed fallback: ${fallback.error.message}`);
+  return { rows: (fallback.data ?? []) as DocumentRow[], total: fallback.count ?? 0 };
+}
+
+async function fetchDocumentsByIds(documentIds: string[]): Promise<DocumentRow[]> {
+  const ids = [...new Set(documentIds)].slice(0, MAX_QUERY_MATCHES);
+  if (!ids.length) return [];
+  const supabase = getSupabaseAdmin() as any;
+  const batches: string[][] = [];
+  for (let index = 0; index < ids.length; index += 100) batches.push(ids.slice(index, index + 100));
+  const results = await Promise.all(batches.map((batch) =>
+    supabase.from("civil_documents_v2").select(DOCUMENT_SELECT).in("id", batch).limit(batch.length),
+  ));
   const rows: DocumentRow[] = [];
-  const pageSize = 1000;
-  for (let offset = 0; offset < MAX_DOCS_FOR_FEED; offset += pageSize) {
-    let query = supabase
-      .from("civil_documents_v2")
-      .select(DOCUMENT_SELECT)
-      .order("indexed_at", { ascending: false, nullsFirst: false })
-      .range(offset, Math.min(offset + pageSize - 1, MAX_DOCS_FOR_FEED - 1));
-    if (collection) query = query.eq("collection", collection);
-    const { data, error } = await query;
-    if (error) throw new Error(`Failed to read documents: ${error.message}`);
-    const page = (data ?? []) as DocumentRow[];
-    rows.push(...page);
-    if (page.length < pageSize) break;
+  for (const result of results) {
+    if (result.error) throw new Error(`Failed to read matched documents: ${result.error.message}`);
+    rows.push(...((result.data ?? []) as DocumentRow[]));
   }
   return rows;
 }
 
-async function fetchCatalog(): Promise<CatalogRow[]> {
+type CatalogFacetRow = {
+  provider: string;
+  records: number | string;
+  citable: number | string;
+  metadata_only: number | string;
+};
+
+type EvidenceFacetRow = {
+  total: number | string;
+  total_sections: number | string;
+  total_chunks: number | string;
+  recent: number | string;
+  evidence: number | string;
+  ncce: number | string;
+  ce_project: number | string;
+};
+
+async function fetchEvidenceFacets(): Promise<EvidenceFacetRow> {
   const supabase = getSupabaseAdmin() as any;
-  const rows: CatalogRow[] = [];
-  const pageSize = 1000;
-  for (let offset = 0; offset < MAX_CATALOG_RECORDS; offset += pageSize) {
-    const { data, error } = await supabase
-      .from("civil_source_catalog")
-      .select(CATALOG_SELECT)
-      .neq("evidence_status", "removed")
-      .order("published_at", { ascending: false, nullsFirst: false })
-      .range(offset, Math.min(offset + pageSize - 1, MAX_CATALOG_RECORDS - 1));
-    if (error) throw new Error(`Failed to read source catalog: ${error.message}`);
-    const page = (data ?? []) as CatalogRow[];
-    rows.push(...page);
-    if (page.length < pageSize) break;
+  const { data, error } = await supabase.rpc("civil_evidence_feed_facets_v1");
+  if (!error) {
+    const row = (Array.isArray(data) ? data[0] : data) as EvidenceFacetRow | null;
+    if (row) return row;
+    throw new Error("Evidence facet RPC returned no state.");
   }
-  return rows;
+  if (!rpcUnavailable(error, "civil_evidence_feed_facets_v1")) {
+    throw new Error(`Failed to read evidence facets: ${error.message}`);
+  }
+  const { data: rows, error: fallbackError } = await supabase
+    .from("civil_documents_v2")
+    .select("collection,section_count,chunk_count,indexed_at")
+    .limit(5000);
+  if (fallbackError) throw new Error(`Failed to read evidence facets fallback: ${fallbackError.message}`);
+  const threshold = Date.now() - 45 * 86_400_000;
+  return (rows ?? []).reduce((totals: EvidenceFacetRow, row: DocumentRow) => {
+    totals.total = Number(totals.total) + 1;
+    totals.total_sections = Number(totals.total_sections) + Number(row.section_count ?? 0);
+    totals.total_chunks = Number(totals.total_chunks) + Number(row.chunk_count ?? 0);
+    if (row.indexed_at && new Date(row.indexed_at).getTime() >= threshold) totals.recent = Number(totals.recent) + 1;
+    if (Number(row.chunk_count ?? 0) >= 6) totals.evidence = Number(totals.evidence) + 1;
+    if (row.collection === "ncce") totals.ncce = Number(totals.ncce) + 1;
+    if (row.collection === "ce_project") totals.ce_project = Number(totals.ce_project) + 1;
+    return totals;
+  }, { total: 0, total_sections: 0, total_chunks: 0, recent: 0, evidence: 0, ncce: 0, ce_project: 0 });
 }
 
-function catalogMatchesQuery(row: CatalogRow, q: string): boolean {
-  if (!q) return true;
-  const terms = searchContext(q).baseTerms;
-  if (!terms.length) return true;
-  const haystack = [
-    row.title_local,
-    row.title_en,
-    row.abstract_local,
-    row.abstract_en,
-    row.journal_title,
-    row.publisher,
-    row.discipline,
-    ...stringArray(row.authors, 20),
-    ...stringArray(row.keywords, 20),
-  ].filter(Boolean).join(" ").toLocaleLowerCase("en");
-  return terms.every((term) => haystack.includes(term));
+async function searchCatalog({
+  q,
+  provider = "",
+  limit,
+  offset,
+}: {
+  q: string;
+  provider?: string;
+  limit: number;
+  offset: number;
+}): Promise<{ rows: CatalogRow[]; total: number }> {
+  const supabase = getSupabaseAdmin() as any;
+  const { data, error } = await supabase.rpc("search_civil_source_catalog_public_v1", {
+    search_query: q,
+    filter_provider: provider || null,
+    filter_discipline: null,
+    match_count: limit,
+    match_offset: offset,
+  });
+  if (!error) {
+    const rows = (data ?? []) as Array<CatalogRow & { total_count?: number | string }>;
+    return { rows, total: Number(rows[0]?.total_count ?? 0) };
+  }
+  // Compatibility fallback for environments that have not applied the additive
+  // public catalog RPC yet. It remains bounded and never selects abstracts or
+  // changes citable status.
+  let query = supabase
+    .from("civil_source_catalog")
+    .select(CATALOG_SELECT, { count: "exact" })
+    .neq("evidence_status", "removed")
+    .order("published_at", { ascending: false, nullsFirst: false })
+    .range(offset, offset + limit - 1);
+  if (provider) query = query.eq("provider", provider);
+  if (q) {
+    const term = searchContext(q).baseTerms[0] ?? q;
+    query = query.or([
+      `title_local.ilike.%${term}%`,
+      `title_en.ilike.%${term}%`,
+      `abstract_local.ilike.%${term}%`,
+      `abstract_en.ilike.%${term}%`,
+      `journal_title.ilike.%${term}%`,
+    ].join(","));
+  }
+  const fallback = await query;
+  if (fallback.error) throw new Error(`Failed to search source catalog: ${fallback.error.message}`);
+  return { rows: (fallback.data ?? []) as CatalogRow[], total: fallback.count ?? 0 };
 }
 
-async function fetchSectionsForDocuments(documentIds: string[], perDocument = 8): Promise<Map<string, SectionRow[]>> {
-  const grouped = new Map<string, SectionRow[]>();
-  if (!documentIds.length) return grouped;
+async function fetchCatalogFacets(): Promise<CatalogFacetRow[]> {
+  const supabase = getSupabaseAdmin() as any;
+  const { data, error } = await supabase.rpc("civil_source_catalog_facets_v1");
+  if (!error) return (data ?? []) as CatalogFacetRow[];
+
+  // Source catalog is small in legacy environments. This fallback disappears
+  // once the additive RPC reaches every deployment.
+  const { data: rows, error: fallbackError } = await supabase
+    .from("civil_source_catalog")
+    .select("provider,evidence_status,document_id")
+    .neq("evidence_status", "removed")
+    .limit(5000);
+  if (fallbackError) throw new Error(`Failed to read source catalog facets: ${fallbackError.message}`);
+  const summary = new Map<string, { records: number; citable: number; metadata_only: number }>();
+  for (const row of rows ?? []) {
+    const current = summary.get(row.provider) ?? { records: 0, citable: 0, metadata_only: 0 };
+    current.records += 1;
+    if (row.evidence_status === "indexed" && row.document_id) current.citable += 1;
+    if (row.evidence_status === "metadata_only") current.metadata_only += 1;
+    summary.set(row.provider, current);
+  }
+  return [...summary.entries()].map(([provider, counts]) => ({ provider, ...counts }));
+}
+
+async function fetchDocumentPreviews(
+  documentIds: string[],
+  sectionsPerDocument = 8,
+  chunksPerDocument = 3,
+): Promise<{ sections: Map<string, SectionRow[]>; chunks: Map<string, ChunkRow[]> }> {
+  const ids = [...new Set(documentIds)].slice(0, 100);
+  const sections = new Map<string, SectionRow[]>(ids.map((id) => [id, []]));
+  const chunks = new Map<string, ChunkRow[]>(ids.map((id) => [id, []]));
+  if (!ids.length) return { sections, chunks };
 
   const supabase = getSupabaseAdmin() as any;
-  const results = await Promise.all(
-    documentIds.map((documentId) =>
-      supabase
-        .from("civil_sections_v2")
-        .select(SECTION_SELECT)
-        .eq("document_id", documentId)
-        .eq("is_stale", false)
-        .order("section_index", { ascending: true })
-        .limit(perDocument),
-    ),
-  );
-
-  results.forEach((result, index) => {
-    if (result.error) throw new Error(`Failed to read sections: ${result.error.message}`);
-    grouped.set(documentIds[index], (result.data ?? []) as SectionRow[]);
+  const { data, error } = await supabase.rpc("civil_evidence_feed_previews_v1", {
+    document_ids: ids,
+    sections_per_document: sectionsPerDocument,
+    chunks_per_document: chunksPerDocument,
   });
-  return grouped;
-}
+  if (!error) {
+    for (const row of (data ?? []) as Array<{ preview_kind?: string; document_id?: string; payload?: unknown }>) {
+      if (!row.document_id || !row.payload || typeof row.payload !== "object") continue;
+      if (row.preview_kind === "section") sections.get(row.document_id)?.push(row.payload as SectionRow);
+      if (row.preview_kind === "chunk") chunks.get(row.document_id)?.push(row.payload as ChunkRow);
+    }
+    return { sections, chunks };
+  }
+  if (!rpcUnavailable(error, "civil_evidence_feed_previews_v1")) {
+    throw new Error(`Failed to read evidence previews: ${error.message}`);
+  }
 
-async function fetchChunksForDocuments(documentIds: string[], perDocument = 3): Promise<Map<string, ChunkRow[]>> {
-  const grouped = new Map<string, ChunkRow[]>();
-  if (!documentIds.length) return grouped;
-
-  const supabase = getSupabaseAdmin() as any;
-  const results = await Promise.all(
-    documentIds.map((documentId) =>
-      supabase
-        .from("civil_chunks_v2")
-        .select(CHUNK_SELECT)
-        .eq("document_id", documentId)
-        .eq("is_stale", false)
-        .order("section_index", { ascending: true })
-        .order("chunk_index", { ascending: true })
-        .limit(perDocument),
-    ),
-  );
-
-  results.forEach((result, index) => {
-    if (result.error) throw new Error(`Failed to read chunk previews: ${result.error.message}`);
-    grouped.set(documentIds[index], (result.data ?? []) as ChunkRow[]);
-  });
-  return grouped;
+  // Rolling-deploy fallback: two bounded set queries, never one query per card.
+  const [sectionResult, chunkResult] = await Promise.all([
+    supabase
+      .from("civil_sections_v2")
+      .select(SECTION_SELECT)
+      .in("document_id", ids)
+      .eq("is_stale", false)
+      .order("document_id", { ascending: true })
+      .order("section_index", { ascending: true }),
+    supabase
+      .from("civil_chunks_v2")
+      .select(CHUNK_SELECT)
+      .in("document_id", ids)
+      .eq("is_stale", false)
+      .order("document_id", { ascending: true })
+      .order("section_index", { ascending: true })
+      .order("chunk_index", { ascending: true }),
+  ]);
+  if (sectionResult.error) throw new Error(`Failed to read section previews fallback: ${sectionResult.error.message}`);
+  if (chunkResult.error) throw new Error(`Failed to read chunk previews fallback: ${chunkResult.error.message}`);
+  for (const row of (sectionResult.data ?? []) as SectionRow[]) {
+    const grouped = row.document_id ? sections.get(row.document_id) : null;
+    if (grouped && grouped.length < sectionsPerDocument) grouped.push(row);
+  }
+  for (const row of (chunkResult.data ?? []) as ChunkRow[]) {
+    const grouped = row.document_id ? chunks.get(row.document_id) : null;
+    if (grouped && grouped.length < chunksPerDocument) grouped.push(row);
+  }
+  return { sections, chunks };
 }
 
 type SearchMatchRow = {
@@ -1036,43 +1186,42 @@ async function matchingDocumentScores(q: string, collection: CollectionFilter): 
   );
 }
 
-function facetsFromDocuments(docs: DocumentRow[], catalog: CatalogRow[]): ResearchFeedResponse["facets"] {
-  const collections = new Map<string, number>();
+function facetsFromCounts(evidence: EvidenceFacetRow, catalogFacets: CatalogFacetRow[]): ResearchFeedResponse["facets"] {
   const providerCounts = new Map<string, { records: number; citable: number }>();
+  const evidenceTotal = Number(evidence.total ?? 0);
   const filters: Record<FeedFilter, number> = {
-    hot: docs.length,
-    recent: 0,
-    evidence: 0,
+    hot: evidenceTotal,
+    recent: Number(evidence.recent ?? 0),
+    evidence: Number(evidence.evidence ?? 0),
     tci: 0,
-    ncce: 0,
-    ce_project: 0,
+    ncce: Number(evidence.ncce ?? 0),
+    ce_project: Number(evidence.ce_project ?? 0),
   };
 
-  for (const doc of docs) {
-    const collection = normalizeCollection(doc.collection) || "unknown";
-    collections.set(collection, (collections.get(collection) ?? 0) + 1);
-    for (const filter of filtersForDoc(doc)) {
-      filters[filter] += filter === "hot" ? 0 : 1;
-    }
-  }
-
-  for (const row of catalog) {
-    const current = providerCounts.get(row.provider) ?? { records: 0, citable: 0 };
-    current.records += 1;
-    if (row.evidence_status === "indexed" && row.document_id) current.citable += 1;
-    providerCounts.set(row.provider, current);
-    if (row.provider === "tci_thaijo") filters.tci += 1;
+  let catalogTotal = 0;
+  let metadataOnlyTotal = 0;
+  for (const row of catalogFacets) {
+    const records = Number(row.records ?? 0);
+    const citable = Number(row.citable ?? 0);
+    const metadataOnly = Number(row.metadata_only ?? 0);
+    providerCounts.set(row.provider, { records, citable });
+    catalogTotal += records;
+    metadataOnlyTotal += metadataOnly;
+    if (row.provider === "tci_thaijo") filters.tci += records;
   }
 
   return {
-    total: docs.length,
-    totalSections: docs.reduce((total, doc) => total + (doc.section_count ?? 0), 0),
-    totalChunks: docs.reduce((total, doc) => total + (doc.chunk_count ?? 0), 0),
-    catalogTotal: catalog.length,
-    citableTotal: docs.length,
-    metadataOnlyTotal: catalog.filter((row) => row.evidence_status === "metadata_only").length,
+    total: evidenceTotal,
+    totalSections: Number(evidence.total_sections ?? 0),
+    totalChunks: Number(evidence.total_chunks ?? 0),
+    catalogTotal,
+    citableTotal: evidenceTotal,
+    metadataOnlyTotal,
     providers: [...providerCounts.entries()].map(([provider, counts]) => ({ provider, ...counts })),
-    collections: [...collections.entries()].map(([collection, documents]) => ({ collection, documents })),
+    collections: [
+      { collection: "ncce", documents: Number(evidence.ncce ?? 0) },
+      { collection: "ce_project", documents: Number(evidence.ce_project ?? 0) },
+    ].filter((item) => item.documents > 0),
     filters,
   };
 }
@@ -1085,45 +1234,50 @@ export async function listResearchFeed(params: ListFeedParams): Promise<Research
   const limit = normalizeLimit(params.limit);
   const offset = decodeCursor(params.cursor);
 
-  const [allDocs, catalog] = await Promise.all([fetchDocuments(""), fetchCatalog()]);
-  const facets = facetsFromDocuments(allDocs, catalog);
+  const [evidenceFacets, catalogFacets] = await Promise.all([fetchEvidenceFacets(), fetchCatalogFacets()]);
+  const facets = facetsFromCounts(evidenceFacets, catalogFacets);
   if (filter === "tci") {
-    const records = catalog
-      .filter((row) => row.provider === "tci_thaijo" && row.evidence_status !== "removed")
-      .filter((row) => catalogMatchesQuery(row, q))
-      .sort((left, right) =>
-        new Date(right.published_at ?? right.source_updated_at ?? right.updated_at ?? 0).getTime()
-        - new Date(left.published_at ?? left.source_updated_at ?? left.updated_at ?? 0).getTime());
-    const cards = records.slice(offset, offset + limit).map(cardFromCatalog);
+    const catalogPage = await searchCatalog({ q, provider: "tci_thaijo", limit, offset });
+    const cards = catalogPage.rows.map(cardFromCatalog);
     const nextOffset = offset + limit;
     return {
       cards,
       facets,
-      nextCursor: nextOffset < records.length ? encodeCursor(nextOffset) : null,
+      nextCursor: nextOffset < catalogPage.total ? encodeCursor(nextOffset) : null,
       generatedAt: new Date().toISOString(),
     };
   }
 
-  let docs = collection ? allDocs.filter((doc) => normalizeCollection(doc.collection) === collection) : allDocs;
-  let relevanceScores: Map<string, number> | null = null;
-  if (q) {
-    relevanceScores = await matchingDocumentScores(q, collection);
-    docs = docs.filter((doc) => relevanceScores?.has(doc.id));
+  if (!q) {
+    const page = await fetchDocumentPage(collection, filter, offset, limit);
+    const previews = await fetchDocumentPreviews(page.rows.map((doc) => doc.id));
+    const cards = page.rows.map((doc) => cardFromDocument(
+      doc,
+      previews.sections.get(doc.id) ?? [],
+      previews.chunks.get(doc.id) ?? [],
+    ));
+    const nextOffset = offset + limit;
+    return {
+      cards,
+      facets,
+      nextCursor: nextOffset < page.total ? encodeCursor(nextOffset) : null,
+      generatedAt: new Date().toISOString(),
+    };
   }
 
+  const relevanceScores = await matchingDocumentScores(q, collection);
+  const candidateIds = [...relevanceScores.entries()]
+    .sort((left, right) => right[1] - left[1])
+    .slice(0, MAX_QUERY_MATCHES)
+    .map(([id]) => id);
+  const docs = await fetchDocumentsByIds(candidateIds);
   const fallbackOrder = new Map(sortDocuments(docs, filter).map((doc, index) => [doc.id, index]));
-  const sorted = relevanceScores
-    ? [...docs].sort((a, b) =>
-      (relevanceScores?.get(b.id) ?? 0) - (relevanceScores?.get(a.id) ?? 0)
-      || (fallbackOrder.get(a.id) ?? 0) - (fallbackOrder.get(b.id) ?? 0))
-    : sortDocuments(docs, filter);
-  const catalogMatches = q && !collection && filter === "hot"
-    ? catalog
-      .filter((row) => row.provider === "tci_thaijo" && row.evidence_status === "metadata_only")
-      .filter((row) => catalogMatchesQuery(row, q))
-      .sort((left, right) =>
-        new Date(right.published_at ?? right.source_updated_at ?? right.updated_at ?? 0).getTime()
-        - new Date(left.published_at ?? left.source_updated_at ?? left.updated_at ?? 0).getTime())
+  const sorted = [...docs].sort((a, b) =>
+    (relevanceScores.get(b.id) ?? 0) - (relevanceScores.get(a.id) ?? 0)
+    || (fallbackOrder.get(a.id) ?? 0) - (fallbackOrder.get(b.id) ?? 0));
+  const catalogMatches = !collection && filter === "hot"
+    ? (await searchCatalog({ q, provider: "tci_thaijo", limit: Math.min(30, limit * 2), offset: 0 })).rows
+      .filter((row) => row.evidence_status === "metadata_only")
     : [];
   const combined: Array<{ kind: "evidence"; document: DocumentRow } | { kind: "catalog"; record: CatalogRow }> = [];
   let catalogIndex = 0;
@@ -1143,17 +1297,14 @@ export async function listResearchFeed(params: ListFeedParams): Promise<Research
   const pageDocumentIds = page
     .filter((item): item is { kind: "evidence"; document: DocumentRow } => item.kind === "evidence")
     .map((item) => item.document.id);
-  const [sectionsByDoc, chunksByDoc] = await Promise.all([
-    fetchSectionsForDocuments(pageDocumentIds),
-    fetchChunksForDocuments(pageDocumentIds),
-  ]);
+  const previews = await fetchDocumentPreviews(pageDocumentIds);
   const cards = page.map((item) =>
     item.kind === "catalog"
       ? cardFromCatalog(item.record)
       : cardFromDocument(
         item.document,
-        sectionsByDoc.get(item.document.id) ?? [],
-        chunksByDoc.get(item.document.id) ?? [],
+        previews.sections.get(item.document.id) ?? [],
+        previews.chunks.get(item.document.id) ?? [],
       ));
   const nextOffset = offset + limit;
 
@@ -1197,14 +1348,11 @@ export async function getResearchCardsBySources(sources: string[]): Promise<Rese
   if (error) throw new Error(`Failed to read saved papers: ${error.message}`);
   const docs = (data ?? []) as DocumentRow[];
   const documentIds = docs.map((doc) => doc.id);
-  const [sectionsByDoc, chunksByDoc] = await Promise.all([
-    fetchSectionsForDocuments(documentIds, 4),
-    fetchChunksForDocuments(documentIds, 2),
-  ]);
+  const previews = await fetchDocumentPreviews(documentIds, 4, 2);
   const cards = new Map(
     docs.map((doc) => [
       doc.source,
-      cardFromDocument(doc, sectionsByDoc.get(doc.id) ?? [], chunksByDoc.get(doc.id) ?? []),
+      cardFromDocument(doc, previews.sections.get(doc.id) ?? [], previews.chunks.get(doc.id) ?? []),
     ]),
   );
   return normalized.map((source) => cards.get(source)).filter((card): card is ResearchFeedCard => Boolean(card));
@@ -1213,25 +1361,65 @@ export async function getResearchCardsBySources(sources: string[]): Promise<Rese
 async function relatedResearchCards(doc: DocumentRow, limit = 4): Promise<ResearchFeedCard[]> {
   const discipline = doc.discipline?.trim();
   if (!discipline) return [];
-  const docs = (await fetchDocuments(""))
-    .filter((candidate) => candidate.id !== doc.id && candidate.discipline === discipline)
-    .sort((left, right) => hotScore(right) - hotScore(left))
-    .slice(0, limit);
+  const supabase = getSupabaseAdmin() as any;
+  const { data, error } = await supabase
+    .from("civil_documents_v2")
+    .select(DOCUMENT_SELECT)
+    .eq("discipline", discipline)
+    .neq("id", doc.id)
+    .order("chunk_count", { ascending: false })
+    .order("section_count", { ascending: false })
+    .order("indexed_at", { ascending: false, nullsFirst: false })
+    .limit(Math.max(1, Math.min(limit, 8)));
+  if (error) throw new Error(`Failed to read related papers: ${error.message}`);
+  const docs = (data ?? []) as DocumentRow[];
   const documentIds = docs.map((candidate) => candidate.id);
-  const [sectionsByDoc, chunksByDoc] = await Promise.all([
-    fetchSectionsForDocuments(documentIds, 3),
-    fetchChunksForDocuments(documentIds, 1),
-  ]);
+  const previews = await fetchDocumentPreviews(documentIds, 3, 1);
   return docs.map((candidate) =>
-    cardFromDocument(candidate, sectionsByDoc.get(candidate.id) ?? [], chunksByDoc.get(candidate.id) ?? []));
+    cardFromDocument(candidate, previews.sections.get(candidate.id) ?? [], previews.chunks.get(candidate.id) ?? []));
 }
 
-export async function getPaperDetail(source: string, includeRelated = false): Promise<PaperDetailResponse | null> {
+export type PaperEvidenceTarget = {
+  id?: string | null;
+  sectionIndex?: number | null;
+  chunkIndex?: number | null;
+  pageStart?: number | null;
+};
+
+export async function getPaperDetail(
+  source: string,
+  includeRelated = false,
+  evidenceTarget?: PaperEvidenceTarget,
+): Promise<PaperDetailResponse | null> {
   const doc = await findDocumentBySource(decodeURIComponent(source));
   if (!doc) return null;
 
   const supabase = getSupabaseAdmin() as any;
-  const [sectionsResult, chunksResult, related] = await Promise.all([
+  const emptyTarget = Promise.resolve({ data: [], error: null });
+  const targetById = evidenceTarget?.id
+    ? supabase
+      .from("civil_chunks_v2")
+      .select(CHUNK_SELECT)
+      .eq("document_id", doc.id)
+      .eq("is_stale", false)
+      .eq("id", evidenceTarget.id)
+      .limit(1)
+    : emptyTarget;
+  const hasPositionTarget = Boolean(
+    evidenceTarget?.sectionIndex != null
+    || evidenceTarget?.chunkIndex != null
+    || evidenceTarget?.pageStart != null,
+  );
+  let targetByPosition = supabase
+    .from("civil_chunks_v2")
+    .select(CHUNK_SELECT)
+    .eq("document_id", doc.id)
+    .eq("is_stale", false);
+  if (evidenceTarget?.sectionIndex != null) targetByPosition = targetByPosition.eq("section_index", evidenceTarget.sectionIndex);
+  if (evidenceTarget?.chunkIndex != null) targetByPosition = targetByPosition.eq("chunk_index", evidenceTarget.chunkIndex);
+  if (evidenceTarget?.pageStart != null) targetByPosition = targetByPosition.eq("page_start", evidenceTarget.pageStart);
+
+  const [sectionsResult, chunksResult, targetIdResult, targetPositionResult, related] = await Promise.all([
     supabase
       .from("civil_sections_v2")
       .select(SECTION_SELECT)
@@ -1247,14 +1435,27 @@ export async function getPaperDetail(source: string, includeRelated = false): Pr
       .order("section_index", { ascending: true })
       .order("chunk_index", { ascending: true })
       .limit(16),
+    targetById,
+    hasPositionTarget ? targetByPosition.limit(1) : emptyTarget,
     includeRelated ? relatedResearchCards(doc) : Promise.resolve([]),
   ]);
 
   if (sectionsResult.error) throw new Error(`Failed to read paper sections: ${sectionsResult.error.message}`);
   if (chunksResult.error) throw new Error(`Failed to read paper evidence: ${chunksResult.error.message}`);
+  if (targetIdResult.error) throw new Error(`Failed to read cited evidence: ${targetIdResult.error.message}`);
+  if (targetPositionResult.error) throw new Error(`Failed to read cited evidence fallback: ${targetPositionResult.error.message}`);
 
   const sections = (sectionsResult.data ?? []) as SectionRow[];
-  const chunks = (chunksResult.data ?? []) as ChunkRow[];
+  const seenChunkIds = new Set<string>();
+  const chunks = ([
+    ...(targetIdResult.data ?? []),
+    ...(targetPositionResult.data ?? []),
+    ...(chunksResult.data ?? []),
+  ] as ChunkRow[]).filter((chunk) => {
+    if (seenChunkIds.has(chunk.id)) return false;
+    seenChunkIds.add(chunk.id);
+    return true;
+  });
   const document = cardFromDocument(doc, sections.slice(0, 10), chunks.slice(0, 5));
 
   return {

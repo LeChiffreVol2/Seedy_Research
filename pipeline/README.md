@@ -94,7 +94,17 @@ Default delay 6.2 วินาทีต่อ request อยู่ใต้ publ
 `pipeline/tci_source_allowlist.json`; การเพิ่ม set ใหม่ต้อง review ชื่อวารสาร,
 scope, duplicate behavior, และ rights policy ก่อน.
 ใช้ `--apply` หลัง apply migration `20260724120000_civil_source_catalog.sql`
-แล้วเท่านั้น.
+และ `20260813090000_civil_source_rights_manifest.sql` แล้วเท่านั้น. ตัว harvester
+จะยอมรับ endpoint/set โดยปริยายเฉพาะคู่ที่อยู่ใน allowlist; set ใหม่ต้องผ่าน
+review หรือใช้ `--allow-unreviewed-set` อย่างชัดเจน และยังคงเป็น metadata-only.
+
+OAI header ที่ provider ส่งเป็น `status="deleted"` จะไม่ถูกทิ้ง: output JSONL
+เก็บ identifier, datestamp, set และ endpoint เป็น tombstone แบบ default-deny.
+เมื่อใช้ `--apply` record ที่ตรงกันจะถูกตั้ง `evidence_status=removed` โดยไม่
+hard-delete metadata/evidence, ไม่เปลี่ยนสิทธิ์ที่คนตรวจแล้ว และไม่ตัด
+`document_id`; audit อยู่ใน `raw_metadata.oai_tombstone` และ counts ของ
+`civil_ingest_runs`. การรัน tombstone เดิมซ้ำให้ผลสถานะเดิม ส่วนการนำ record
+กลับเข้า discovery/evidence หลัง provider ประกาศลบต้องผ่าน review โดยตั้งใจ.
 
 ## v2 Indexing
 

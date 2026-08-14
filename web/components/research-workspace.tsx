@@ -18,9 +18,9 @@ import {
   Sparkles,
   X,
 } from "lucide-react";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 
-import { CHAT_MODELS, DEFAULT_CHAT_MODEL, type ChatModel } from "@/lib/chat-models";
+import { CHAT_MODELS, DEFAULT_CHAT_MODEL, normalizeStoredChatModel, type ChatModel } from "@/lib/chat-models";
 import { GlassMenuSelect, type GlassMenuOption } from "@/components/glass-menu-select";
 
 export type ResearchWorkspacePaper = {
@@ -82,6 +82,7 @@ type ScreeningDecision = "pending" | "included" | "maybe" | "excluded";
 
 type ReviewProtocol = {
   question: string;
+  searchStrategy: string;
   inclusion: string;
   exclusion: string;
 };
@@ -114,6 +115,7 @@ const STORAGE_KEY = "civilmcp-research-workspace-v1";
 const MODEL_OPTIONS = CHAT_MODELS;
 const DEFAULT_REVIEW_PROTOCOL: ReviewProtocol = {
   question: "What does this evidence show, where does it disagree, and what remains uncertain?",
+  searchStrategy: "Search Thai and English civil-engineering terms in CivilMCP, then screen the bounded candidate set.",
   inclusion: "Relevant civil engineering studies with page-level evidence.",
   exclusion: "Out of scope, duplicate, or insufficient evidence.",
 };
@@ -123,6 +125,7 @@ function normalizeReviewProtocol(value?: ReviewProtocol): ReviewProtocol {
     question: !value?.question || value.question === "What does the selected Thai civil engineering evidence show, where does it disagree, and what remains uncertain?"
       ? DEFAULT_REVIEW_PROTOCOL.question
       : value.question,
+    searchStrategy: value?.searchStrategy?.trim() || DEFAULT_REVIEW_PROTOCOL.searchStrategy,
     inclusion: !value?.inclusion || value.inclusion === "Civil engineering studies relevant to the review question with page-linked evidence in CivilMCP."
       ? DEFAULT_REVIEW_PROTOCOL.inclusion
       : value.inclusion,
@@ -238,12 +241,14 @@ async function fetchWorkspaceJson<T>(url: string, init?: RequestInit): Promise<T
 
 export function ResearchWorkspacePanel({
   papers,
+  seedSources = [],
   authenticated,
   proEnabled,
   onUpgrade,
   onOpenPaper,
 }: {
   papers: ResearchWorkspacePaper[];
+  seedSources?: string[];
   authenticated: boolean;
   proEnabled: boolean;
   onUpgrade: (message: string) => void;
@@ -268,6 +273,7 @@ export function ResearchWorkspacePanel({
   const [activeCell, setActiveCell] = useState<{ source: string; columnId: string } | null>(null);
   const [status, setStatus] = useState<"idle" | "running" | "saving" | "saved" | "error">("idle");
   const [statusText, setStatusText] = useState("Saved locally");
+  const appliedSeedRef = useRef("");
 
   useEffect(() => {
     try {
@@ -276,7 +282,7 @@ export function ResearchWorkspacePanel({
         setWorkspaceId(parsed.workspaceId);
         setTitle(parsed.template === "prisma_scoping" && parsed.title === "Thai civil engineering matrix" ? "Thai civil engineering scoping review" : parsed.title);
         setTemplate(parsed.template);
-        setModel(parsed.model);
+        setModel(normalizeStoredChatModel(parsed.model));
         setRows(parsed.rows);
         setColumns(parsed.columns);
         setSelectedSources(parsed.selectedSources);
@@ -295,10 +301,32 @@ export function ResearchWorkspacePanel({
 
   useEffect(() => {
     if (!ready || rows.length || !papers.length) return;
-    const seeded = normalizeRows(papers.slice(0, 4), columns);
+    const requested = seedSources.length
+      ? seedSources.map((source) => papers.find((paper) => paper.source === source)).filter((paper): paper is ResearchWorkspacePaper => Boolean(paper))
+      : papers.slice(0, 4);
+    const seeded = normalizeRows(requested.slice(0, 6), columns);
     setRows(seeded);
     setSelectedSources(seeded.map((row) => row.source));
-  }, [columns, papers, ready, rows.length]);
+  }, [columns, papers, ready, rows.length, seedSources]);
+
+  useEffect(() => {
+    if (!ready || !seedSources.length) return;
+    const signature = seedSources.join("|");
+    if (appliedSeedRef.current === signature) return;
+    const requested = seedSources
+      .map((source) => papers.find((paper) => paper.source === source))
+      .filter((paper): paper is ResearchWorkspacePaper => Boolean(paper))
+      .slice(0, 6);
+    if (!requested.length) return;
+    appliedSeedRef.current = signature;
+    setRows((current) => {
+      const existing = new Set(current.map((row) => row.source));
+      const additions = requested.filter((paper) => !existing.has(paper.source));
+      return [...current, ...normalizeRows(additions, columns)].slice(0, 12);
+    });
+    setSelectedSources((current) => [...new Set([...current, ...requested.map((paper) => paper.source)])].slice(0, 12));
+    setStatusText(`${requested.length} saved papers ready to compare`);
+  }, [columns, papers, ready, seedSources]);
 
   useEffect(() => {
     if (!ready) return;
@@ -333,7 +361,7 @@ export function ResearchWorkspacePanel({
         setWorkspaceId(saved.workspaceId);
         setTitle(saved.template === "prisma_scoping" && saved.title === "Thai civil engineering matrix" ? "Thai civil engineering scoping review" : saved.title);
         setTemplate(saved.template);
-        setModel(saved.model);
+        setModel(normalizeStoredChatModel(saved.model));
         setRows(saved.rows);
         setColumns(saved.columns);
         setSelectedSources(saved.selectedSources);
@@ -539,6 +567,23 @@ export function ResearchWorkspacePanel({
   };
 
   const exportPrismaReview = () => {
+    const tableHeader = ["Paper", "Decision", ...columns.map((column) => column.label), "Human review"];
+    const tableRows = rows.map((row) => {
+      const entry = screening[row.source] ?? { decision: "pending", reason: "" };
+      const values = columns.map((column) => row.cells.find((cell) => cell.columnId === column.id)?.value || "Not extracted");
+      const reviewState = row.cells.some((cell) => cell.review === "needs_review")
+        ? "Needs review"
+        : row.cells.length && row.cells.every((cell) => cell.review === "verified")
+          ? "Verified"
+          : "Unreviewed";
+      return [row.title, entry.decision, ...values, reviewState]
+        .map((value) => value.replaceAll("|", "/").replace(/\s+/g, " ").trim())
+        .join(" | ");
+    });
+    const provenance = rows.flatMap((row) => columns.flatMap((column) => {
+      const cell = row.cells.find((item) => item.columnId === column.id);
+      return (cell?.evidence ?? []).map((item) => `- **${row.title} · ${column.label}:** ${item.source} · ${pageLabel(item)}${item.sectionTitle ? ` · ${item.sectionTitle}` : ""}`);
+    }));
     const lines = [
       `# ${title}`,
       "",
@@ -546,9 +591,12 @@ export function ResearchWorkspacePanel({
       "",
       "## Protocol",
       `- Review question: ${reviewProtocol.question.trim()}`,
+      `- Search strategy: ${reviewProtocol.searchStrategy.trim()}`,
       `- Inclusion criteria: ${reviewProtocol.inclusion.trim()}`,
       `- Exclusion criteria: ${reviewProtocol.exclusion.trim()}`,
-      "- Source: CivilMCP page-linked corpus",
+      "- Database: CivilMCP page-linked Thai civil-engineering corpus",
+      `- Workspace ID: ${workspaceId}`,
+      `- Extraction model: ${model}`,
       `- Exported: ${new Date().toISOString()}`,
       "",
       "## Flow",
@@ -564,6 +612,16 @@ export function ResearchWorkspacePanel({
         const entry = screening[row.source] ?? { decision: "pending", reason: "" };
         return `- **${row.title}** — ${entry.decision}${entry.reason ? `: ${entry.reason}` : ""} (${row.source})`;
       }),
+      "",
+      "## Extraction matrix",
+      "",
+      `| ${tableHeader.join(" | ")} |`,
+      `| ${tableHeader.map(() => "---").join(" | ")} |`,
+      ...tableRows.map((row) => `| ${row} |`),
+      "",
+      "## Exact-page provenance",
+      "",
+      ...(provenance.length ? provenance : ["- No extracted evidence packets are attached yet."]),
       "",
       "## Checklist readiness",
       `- Protocol captured: ${protocolReady ? "yes" : "no"}`,
@@ -676,6 +734,10 @@ export function ResearchWorkspacePanel({
               <label>
                 <span>Review question</span>
                 <textarea value={reviewProtocol.question} maxLength={600} rows={2} onChange={(event) => setReviewProtocol((current) => ({ ...current, question: event.target.value }))} />
+              </label>
+              <label>
+                <span>Search strategy</span>
+                <textarea value={reviewProtocol.searchStrategy} maxLength={800} rows={2} onChange={(event) => setReviewProtocol((current) => ({ ...current, searchStrategy: event.target.value }))} />
               </label>
               <div>
                 <label>

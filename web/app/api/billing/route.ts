@@ -11,7 +11,7 @@ import {
 } from "@/lib/billing";
 import { applyChatIdentityCookies, chatIdentityErrorResponse, resolveChatIdentity } from "@/lib/chat-auth";
 import { consumeChatQuota } from "@/lib/chat-store";
-import { getRequestIp, rateLimitHeaders } from "@/lib/server-guards";
+import { getRequestIp, rateLimitHeaders, safeTraceId } from "@/lib/server-guards";
 
 export const runtime = "nodejs";
 export const preferredRegion = ["sin1"];
@@ -108,9 +108,13 @@ export async function POST(request: NextRequest) {
         });
     return finalize(NextResponse.json({ url }, { headers: rateLimitHeaders(rate) }));
   } catch (error) {
-    console.error("civilmcp_billing_action_failed", error instanceof Error ? error.message : String(error));
+    const traceId = safeTraceId();
+    console.error("civilmcp_billing_action_failed", {
+      traceId,
+      error: error instanceof Error ? error.message : String(error),
+    });
     return finalize(NextResponse.json(
-      { error: error instanceof Error ? error.message : "Billing action failed." },
+      { error: "Billing is temporarily unavailable.", traceId },
       { status: 502 },
     ));
   }

@@ -18,12 +18,13 @@ import {
   listResearchWorkspaces,
   upsertResearchWorkspace,
 } from "@/lib/research-workspaces";
-import { getRequestIp, rateLimitHeaders, readBoundedJson } from "@/lib/server-guards";
+import { clampEnvNumber, getRequestIp, rateLimitHeaders, readBoundedJson, safeTraceId } from "@/lib/server-guards";
 
 export const runtime = "nodejs";
 export const maxDuration = 60;
 export const preferredRegion = ["sin1"];
 export const dynamic = "force-dynamic";
+const WORKSPACE_GENERATION_TIMEOUT_MS = clampEnvNumber(process.env.WORKSPACE_GENERATION_TIMEOUT_MS, 5_000, 50_000, 40_000);
 
 const modelSchema = z.enum(["deepseek-v4-flash", "deepseek-v4-pro", "gpt-5.6-luna", "gpt-5.6-terra", "gpt-5.6-sol"]);
 const deepseek = createOpenAI({
@@ -163,6 +164,7 @@ async function buildWorkspaceRun(input: RunRequest) {
   const columnInstructions = input.columns.map((column) => `- ${column.id} (${column.label}): ${column.prompt}`).join("\n");
   const result = await generateObject({
     model: isOpenAIChatModel(input.model) ? openai(input.model) : deepseek(input.model),
+    abortSignal: AbortSignal.timeout(WORKSPACE_GENERATION_TIMEOUT_MS),
     schema: generatedWorkspaceSchema,
     system: [
       "You are CivilMCP's bounded batch research agent.",
@@ -206,6 +208,44 @@ async function buildWorkspaceRun(input: RunRequest) {
     };
   });
   return { rows, usage: result.usage ?? null };
+}
+
+type WorkspaceCreditReservation = { requestId: string; charged: number };
+
+async function restoreWorkspaceCredits(
+  userId: string,
+  reservations: WorkspaceCreditReservation[],
+  traceId: string,
+): Promise<boolean> {
+  const results = await Promise.allSettled(
+    reservations.map((item) => refundAnswerCredits(userId, item.requestId, item.charged)),
+  );
+  const failedRequestIds = results.flatMap((result, index) => result.status === "rejected"
+    ? [reservations[index].requestId]
+    : []);
+  if (failedRequestIds.length > 0) {
+    console.error(JSON.stringify({
+      event: "civilmcp_workspace_credit_refund_pending",
+      traceId,
+      failedRequestIds,
+    }));
+    return false;
+  }
+  return true;
+}
+
+function workspaceCreditRecovery(
+  reservations: WorkspaceCreditReservation[],
+  restored: boolean,
+  traceId: string,
+) {
+  const charged = reservations.reduce((total, item) => total + item.charged, 0);
+  if (charged <= 0) return { state: "not_charged", message: "No credits were charged." };
+  if (restored) return { state: "restored", message: "Reserved credits were restored." };
+  return {
+    state: "pending",
+    message: `Credit restoration is pending. Contact support with trace ${traceId}.`,
+  };
 }
 
 export async function GET(request: NextRequest) {
@@ -268,9 +308,12 @@ export async function POST(request: NextRequest) {
   if (!rate) return finalize(NextResponse.json({ error: "Workspace quota service is temporarily unavailable." }, { status: 503 }));
   if (!rate.allowed) return finalize(NextResponse.json({ error: "Too many research workspace runs." }, { status: 429, headers: rateLimitHeaders(rate) }));
 
-  const reservations: Array<{ requestId: string; charged: number }> = [];
+  // The run id is client-visible correlation only. Billing ids are random per
+  // execution so replaying a run cannot reuse or refund an earlier reservation.
+  const billingExecutionId = safeTraceId();
+  const reservations: WorkspaceCreditReservation[] = [];
   for (let index = 0; index < parsed.data.rows.length; index += 1) {
-    const requestId = `${parsed.data.runId}:paper:${index + 1}`;
+    const requestId = `${billingExecutionId}:paper:${index + 1}`;
     const reservation = await reserveAnswerCredits({
       userId: identity.userId,
       isAuthenticated: true,
@@ -278,10 +321,13 @@ export async function POST(request: NextRequest) {
       requestId,
     }).catch(() => null);
     if (!reservation?.allowed) {
-      await Promise.allSettled(reservations.map((item) => refundAnswerCredits(identity.userId, item.requestId, item.charged)));
+      const restored = await restoreWorkspaceCredits(identity.userId, reservations, billingExecutionId);
+      const recovery = workspaceCreditRecovery(reservations, restored, billingExecutionId);
       return finalize(NextResponse.json({
-        error: reservation?.reason === "credits_exhausted" ? "Not enough credits for this batch run." : "Workspace credits are temporarily unavailable.",
+        error: `${reservation?.reason === "credits_exhausted" ? "Not enough credits for this batch run." : "Workspace credits are temporarily unavailable."} ${recovery.message}`,
         code: reservation?.reason ?? "credit_error",
+        traceId: billingExecutionId,
+        creditRecovery: recovery.state,
       }, { status: reservation?.reason === "credits_exhausted" ? 402 : 503 }));
     }
     reservations.push({ requestId, charged: reservation.charged });
@@ -298,9 +344,19 @@ export async function POST(request: NextRequest) {
       rows: result.rows,
       generatedAt: new Date().toISOString(),
     }, { headers: rateLimitHeaders(rate) }));
-  } catch {
-    await Promise.allSettled(reservations.map((item) => refundAnswerCredits(identity.userId, item.requestId, item.charged)));
-    return finalize(NextResponse.json({ error: "The automated research run failed. Reserved credits were restored." }, { status: 503 }));
+  } catch (error) {
+    const restored = await restoreWorkspaceCredits(identity.userId, reservations, billingExecutionId);
+    const recovery = workspaceCreditRecovery(reservations, restored, billingExecutionId);
+    console.error(JSON.stringify({
+      event: "civilmcp_workspace_run_failed",
+      traceId: billingExecutionId,
+      reason: error instanceof Error ? error.message : String(error),
+    }));
+    return finalize(NextResponse.json({
+      error: `The automated research run failed. ${recovery.message}`,
+      traceId: billingExecutionId,
+      creditRecovery: recovery.state,
+    }, { status: 503 }));
   }
 }
 

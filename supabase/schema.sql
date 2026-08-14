@@ -1,4 +1,5 @@
 create extension if not exists vector;
+create extension if not exists pg_trgm with schema extensions;
 
 set maintenance_work_mem = '64MB';
 
@@ -140,6 +141,140 @@ on civil_documents_v2 (collection, discipline);
 
 create index if not exists civil_documents_v2_parent_page_idx
 on civil_documents_v2 (parent_source_pdf, page_start);
+
+create table if not exists public.civil_source_catalog (
+  id                    text primary key,
+  provider              text not null,
+  provider_record_id    text not null,
+  collection            text not null,
+  source_type           text not null,
+  title_local           text,
+  title_en              text,
+  abstract_local        text,
+  abstract_en           text,
+  authors               jsonb not null default '[]'::jsonb,
+  keywords              jsonb not null default '[]'::jsonb,
+  doi                   text,
+  canonical_url         text,
+  pdf_url               text,
+  publisher             text,
+  journal_title         text,
+  issn                  text,
+  published_at          date,
+  language              text,
+  discipline            text not null default 'unknown',
+  license               text,
+  rights_status         text not null,
+  rights_manifest_version smallint not null default 1,
+  rights_manifest       jsonb not null default '{
+    "metadata_indexing": false,
+    "abstract_storage": false,
+    "abstract_embedding": false,
+    "full_text_download": false,
+    "full_text_embedding": false,
+    "summarization": false,
+    "translation": false,
+    "snippet_display": false,
+    "redistribution": false,
+    "commercial_use": false,
+    "model_training": false
+  }'::jsonb,
+  rights_provenance     jsonb not null default '{}'::jsonb,
+  rights_checked_at     timestamptz,
+  rights_verified_at    timestamptz,
+  access_level          text not null,
+  evidence_status       text not null,
+  document_id           text references public.civil_documents_v2(id) on delete set null,
+  record_hash           text not null,
+  raw_metadata          jsonb not null default '{}'::jsonb,
+  source_updated_at     timestamptz,
+  first_seen_at         timestamptz not null default now(),
+  last_seen_at          timestamptz not null default now(),
+  created_at            timestamptz not null default now(),
+  updated_at            timestamptz not null default now(),
+  unique (provider, provider_record_id),
+  check (provider ~ '^[a-z0-9_:-]+$'),
+  check (collection ~ '^[a-z0-9_:-]+$'),
+  check (rights_status in (
+    'metadata_only_unverified',
+    'public_source_no_redistribution',
+    'open_license_verified',
+    'permission_granted',
+    'restricted',
+    'removed'
+  )),
+  check (access_level in ('metadata_only', 'full_text_local', 'full_text_licensed', 'restricted')),
+  check (evidence_status in ('metadata_only', 'extracted', 'indexed', 'quarantined', 'removed')),
+  check (
+    evidence_status not in ('extracted', 'indexed')
+    or access_level in ('full_text_local', 'full_text_licensed')
+  ),
+  constraint civil_source_catalog_rights_manifest_version_check
+    check (rights_manifest_version = 1),
+  constraint civil_source_catalog_rights_manifest_shape_check
+    check (
+      jsonb_typeof(rights_manifest) = 'object'
+      and rights_manifest ?& array[
+        'metadata_indexing', 'abstract_storage', 'abstract_embedding',
+        'full_text_download', 'full_text_embedding', 'summarization',
+        'translation', 'snippet_display', 'redistribution',
+        'commercial_use', 'model_training'
+      ]
+      and jsonb_typeof(rights_manifest -> 'metadata_indexing') = 'boolean'
+      and jsonb_typeof(rights_manifest -> 'abstract_storage') = 'boolean'
+      and jsonb_typeof(rights_manifest -> 'abstract_embedding') = 'boolean'
+      and jsonb_typeof(rights_manifest -> 'full_text_download') = 'boolean'
+      and jsonb_typeof(rights_manifest -> 'full_text_embedding') = 'boolean'
+      and jsonb_typeof(rights_manifest -> 'summarization') = 'boolean'
+      and jsonb_typeof(rights_manifest -> 'translation') = 'boolean'
+      and jsonb_typeof(rights_manifest -> 'snippet_display') = 'boolean'
+      and jsonb_typeof(rights_manifest -> 'redistribution') = 'boolean'
+      and jsonb_typeof(rights_manifest -> 'commercial_use') = 'boolean'
+      and jsonb_typeof(rights_manifest -> 'model_training') = 'boolean'
+    ),
+  constraint civil_source_catalog_rights_provenance_check
+    check (jsonb_typeof(rights_provenance) = 'object'),
+  constraint civil_source_catalog_rights_grant_provenance_check
+    check (
+      rights_provenance <> '{}'::jsonb
+      or rights_manifest = '{
+        "metadata_indexing": false,
+        "abstract_storage": false,
+        "abstract_embedding": false,
+        "full_text_download": false,
+        "full_text_embedding": false,
+        "summarization": false,
+        "translation": false,
+        "snippet_display": false,
+        "redistribution": false,
+        "commercial_use": false,
+        "model_training": false
+      }'::jsonb
+    ),
+  constraint civil_source_catalog_rights_verification_time_check
+    check (
+      rights_verified_at is null
+      or (
+        rights_checked_at is not null
+        and rights_provenance <> '{}'::jsonb
+        and rights_status in ('open_license_verified', 'permission_granted', 'restricted')
+      )
+    )
+);
+
+create index if not exists civil_source_catalog_provider_idx
+  on public.civil_source_catalog (provider, last_seen_at desc);
+create index if not exists civil_source_catalog_collection_idx
+  on public.civil_source_catalog (collection, published_at desc);
+create index if not exists civil_source_catalog_evidence_idx
+  on public.civil_source_catalog (evidence_status, discipline);
+create index if not exists civil_source_catalog_doi_idx
+  on public.civil_source_catalog (lower(doi))
+  where doi is not null and btrim(doi) <> '';
+
+alter table public.civil_source_catalog enable row level security;
+revoke all on table public.civil_source_catalog from public, anon, authenticated;
+grant all on table public.civil_source_catalog to service_role;
 
 create table if not exists civil_sections_v2 (
   id                    text primary key,
@@ -404,6 +539,122 @@ language sql stable as $$
   limit greatest(1, least(match_count, 50));
 $$;
 
+create index if not exists civil_sections_v2_lexical_trgm_idx
+on civil_sections_v2
+using gin ((lower(section_title || ' ' || content || ' ' || source)) extensions.gin_trgm_ops)
+where is_stale = false;
+
+create index if not exists civil_chunks_v2_lexical_trgm_idx
+on civil_chunks_v2
+using gin ((lower(section_title || ' ' || content || ' ' || source)) extensions.gin_trgm_ops)
+where is_stale = false;
+
+create or replace function search_civil_sections_lexical_v2(
+  search_query text,
+  match_count int default 20,
+  filter_disc text default null,
+  filter_collection text default null
+)
+returns table (
+  id text, document_id text, source text, collection text, source_type text,
+  parent_source_pdf text, paper_code text, page_start integer, page_end integer,
+  proceeding_no integer, proceeding_year integer, discipline text,
+  section_index integer, section_title text, content text, similarity float
+)
+language sql stable security definer set search_path = public, extensions as $$
+  with terms as materialized (
+    select distinct lower(term) as term
+    from regexp_split_to_table(left(trim(search_query), 500), '[[:space:][:punct:]]+') as term
+    where length(term) >= 2
+    limit 8
+  ),
+  candidate_hits as materialized (
+    select candidate.id, t.term, candidate.title_hit
+    from terms t
+    cross join lateral (
+      select s.id, (lower(s.section_title) like '%' || t.term || '%')::int as title_hit
+      from civil_sections_v2 s
+      where not s.is_stale
+        and (filter_disc is null or s.discipline = filter_disc)
+        and (filter_collection is null or s.collection = filter_collection)
+        and lower(s.section_title || ' ' || s.content || ' ' || s.source) like '%' || t.term || '%'
+      limit 80
+    ) candidate
+  ),
+  ranked as (
+    select h.id, count(*)::float as matched_terms, sum(h.title_hit)::float as title_hits
+    from candidate_hits h group by h.id
+  ),
+  term_total as (select greatest(1, count(*))::float as value from terms)
+  select s.id, s.document_id, s.source, s.collection, s.source_type,
+    s.parent_source_pdf, s.paper_code, s.page_start, s.page_end, s.proceeding_no,
+    s.proceeding_year, s.discipline, s.section_index, s.section_title, s.content,
+    least(0.95, 0.25 + 0.55 * (r.matched_terms / tt.value) + 0.15 * least(1, r.title_hits))::float
+  from ranked r
+  join civil_sections_v2 s on s.id = r.id
+  cross join term_total tt
+  order by 16 desc, r.title_hits desc, s.page_start nulls last, s.source
+  limit greatest(1, least(match_count, 50));
+$$;
+
+create or replace function search_civil_chunks_lexical_v2(
+  search_query text,
+  match_count int default 8,
+  filter_disc text default null,
+  filter_document_ids text[] default null,
+  filter_section_ids text[] default null,
+  filter_collection text default null
+)
+returns table (
+  id text, document_id text, section_id text, source text, collection text,
+  source_type text, parent_source_pdf text, paper_code text, page_start integer,
+  page_end integer, proceeding_no integer, proceeding_year integer, discipline text,
+  section_index integer, section_title text, chunk_index integer, content text, similarity float
+)
+language sql stable security definer set search_path = public, extensions as $$
+  with terms as materialized (
+    select distinct lower(term) as term
+    from regexp_split_to_table(left(trim(search_query), 500), '[[:space:][:punct:]]+') as term
+    where length(term) >= 2
+    limit 8
+  ),
+  candidate_hits as materialized (
+    select candidate.id, t.term, candidate.title_hit
+    from terms t
+    cross join lateral (
+      select c.id, (lower(c.section_title) like '%' || t.term || '%')::int as title_hit
+      from civil_chunks_v2 c
+      where not c.is_stale
+        and (filter_disc is null or c.discipline = filter_disc)
+        and (filter_document_ids is null or c.document_id = any(filter_document_ids))
+        and (filter_section_ids is null or c.section_id = any(filter_section_ids))
+        and (filter_collection is null or c.collection = filter_collection)
+        and lower(c.section_title || ' ' || c.content || ' ' || c.source) like '%' || t.term || '%'
+      limit 120
+    ) candidate
+  ),
+  ranked as (
+    select h.id, count(*)::float as matched_terms, sum(h.title_hit)::float as title_hits
+    from candidate_hits h group by h.id
+  ),
+  term_total as (select greatest(1, count(*))::float as value from terms)
+  select c.id, c.document_id, c.section_id, c.source, c.collection, c.source_type,
+    c.parent_source_pdf, c.paper_code, c.page_start, c.page_end, c.proceeding_no,
+    c.proceeding_year, c.discipline, c.section_index, c.section_title, c.chunk_index,
+    c.content,
+    least(0.95, 0.25 + 0.55 * (r.matched_terms / tt.value) + 0.15 * least(1, r.title_hits))::float
+  from ranked r
+  join civil_chunks_v2 c on c.id = r.id
+  cross join term_total tt
+  order by 18 desc, r.title_hits desc, c.page_start nulls last, c.source, c.chunk_index
+  limit greatest(1, least(match_count, 50));
+$$;
+
+revoke all on function search_civil_sections_lexical_v2(text, int, text, text) from public, anon, authenticated;
+revoke all on function search_civil_chunks_lexical_v2(text, int, text, text[], text[], text) from public, anon, authenticated;
+grant execute on function search_civil_sections_lexical_v2(text, int, text, text) to service_role;
+grant execute on function search_civil_chunks_lexical_v2(text, int, text, text[], text[], text) to service_role;
+
 
 create table if not exists civil_chat_traces (
   trace_id      text primary key,
@@ -508,6 +759,47 @@ on civil_paper_workspace_items (owner_id, updated_at desc);
 
 alter table civil_paper_workspace_items enable row level security;
 
+create table if not exists civil_support_requests (
+  request_id text primary key,
+  user_id text,
+  email text not null,
+  category text not null check (category in ('product_support', 'data_request', 'account_deletion', 'source_takedown', 'copyright')),
+  subject text not null,
+  message text not null,
+  source_url text,
+  status text not null default 'new' check (status in ('new', 'reviewing', 'resolved', 'closed')),
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now()
+);
+
+create index if not exists civil_support_requests_status_created_idx
+on civil_support_requests (status, created_at desc);
+
+alter table civil_support_requests enable row level security;
+revoke all on table civil_support_requests from public, anon, authenticated;
+grant all on table civil_support_requests to service_role;
+
+create table if not exists civil_product_events (
+  event_id text primary key,
+  user_id text not null,
+  event_name text not null check (event_name in (
+    'explore_search', 'paper_open', 'evidence_open', 'paper_save',
+    'research_path_created', 'session_export', 'evidence_export'
+  )),
+  properties jsonb not null default '{}'::jsonb check (jsonb_typeof(properties) = 'object'),
+  created_at timestamptz not null default now()
+);
+
+create index if not exists civil_product_events_name_created_idx
+on civil_product_events (event_name, created_at desc);
+
+create index if not exists civil_product_events_user_created_idx
+on civil_product_events (user_id, created_at desc);
+
+alter table civil_product_events enable row level security;
+revoke all on table civil_product_events from public, anon, authenticated;
+grant all on table civil_product_events to service_role;
+
 create table if not exists civil_api_rate_limits (
   scope text not null,
   identity_hash text not null,
@@ -596,11 +888,217 @@ as $$
   select jsonb_build_object(
     'quota_table', to_regclass('public.civil_api_rate_limits') is not null,
     'quota_rpc', to_regprocedure('public.consume_civil_quota(text,text,integer,integer)') is not null,
-    'retention_rpc', to_regprocedure('public.prune_civil_operational_data()') is not null
+    'retention_rpc', to_regprocedure('public.prune_civil_operational_data()') is not null,
+    'lexical_section_rpc', to_regprocedure('public.search_civil_sections_lexical_v2(text,integer,text,text)') is not null,
+    'lexical_chunk_rpc', to_regprocedure('public.search_civil_chunks_lexical_v2(text,integer,text,text[],text[],text)') is not null
   );
 $$;
 
 revoke all on function civil_backbone_readiness() from public, anon, authenticated;
 grant execute on function civil_backbone_readiness() to service_role;
+
+create index if not exists civil_source_catalog_search_trgm_idx
+on public.civil_source_catalog
+using gin ((lower(
+  coalesce(title_local, '') || ' ' ||
+  coalesce(title_en, '') || ' ' ||
+  coalesce(journal_title, '') || ' ' ||
+  coalesce(publisher, '') || ' ' ||
+  coalesce(authors::text, '') || ' ' ||
+  coalesce(keywords::text, '') || ' ' ||
+  coalesce(abstract_local, '') || ' ' ||
+  coalesce(abstract_en, '')
+)) extensions.gin_trgm_ops);
+
+create or replace function public.search_civil_source_catalog_v1(
+  search_query text,
+  filter_provider text default null,
+  filter_discipline text default null,
+  match_count integer default 20,
+  match_offset integer default 0
+)
+returns table (
+  id text,
+  provider text,
+  provider_record_id text,
+  collection text,
+  source_type text,
+  title_local text,
+  title_en text,
+  abstract_local text,
+  abstract_en text,
+  authors jsonb,
+  keywords jsonb,
+  doi text,
+  canonical_url text,
+  journal_title text,
+  publisher text,
+  published_at date,
+  language text,
+  discipline text,
+  license text,
+  rights_status text,
+  access_level text,
+  evidence_status text,
+  document_id text,
+  source_updated_at timestamptz,
+  updated_at timestamptz,
+  match_score double precision,
+  total_count bigint
+)
+language sql
+stable
+security invoker
+set search_path = public, extensions
+as $$
+  with input as (
+    select
+      left(regexp_replace(lower(coalesce(search_query, '')), '[^[:alnum:]ก-๙]+', ' ', 'g'), 160) as phrase,
+      least(greatest(coalesce(match_count, 20), 1), 30) as safe_count,
+      least(greatest(coalesce(match_offset, 0), 0), 10000) as safe_offset
+  ),
+  terms as (
+    select distinct token
+    from input,
+    lateral unnest(regexp_split_to_array(btrim(phrase), '[[:space:]]+')) as token
+    where char_length(token) >= 2
+    limit 8
+  ),
+  candidates as (
+    select
+      catalog.*,
+      (
+        case when exists (
+          select 1 from terms where lower(coalesce(catalog.title_local, '') || ' ' || coalesce(catalog.title_en, '')) like '%' || token || '%'
+        ) then 12 else 0 end
+        + 4 * (select count(*) from terms where lower(coalesce(catalog.title_local, '') || ' ' || coalesce(catalog.title_en, '')) like '%' || token || '%')
+        + 3 * (select count(*) from terms where lower(coalesce(catalog.keywords::text, '') || ' ' || coalesce(catalog.authors::text, '')) like '%' || token || '%')
+        + 2 * (select count(*) from terms where lower(coalesce(catalog.journal_title, '') || ' ' || coalesce(catalog.publisher, '')) like '%' || token || '%')
+        + 1 * (select count(*) from terms where lower(coalesce(catalog.abstract_local, '') || ' ' || coalesce(catalog.abstract_en, '')) like '%' || token || '%')
+      )::double precision as score
+    from public.civil_source_catalog catalog, input
+    where catalog.evidence_status <> 'removed'
+      and (filter_provider is null or filter_provider = '' or catalog.provider = filter_provider)
+      and (filter_discipline is null or filter_discipline = '' or catalog.discipline = filter_discipline)
+      and (
+        not exists (select 1 from terms)
+        or exists (
+          select 1
+          from terms
+          where lower(
+            coalesce(catalog.title_local, '') || ' ' ||
+            coalesce(catalog.title_en, '') || ' ' ||
+            coalesce(catalog.journal_title, '') || ' ' ||
+            coalesce(catalog.publisher, '') || ' ' ||
+            coalesce(catalog.authors::text, '') || ' ' ||
+            coalesce(catalog.keywords::text, '') || ' ' ||
+            coalesce(catalog.abstract_local, '') || ' ' ||
+            coalesce(catalog.abstract_en, '')
+          ) like '%' || token || '%'
+        )
+      )
+  ),
+  ranked as (
+    select candidates.*, count(*) over () as total
+    from candidates
+  )
+  select
+    ranked.id, ranked.provider, ranked.provider_record_id, ranked.collection,
+    ranked.source_type, ranked.title_local, ranked.title_en,
+    ranked.abstract_local, ranked.abstract_en, ranked.authors, ranked.keywords,
+    ranked.doi, ranked.canonical_url, ranked.journal_title, ranked.publisher,
+    ranked.published_at, ranked.language, ranked.discipline, ranked.license,
+    ranked.rights_status, ranked.access_level, ranked.evidence_status,
+    ranked.document_id, ranked.source_updated_at, ranked.updated_at,
+    ranked.score, ranked.total
+  from ranked, input
+  order by ranked.score desc, ranked.published_at desc nulls last, ranked.id
+  limit (select safe_count from input)
+  offset (select safe_offset from input);
+$$;
+
+revoke all on function public.search_civil_source_catalog_v1(text, text, text, integer, integer)
+from public, anon, authenticated;
+grant execute on function public.search_civil_source_catalog_v1(text, text, text, integer, integer)
+to service_role;
+
+create or replace function public.civil_source_catalog_facets_v1()
+returns table (
+  provider text,
+  records bigint,
+  citable bigint,
+  metadata_only bigint
+)
+language sql
+stable
+security invoker
+set search_path = public
+as $$
+  select
+    catalog.provider,
+    count(*)::bigint as records,
+    count(*) filter (
+      where catalog.evidence_status = 'indexed' and catalog.document_id is not null
+    )::bigint as citable,
+    count(*) filter (
+      where catalog.evidence_status = 'metadata_only'
+    )::bigint as metadata_only
+  from public.civil_source_catalog catalog
+  where catalog.evidence_status <> 'removed'
+  group by catalog.provider
+  order by catalog.provider;
+$$;
+
+revoke all on function public.civil_source_catalog_facets_v1()
+from public, anon, authenticated;
+grant execute on function public.civil_source_catalog_facets_v1()
+to service_role;
+
+create or replace function public.civil_delete_account_data(p_user_id text)
+returns void
+language plpgsql
+security definer
+set search_path = public
+as $$
+begin
+  if p_user_id is null or length(trim(p_user_id)) < 1 or length(p_user_id) > 128 then
+    raise exception 'valid user id is required';
+  end if;
+
+  if exists (
+    select 1
+    from public.civil_billing_accounts
+    where user_id = p_user_id
+      and stripe_subscription_id is not null
+      and status in ('active', 'trialing', 'past_due', 'unpaid', 'incomplete', 'paused')
+    for update
+  ) then
+    raise exception 'active subscription must be canceled before account deletion';
+  end if;
+
+  delete from public.civil_chat_feedback
+  where user_id = p_user_id
+     or trace_id in (
+       select trace_id from public.civil_chat_traces
+       where user_id = p_user_id
+          or session_id in (select session_id from public.civil_chat_sessions where owner_id = p_user_id)
+     )
+     or session_id in (select session_id from public.civil_chat_sessions where owner_id = p_user_id);
+  delete from public.civil_chat_traces
+  where user_id = p_user_id
+     or session_id in (select session_id from public.civil_chat_sessions where owner_id = p_user_id);
+  delete from public.civil_chat_sessions where owner_id = p_user_id;
+  delete from public.civil_paper_workspace_items where owner_id = p_user_id;
+  delete from public.civil_paper_workspaces where owner_id = p_user_id;
+  delete from public.civil_support_requests where user_id = p_user_id;
+  delete from public.civil_product_events where user_id = p_user_id;
+  delete from public.civil_credit_ledger where user_id = p_user_id;
+  delete from public.civil_billing_accounts where user_id = p_user_id;
+  delete from public.civil_chat_users where user_id = p_user_id;
+end;
+$$;
+
+revoke all on function public.civil_delete_account_data(text) from public, anon, authenticated;
+grant execute on function public.civil_delete_account_data(text) to service_role;
 
 notify pgrst, 'reload schema';

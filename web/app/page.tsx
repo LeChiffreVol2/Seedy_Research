@@ -41,6 +41,7 @@ import {
   Sparkles,
   TableProperties,
   Target,
+  TriangleAlert,
   RefreshCw,
   Route,
   Trash2,
@@ -75,6 +76,11 @@ type CivilEvidenceItem = {
   evidenceId: string;
   citation: string;
   source: string;
+  id?: string;
+  documentId?: string;
+  sectionId?: string;
+  sectionIndex?: number | null;
+  chunkIndex?: number | null;
   collection?: string;
   paperCode?: string;
   pageStart?: number | null;
@@ -89,7 +95,15 @@ type CivilMcpAnnotation = {
   mode?: string;
   collection?: string;
   intent?: string | null;
+  searchQuery?: string | null;
+  queryExpansions?: string[];
+  discipline?: string | null;
+  sectionsUsed?: number;
+  chunksUsed?: number;
   toolCalls?: number;
+  retrievalMode?: "semantic" | "lexical_fallback" | "unavailable";
+  retrievalDegraded?: boolean;
+  retrievalDegradedReason?: string | null;
   evidenceItems?: CivilEvidenceItem[];
 };
 
@@ -258,6 +272,10 @@ type ResearchCardData = {
   canonicalUrl?: string | null;
   journalTitle?: string | null;
   authors?: string[];
+  doi?: string | null;
+  rightsStatus?: string | null;
+  accessLevel?: string | null;
+  discoveryLayer?: "evidence" | "thai_discovery";
 };
 
 type PaperAnchor = {
@@ -281,6 +299,34 @@ type ResearchFeedResponse = {
   };
   nextCursor?: string | null;
   generatedAt?: string;
+};
+
+type GlobalDiscoveryStatus = "connected" | "link_only" | "unavailable" | "rate_limited" | "disabled";
+
+type GlobalDiscoveryWork = {
+  id: string;
+  doi: string | null;
+  title: string;
+  year: number | null;
+  citedByCount: number;
+  topic: string | null;
+  url: string;
+  citable: false;
+};
+
+type GlobalDiscoveryResponse = {
+  status: GlobalDiscoveryStatus;
+  searchUrl: string;
+  works: GlobalDiscoveryWork[];
+  provider: "openalex";
+  generatedAt: string;
+};
+
+type GlobalDiscoveryState = {
+  phase: "idle" | "loading" | "ready" | "error";
+  query: string;
+  response: GlobalDiscoveryResponse | null;
+  error: string;
 };
 
 type PaperDetailData = {
@@ -355,7 +401,7 @@ const PATH_LEVEL_OPTIONS: ReadonlyArray<GlassMenuOption<PathLevel>> = [
 const PATH_OUTCOME_OPTIONS: ReadonlyArray<GlassMenuOption<PathOutcome>> = [
   { value: "literature_review", label: "Literature review", description: "Map evidence and disagreements" },
   { value: "study_plan", label: "Study plan", description: "Build a sequenced learning path" },
-  { value: "decision_brief", label: "Decision brief", description: "Synthesize evidence for action" },
+  { value: "decision_brief", label: "Project brief", description: "Frame the next evidence-led experiment" },
 ];
 
 type ResearchPath = {
@@ -595,8 +641,8 @@ function getCivilMissionAnnotation(message: UIMessage): CivilMissionAnnotation |
 
 function citedEvidenceIds(markdown: string): string[] {
   const ids = new Set<string>();
-  for (const match of markdown.matchAll(/\[(E\d+)\]/g)) {
-    ids.add(match[1]);
+  for (const match of markdown.matchAll(/\[(E\d+)\]/gi)) {
+    ids.add(match[1].toUpperCase());
   }
   return [...ids].slice(0, 8);
 }
@@ -604,6 +650,101 @@ function citedEvidenceIds(markdown: string): string[] {
 function pageLabel(item: CivilEvidenceItem): string {
   if (item.pageStart == null || item.pageEnd == null) return "";
   return item.pageStart === item.pageEnd ? `p.${item.pageStart}` : `p.${item.pageStart}-${item.pageEnd}`;
+}
+
+type CitationAuditClaim = {
+  text: string;
+  evidenceIds: string[];
+};
+
+function citationAuditClaims(markdown: string): CitationAuditClaim[] {
+  const seen = new Set<string>();
+  const claims: CitationAuditClaim[] = [];
+  for (const rawLine of markdown.split(/\n+/)) {
+    const evidenceIds = citedEvidenceIds(rawLine);
+    if (!evidenceIds.length) continue;
+    const text = rawLine
+      .replace(/^\s{0,3}(?:#{1,6}\s+|[-*+]\s+|\d+[.)]\s+)/, "")
+      .replace(/\[([^\]]+)\]\([^)]+\)/g, "$1")
+      .replace(/[*_`|]/g, " ")
+      .replace(/\s+/g, " ")
+      .trim()
+      .slice(0, 420);
+    if (!text || seen.has(text)) continue;
+    seen.add(text);
+    claims.push({ text, evidenceIds });
+    if (claims.length >= 8) break;
+  }
+  return claims;
+}
+
+function intentLabel(intent?: string | null): string {
+  return {
+    simple_lookup: "Direct lookup",
+    compare: "Cross-paper comparison",
+    summarize: "Research synthesis",
+    methodology: "Methods review",
+    citation_search: "Citation search",
+  }[intent ?? ""] ?? "General research question";
+}
+
+function disciplineLabel(discipline?: string | null): string {
+  if (!discipline) return "No discipline restriction";
+  return discipline
+    .split("_")
+    .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
+    .join(" ");
+}
+
+function collectionLabel(collection?: string): string {
+  if (collection === "ncce") return "NCCE proceedings";
+  if (collection === "ce_project") return "Student Transport projects";
+  return "All citable collections";
+}
+
+function citationAuditMarkdown(
+  annotation: CivilMcpAnnotation,
+  markdown: string,
+  question?: string,
+): string {
+  const evidenceItems = annotation.evidenceItems ?? [];
+  const evidenceById = new Map(evidenceItems.map((item) => [item.evidenceId.toUpperCase(), item]));
+  const citedIds = citedEvidenceIds(markdown);
+  const claims = citationAuditClaims(markdown);
+  const lines = [
+    "# CivilMCP evidence audit",
+    "",
+    `- Question: ${question?.trim() || "Not available"}`,
+    `- Interpreted query: ${annotation.searchQuery?.trim() || question?.trim() || "Not available"}`,
+    `- Bilingual concept expansion: ${annotation.queryExpansions?.length ? annotation.queryExpansions.join(", ") : "None applied"}`,
+    `- Intent: ${intentLabel(annotation.intent)}`,
+    `- Discipline: ${disciplineLabel(annotation.discipline)}`,
+    `- Collection: ${collectionLabel(annotation.collection)}`,
+    `- Retrieval: ${annotation.retrievalMode === "lexical_fallback" ? "Keyword fallback" : annotation.retrievalMode === "semantic" ? "Semantic" : "Unavailable"}`,
+    `- Generated: ${new Date().toISOString()}`,
+    "",
+    "## Claim ledger",
+    "",
+    ...(claims.length
+      ? claims.flatMap((claim, index) => [
+          `${index + 1}. ${claim.text}`,
+          `   - Evidence: ${claim.evidenceIds.map((id) => evidenceById.has(id) ? `[${id}] linked` : `[${id}] unresolved`).join("; ")}`,
+        ])
+      : ["- No [E#] citation markers were found in the answer."]),
+    "",
+    "## Evidence provenance",
+    "",
+    ...(citedIds.length
+      ? citedIds.map((id) => {
+          const item = evidenceById.get(id);
+          if (!item) return `- [${id}] Unresolved citation marker`;
+          return `- [${id}] ${item.source}${pageLabel(item) ? ` · ${pageLabel(item)}` : " · page unavailable"}${item.sectionTitle ? ` · ${item.sectionTitle}` : ""}${item.snippet ? `\n  - ${item.snippet}` : ""}`;
+        })
+      : evidenceItems.map((item) => `- [${item.evidenceId}] Retrieved but not cited · ${item.source}${pageLabel(item) ? ` · ${pageLabel(item)}` : ""}`)),
+    "",
+    "_This audit checks citation resolution and page provenance, not scientific correctness. Human review remains required._",
+  ];
+  return lines.join("\n");
 }
 
 function missionVerdictLabel(status: MissionVerdict): string {
@@ -1283,6 +1424,140 @@ function PromptMenu({
   );
 }
 
+function CitationIntegrityPanel({
+  annotation,
+  markdown,
+  question,
+  onOpenEvidence,
+}: {
+  annotation: CivilMcpAnnotation | null;
+  markdown: string;
+  question?: string;
+  onOpenEvidence: (item: CivilEvidenceItem) => void;
+}) {
+  if (!annotation) return null;
+
+  const evidenceItems = annotation.evidenceItems ?? [];
+  const evidenceById = new Map(evidenceItems.map((item) => [item.evidenceId.toUpperCase(), item]));
+  const citedIds = citedEvidenceIds(markdown);
+  const resolvedIds = citedIds.filter((id) => evidenceById.has(id));
+  const unresolvedIds = citedIds.filter((id) => !evidenceById.has(id));
+  const citedEvidence = resolvedIds.map((id) => evidenceById.get(id)).filter((item): item is CivilEvidenceItem => Boolean(item));
+  const exactPageCount = citedEvidence.filter((item) => Boolean(pageLabel(item))).length;
+  const sourceCount = new Set(citedEvidence.map((item) => item.source)).size;
+  const claims = citationAuditClaims(markdown);
+  const status = !citedIds.length || unresolvedIds.length
+    ? "review"
+    : exactPageCount === citedEvidence.length
+      ? "complete"
+      : "partial";
+  const statusLabel = status === "complete"
+    ? "Provenance complete"
+    : status === "partial"
+      ? "Some pages unavailable"
+      : citedIds.length
+        ? "Citation review needed"
+        : "No citation markers";
+  const searchQuery = annotation.searchQuery?.trim() || question?.trim() || "Current question";
+
+  const exportAudit = () => {
+    const blob = new Blob([citationAuditMarkdown(annotation, markdown, question)], { type: "text/markdown;charset=utf-8" });
+    const url = URL.createObjectURL(blob);
+    const anchor = document.createElement("a");
+    anchor.href = url;
+    anchor.download = `civilmcp-evidence-audit-${Date.now()}.md`;
+    anchor.click();
+    URL.revokeObjectURL(url);
+    trackProductEvent("evidence_export", { format: "citation_audit", traceId: annotation.traceId ?? "" });
+  };
+
+  return (
+    <details className={`citationAudit ${status}`} aria-label="Evidence audit">
+      <summary>
+        <span className="citationAuditIcon"><ShieldCheck size={17} strokeWidth={2.2} aria-hidden /></span>
+        <span className="citationAuditTitle">
+          <strong>Evidence audit</strong>
+          <small>{statusLabel}</small>
+        </span>
+        <span className="citationAuditSummary">
+          {citedIds.length ? `${resolvedIds.length}/${citedIds.length} linked` : "Review"}
+        </span>
+        <ChevronDown className="citationAuditChevron" size={16} strokeWidth={2.2} aria-hidden />
+      </summary>
+      <div className="citationAuditBody">
+        <div className="citationAuditMetrics" aria-label="Citation provenance metrics">
+          <span><strong>{resolvedIds.length}/{citedIds.length}</strong> citation IDs resolve</span>
+          <span><strong>{exactPageCount}</strong> exact-page links</span>
+          <span><strong>{sourceCount}</strong> papers cited</span>
+        </div>
+
+        <section className="citationAuditScope" aria-label="Search scope">
+          <div className="citationAuditSectionTitle">
+            <Search size={15} strokeWidth={2.2} aria-hidden />
+            <strong>Search scope</strong>
+          </div>
+          <p>{searchQuery}</p>
+          <div className="citationAuditChips">
+            <span>{intentLabel(annotation.intent)}</span>
+            <span>{disciplineLabel(annotation.discipline)}</span>
+            <span>{collectionLabel(annotation.collection)}</span>
+            <span>{annotation.retrievalMode === "lexical_fallback" ? "Keyword fallback" : annotation.retrievalMode === "semantic" ? "Semantic retrieval" : "Retrieval unavailable"}</span>
+            {annotation.queryExpansions?.map((term) => <span key={term}>Expanded · {term}</span>)}
+            {annotation.sectionsUsed != null || annotation.chunksUsed != null ? (
+              <span>{(annotation.sectionsUsed ?? 0) + (annotation.chunksUsed ?? 0)} context packets inspected</span>
+            ) : null}
+          </div>
+        </section>
+
+        <section className="citationClaimLedger" aria-label="Claim ledger">
+          <div className="citationAuditSectionTitle">
+            <FileText size={15} strokeWidth={2.2} aria-hidden />
+            <strong>Claim ledger</strong>
+          </div>
+          {claims.length ? (
+            <ol>
+              {claims.map((claim, index) => (
+                <li key={`${claim.text}-${index}`}>
+                  <p>{claim.text}</p>
+                  <div>
+                    {claim.evidenceIds.map((id) => {
+                      const item = evidenceById.get(id);
+                      return item ? (
+                        <button key={id} type="button" onClick={() => onOpenEvidence(item)}>
+                          [{id}] {pageLabel(item) || "Page unavailable"}
+                        </button>
+                      ) : <span key={id} className="unresolved">[{id}] unresolved</span>;
+                    })}
+                  </div>
+                </li>
+              ))}
+            </ol>
+          ) : (
+            <div className="citationAuditWarning" role="note">
+              <TriangleAlert size={16} strokeWidth={2.1} aria-hidden />
+              <span>The answer has no [E#] citation markers. Treat it as unverified until evidence is linked.</span>
+            </div>
+          )}
+          {unresolvedIds.length ? (
+            <div className="citationAuditWarning" role="alert">
+              <TriangleAlert size={16} strokeWidth={2.1} aria-hidden />
+              <span>Unresolved citation markers: {unresolvedIds.map((id) => `[${id}]`).join(", ")}.</span>
+            </div>
+          ) : null}
+        </section>
+
+        <div className="citationAuditFooter">
+          <p>Checks citation links and page provenance—not scientific correctness. Human review remains required.</p>
+          <button type="button" onClick={exportAudit}>
+            <Download size={15} strokeWidth={2.2} aria-hidden />
+            <span>Export audit</span>
+          </button>
+        </div>
+      </div>
+    </details>
+  );
+}
+
 function EvidenceCards({
   annotation,
   markdown,
@@ -1290,7 +1565,7 @@ function EvidenceCards({
 }: {
   annotation: CivilMcpAnnotation | null;
   markdown: string;
-  onOpenEvidence: (source: string) => void;
+  onOpenEvidence: (item: CivilEvidenceItem) => void;
 }) {
   const evidenceItems = annotation?.evidenceItems ?? [];
   if (evidenceItems.length) {
@@ -1301,7 +1576,7 @@ function EvidenceCards({
             key={item.evidenceId}
             type="button"
             className="evidenceCard"
-            onClick={() => onOpenEvidence(item.source)}
+            onClick={() => onOpenEvidence(item)}
             aria-label={`Open ${item.evidenceId} in ${item.source}${pageLabel(item) ? ` at ${pageLabel(item)}` : ""}`}
           >
             <div className="evidenceTopline">
@@ -1330,6 +1605,19 @@ function EvidenceCards({
       {ids.map((id) => (
         <span key={id}>[{id}] cited in answer</span>
       ))}
+    </div>
+  );
+}
+
+function RetrievalNotice({ annotation }: { annotation: CivilMcpAnnotation | null }) {
+  if (!annotation?.retrievalDegraded || annotation.retrievalMode !== "lexical_fallback") return null;
+  return (
+    <div className="retrievalNotice" role="status" aria-label="Keyword search fallback active">
+      <TriangleAlert size={16} strokeWidth={2.1} aria-hidden />
+      <div>
+        <strong>Keyword search fallback active</strong>
+        <span>Semantic matching is temporarily unavailable. Results may be narrower, but every citation still opens to the indexed source page.</span>
+      </div>
     </div>
   );
 }
@@ -1616,7 +1904,7 @@ function MessageRenderer({
   sessionId: string;
   question?: string;
   onAsk: (prompt: string) => void;
-  onOpenEvidence: (source: string) => void;
+  onOpenEvidence: (item: CivilEvidenceItem) => void;
   onExportEvidenceBrief: (annotation: CivilMissionAnnotation) => void;
 }) {
   const text = messageText(message);
@@ -1643,6 +1931,15 @@ function MessageRenderer({
         />
       ) : null}
       <MemoryNotice annotation={memoryAnnotation} />
+      <RetrievalNotice annotation={annotation} />
+      {shouldShowEvidence ? (
+        <CitationIntegrityPanel
+          annotation={annotation}
+          markdown={text}
+          question={question}
+          onOpenEvidence={onOpenEvidence}
+        />
+      ) : null}
       {shouldShowEvidence ? <EvidenceCards annotation={annotation} markdown={text} onOpenEvidence={onOpenEvidence} /> : null}
       {shouldShowEvidence ? (
         <AnswerFeedback message={message} traceId={traceId} sessionId={sessionId} question={question} />
@@ -1690,10 +1987,28 @@ async function fetchJson<T>(input: RequestInfo, init?: RequestInit): Promise<T> 
 
   if (!response.ok) {
     const text = await response.text();
+    let apiMessage = "";
+    try {
+      const payload = JSON.parse(text) as { error?: unknown };
+      if (typeof payload.error === "string") apiMessage = payload.error.trim();
+    } catch {}
+    if (apiMessage) throw new Error(apiMessage);
     throw new Error(text || `Request failed (${response.status})`);
   }
 
   return (await response.json()) as T;
+}
+
+function trackProductEvent(
+  event: "explore_search" | "paper_open" | "evidence_open" | "paper_save" | "research_path_created" | "session_export" | "evidence_export",
+  properties: Record<string, string | number | boolean | null> = {},
+) {
+  void fetch("/api/events", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ event, properties }),
+    keepalive: true,
+  }).catch(() => undefined);
 }
 
 function AppSidebar({
@@ -2024,6 +2339,140 @@ function FilterBar({
   );
 }
 
+function DiscoveryTrustBar({
+  citableTotal,
+  metadataOnlyTotal,
+}: {
+  citableTotal: number;
+  metadataOnlyTotal: number;
+}) {
+  return (
+    <section className="discoveryTrustBar" aria-label="Discovery source types">
+      <div className="discoveryTrustItem evidenceTrust">
+        <span className="discoveryTrustIcon" aria-hidden><ShieldCheck size={16} strokeWidth={2.2} /></span>
+        <span>
+          <strong>Page-cited evidence</strong>
+          <small>Use in answers, comparisons, and exact-page citations.</small>
+        </span>
+        {citableTotal ? <em>{citableTotal.toLocaleString("en-US")}</em> : null}
+      </div>
+      <div className="discoveryTrustItem metadataTrust">
+        <span className="discoveryTrustIcon" aria-hidden><Database size={16} strokeWidth={2.2} /></span>
+        <span>
+          <strong>Thai journal discovery</strong>
+          <small>Metadata and publisher links only. Not used as answer evidence.</small>
+        </span>
+        {metadataOnlyTotal ? <em>{metadataOnlyTotal.toLocaleString("en-US")}</em> : null}
+      </div>
+    </section>
+  );
+}
+
+function GlobalDiscoveryPanel({
+  query,
+  state,
+  onExpand,
+}: {
+  query: string;
+  state: GlobalDiscoveryState;
+  onExpand: () => void;
+}) {
+  const normalizedQuery = query.trim();
+  if (normalizedQuery.length < 2) return null;
+
+  const response = state.response;
+  const status = response?.status;
+  const hasResults = status === "connected" && Boolean(response?.works.length);
+  const statusCopy = status === "link_only"
+    ? "Global results open on OpenAlex for this preview."
+    : status === "rate_limited"
+      ? "OpenAlex is busy. Retry shortly or continue on OpenAlex."
+      : status === "disabled"
+        ? "Global discovery is paused for this preview."
+        : status === "unavailable"
+          ? "Global discovery could not load just now. Retry or continue on OpenAlex."
+          : status === "connected"
+            ? "No matching global metadata was returned for this search."
+            : "Search beyond the Thai corpus only when you need broader context.";
+
+  return (
+    <section className="globalDiscoveryPanel" aria-label="Global research discovery">
+      <header className="globalDiscoveryHeader">
+        <div>
+          <span className="globalDiscoveryEyebrow"><Compass size={15} strokeWidth={2.2} aria-hidden /> Global discovery</span>
+          <h2>Expand “{normalizedQuery}” beyond Thailand</h2>
+          <p>OpenAlex metadata is a discovery layer. Open the source before treating it as evidence.</p>
+        </div>
+        <button
+          type="button"
+          className="cardAction globalDiscoveryAction"
+          disabled={state.phase === "loading"}
+          onClick={onExpand}
+        >
+          {state.phase === "loading" ? <RefreshCw className="globalDiscoverySpinner" size={16} aria-hidden /> : <Search size={16} aria-hidden />}
+          <span>
+            {state.phase === "loading"
+              ? "Searching OpenAlex"
+              : state.phase === "idle"
+                ? "Expand globally"
+                : "Refresh global results"}
+          </span>
+        </button>
+      </header>
+
+      {state.phase === "error" ? (
+        <div className="globalDiscoveryState" role="alert">
+          <TriangleAlert size={17} aria-hidden />
+          <span>{state.error || "Global discovery is temporarily unavailable."}</span>
+        </div>
+      ) : state.phase === "loading" ? (
+        <div className="globalDiscoveryState" role="status" aria-live="polite">
+          <RefreshCw className="globalDiscoverySpinner" size={17} aria-hidden />
+          <span>Searching global research metadata…</span>
+        </div>
+      ) : hasResults && response ? (
+        <div className="globalDiscoveryResults">
+          <div className="globalDiscoveryResultHeading">
+            <strong>OpenAlex metadata</strong>
+            <span>{response.works.length} results · external sources</span>
+          </div>
+          <div className="globalWorkGrid">
+            {response.works.map((work) => (
+              <a
+                key={work.id || work.doi || `${work.title}-${work.year ?? "unknown"}`}
+                className="globalWorkCard"
+                href={work.url}
+                target="_blank"
+                rel="noopener noreferrer"
+                aria-label={`Open global metadata: ${work.title}`}
+              >
+                <span className="globalWorkProvider">OpenAlex · metadata only <ExternalLink size={13} aria-hidden /></span>
+                <strong>{work.title}</strong>
+                <small>
+                  {[work.year, work.topic, `${work.citedByCount.toLocaleString("en-US")} citations`]
+                    .filter((value) => value !== null && value !== "")
+                    .join(" · ")}
+                </small>
+              </a>
+            ))}
+          </div>
+          <a className="globalDiscoveryFooterLink" href={response.searchUrl} target="_blank" rel="noopener noreferrer">
+            Search this topic on OpenAlex <ExternalLink size={14} aria-hidden />
+          </a>
+        </div>
+      ) : state.phase === "ready" && response ? (
+        <div className="globalDiscoveryState">
+          <Compass size={17} aria-hidden />
+          <span>{statusCopy}</span>
+          <a href={response.searchUrl} target="_blank" rel="noopener noreferrer">
+            Open OpenAlex <ExternalLink size={13} aria-hidden />
+          </a>
+        </div>
+      ) : null}
+    </section>
+  );
+}
+
 function PreviewSvg({ variant }: { variant: ResearchCardData["preview"] }) {
   if (variant === "flood") {
     return (
@@ -2120,6 +2569,8 @@ function ResearchCard({
   onAsk,
   onOpen,
   onToggleBookmark,
+  workspaceSelected,
+  onToggleWorkspace,
   disabled,
 }: {
   card: ResearchCardData;
@@ -2128,6 +2579,8 @@ function ResearchCard({
   onAsk: (card: ResearchCardData) => void;
   onOpen: (card: ResearchCardData) => void;
   onToggleBookmark: (card: ResearchCardData) => void;
+  workspaceSelected?: boolean;
+  onToggleWorkspace?: (card: ResearchCardData) => void;
   disabled: boolean;
 }) {
   const title = translatedPaperText(translation, "paper.title", displayTitle(card));
@@ -2173,7 +2626,7 @@ function ResearchCard({
           {disciplineLabel ? <span>{disciplineLabel}</span> : null}
           {citable ? <span>{pagesLabel}</span> : null}
           <span className={citable ? "citableMeta" : "discoveryMeta"}>
-            {citable ? `${card.evidenceCount} evidence` : "Discovery metadata"}
+            {citable ? `Page-cited evidence · ${card.evidenceCount}` : "Discovery metadata"}
           </span>
           {translated ? <span className="translatedMeta">EN translation</span> : null}
         </div>
@@ -2187,6 +2640,17 @@ function ResearchCard({
         <div className="cardActions">
           {citable ? (
             <>
+              {onToggleWorkspace ? (
+                <button
+                  type="button"
+                  className={`cardAction workspaceSelectAction ${workspaceSelected ? "selected" : ""}`}
+                  aria-pressed={workspaceSelected}
+                  onClick={() => onToggleWorkspace(card)}
+                >
+                  {workspaceSelected ? <Check size={17} strokeWidth={2.3} aria-hidden /> : <TableProperties size={17} strokeWidth={2.2} aria-hidden />}
+                  <span>{workspaceSelected ? "Selected" : "Compare"}</span>
+                </button>
+              ) : null}
               <button type="button" className="cardAction primary" disabled={disabled} onClick={() => onAsk(card)}>
                 <MessageCircle size={17} strokeWidth={2.2} aria-hidden />
                 <span>Ask with evidence</span>
@@ -2229,7 +2693,7 @@ function ResearchCard({
       ) : (
         <aside className="catalogSourceCard" aria-label="Discovery record status">
           <Database size={20} aria-hidden />
-          <strong>Metadata only</strong>
+          <strong>Thai journal metadata</strong>
           <span>Not used for AI answers or citations</span>
           {card.journalTitle ? <small>{card.journalTitle}</small> : null}
         </aside>
@@ -2251,6 +2715,10 @@ function ResearchFeed({
   onAsk,
   onOpen,
   onToggleBookmark,
+  workspaceSelection,
+  onToggleWorkspace,
+  onCompareSelected,
+  onClearWorkspaceSelection,
   onRetry,
   onLoadMore,
   disabled,
@@ -2267,6 +2735,10 @@ function ResearchFeed({
   onAsk: (card: ResearchCardData) => void;
   onOpen: (card: ResearchCardData) => void;
   onToggleBookmark: (card: ResearchCardData) => void;
+  workspaceSelection: string[];
+  onToggleWorkspace: (card: ResearchCardData) => void;
+  onCompareSelected: () => void;
+  onClearWorkspaceSelection: () => void;
   onRetry: () => void;
   onLoadMore: () => void;
   disabled: boolean;
@@ -2335,6 +2807,28 @@ function ResearchFeed({
 
   return (
     <section className="feedStack" aria-label="CivilMCP research feed">
+      {isSavedFilter ? (
+        <aside className="workspaceSelectionTray" aria-label="Compare saved papers">
+          <div>
+            <strong>{workspaceSelection.length} selected</strong>
+            <span>Choose 2–6 saved papers to compare with exact-page evidence.</span>
+          </div>
+          <div>
+            {workspaceSelection.length ? (
+              <button type="button" className="textAction" onClick={onClearWorkspaceSelection}>Clear</button>
+            ) : null}
+            <button
+              type="button"
+              className="cardAction primary"
+              disabled={workspaceSelection.length < 2}
+              onClick={onCompareSelected}
+            >
+              <TableProperties size={16} strokeWidth={2.2} aria-hidden />
+              <span>Compare in Workspace</span>
+            </button>
+          </div>
+        </aside>
+      ) : null}
       {cards.map((card) => (
         <ResearchCard
           key={card.id}
@@ -2344,6 +2838,8 @@ function ResearchFeed({
           onAsk={onAsk}
           onOpen={onOpen}
           onToggleBookmark={onToggleBookmark}
+          workspaceSelected={workspaceSelection.includes(card.source)}
+          onToggleWorkspace={isSavedFilter ? onToggleWorkspace : undefined}
           disabled={disabled}
         />
       ))}
@@ -2398,6 +2894,7 @@ function PaperDetailDrawer({
   error,
   translation,
   paperLanguage,
+  highlightedEvidence,
   bookmarked,
   libraryItem,
   onClose,
@@ -2412,6 +2909,7 @@ function PaperDetailDrawer({
   error: string;
   translation?: PaperTranslationState;
   paperLanguage: PaperLanguage;
+  highlightedEvidence: CivilEvidenceItem | null;
   bookmarked: boolean;
   libraryItem?: PaperWorkspaceItem;
   onClose: () => void;
@@ -2423,6 +2921,7 @@ function PaperDetailDrawer({
 }) {
   const drawerRef = useRef<HTMLElement | null>(null);
   const closeButtonRef = useRef<HTMLButtonElement | null>(null);
+  const highlightedEvidenceRef = useRef<HTMLElement | null>(null);
   const isOpen = Boolean(detail) || status === "loading" || status === "error";
   const [libraryNote, setLibraryNote] = useState("");
   const [libraryLabels, setLibraryLabels] = useState("");
@@ -2456,6 +2955,12 @@ function PaperDetailDrawer({
     };
   }, [isOpen]);
 
+  useEffect(() => {
+    if (!detail || !highlightedEvidence) return;
+    const frame = window.requestAnimationFrame(() => highlightedEvidenceRef.current?.scrollIntoView({ block: "center", behavior: "smooth" }));
+    return () => window.cancelAnimationFrame(frame);
+  }, [detail, highlightedEvidence]);
+
   if (!isOpen) return null;
   const paper = detail?.document;
   const sourceRef = paper?.sourcePdf || paper?.parentSourcePdf || paper?.source || "";
@@ -2466,6 +2971,27 @@ function PaperDetailDrawer({
   const translatedSummary = paper
     ? translatedPaperText(translation, "paper.summary", displaySummary(paper))
     : "";
+  const evidenceRows = detail
+    ? [...detail.evidence].sort((left, right) => {
+        const score = (item: PaperDetailData["evidence"][number]) => {
+          if (!highlightedEvidence) return 0;
+          if (highlightedEvidence.id && item.id === highlightedEvidence.id) return 4;
+          if (highlightedEvidence.sectionIndex != null && highlightedEvidence.chunkIndex != null
+            && item.sectionIndex === highlightedEvidence.sectionIndex && item.chunkIndex === highlightedEvidence.chunkIndex) return 3;
+          if (highlightedEvidence.pageStart != null && item.pageStart === highlightedEvidence.pageStart) return 2;
+          return 0;
+        };
+        return score(right) - score(left);
+      })
+    : [];
+  const isHighlighted = (item: PaperDetailData["evidence"][number]) => Boolean(
+    highlightedEvidence && (
+      (highlightedEvidence.id && item.id === highlightedEvidence.id)
+      || (highlightedEvidence.sectionIndex != null && highlightedEvidence.chunkIndex != null
+        && item.sectionIndex === highlightedEvidence.sectionIndex && item.chunkIndex === highlightedEvidence.chunkIndex)
+      || (!highlightedEvidence.id && highlightedEvidence.pageStart != null && item.pageStart === highlightedEvidence.pageStart)
+    )
+  );
 
   return (
     <div className="detailBackdrop" role="presentation" onClick={onClose}>
@@ -2509,13 +3035,13 @@ function PaperDetailDrawer({
           </button>
         </div>
 
-        {status === "loading" ? (
+        {status === "loading" && !detail ? (
           <div className="detailBody">
             <span className="skeletonLine title" />
             <span className="skeletonLine" />
             <span className="skeletonLine short" />
           </div>
-        ) : status === "error" ? (
+        ) : status === "error" && !detail ? (
           <div className="detailBody">
             <p className="detailError">{error || "Paper details could not be loaded."}</p>
           </div>
@@ -2651,18 +3177,26 @@ function PaperDetailDrawer({
             </section>
 
             <section className="detailSection">
-              <h3>Representative evidence</h3>
+              <h3>{highlightedEvidence ? "Evidence used in the answer" : "Representative evidence"}</h3>
+              {highlightedEvidence ? (
+                <p className="detailSectionLead">The cited packet is pinned first and highlighted below.</p>
+              ) : null}
               <div className="detailEvidenceGrid">
-                {detail.evidence.slice(0, 8).map((item) => {
+                {evidenceRows.slice(0, 8).map((item) => {
                   const evidenceTitle = item.sectionTitle
                     ? translatedPaperText(translation, `evidence.${item.id}.title`, item.sectionTitle)
                     : "";
                   const evidenceSnippet = translatedPaperText(translation, `evidence.${item.id}.snippet`, item.snippet);
                   return (
-                    <article key={item.id} className="detailEvidenceCard">
+                    <article
+                      key={item.id}
+                      ref={isHighlighted(item) ? highlightedEvidenceRef : undefined}
+                      className={`detailEvidenceCard ${isHighlighted(item) ? "highlighted" : ""}`}
+                      aria-label={isHighlighted(item) ? "Cited evidence packet" : undefined}
+                    >
                       <div>
                         <strong>
-                          Cited chunk {item.chunkIndex ?? "?"}
+                          {isHighlighted(item) ? "Cited in answer" : `Evidence chunk ${item.chunkIndex ?? "?"}`}
                           {item.pageStart != null ? ` · ${item.pageEnd === item.pageStart ? `p.${item.pageStart}` : `p.${item.pageStart}-${item.pageEnd}`}` : ""}
                         </strong>
                         {item.sectionTitle ? <span lang={contentLanguage(evidenceTitle)}>{evidenceTitle}</span> : null}
@@ -2674,10 +3208,14 @@ function PaperDetailDrawer({
               </div>
             </section>
 
-            {detail.related?.length ? (
-              <section className="detailSection">
-                <h3>Related Thai evidence</h3>
-                <p className="detailSectionLead">More page-linked studies in the same civil engineering discipline.</p>
+            <section className="detailSection">
+              <h3>Related Thai evidence</h3>
+              <p className="detailSectionLead">
+                {status === "loading"
+                  ? "Finding page-linked studies in the same civil engineering discipline…"
+                  : "More page-linked studies in the same civil engineering discipline."}
+              </p>
+              {detail.related?.length ? (
                 <div className="relatedPaperList">
                   {detail.related.map((related) => (
                     <button type="button" key={related.id} onClick={() => onOpenRelated(related)}>
@@ -2686,8 +3224,8 @@ function PaperDetailDrawer({
                     </button>
                   ))}
                 </div>
-              </section>
-            ) : null}
+              ) : status !== "loading" ? <p className="detailEmpty">No related indexed evidence was found.</p> : null}
+            </section>
           </div>
         ) : null}
       </aside>
@@ -2705,7 +3243,7 @@ function ConversationFeed({
   messages: UIMessage[];
   sessionId: string;
   onAsk: (prompt: string) => void;
-  onOpenEvidence: (source: string) => void;
+  onOpenEvidence: (item: CivilEvidenceItem) => void;
   onExportEvidenceBrief: (annotation: CivilMissionAnnotation) => void;
 }) {
   return (
@@ -2756,7 +3294,7 @@ function ChatWorkspace({
   error?: Error;
   onNewChat: () => void;
   onAsk: (prompt: string) => void;
-  onOpenEvidence: (source: string) => void;
+  onOpenEvidence: (item: CivilEvidenceItem) => void;
   onExportEvidenceBrief: (annotation: CivilMissionAnnotation) => void;
 }) {
   return (
@@ -3036,7 +3574,7 @@ function PersonalizedResearchPathPanel({
             />
           </label>
           <div className="pathExamples" aria-label="Research path examples">
-            {["Construction delay risk", "Flood-resilient infrastructure", "Urban road safety"].map((example) => (
+            {["Low-carbon concrete performance", "Flood-resilient infrastructure", "Urban road safety"].map((example) => (
               <button key={example} type="button" onClick={() => setGoal(example)}>{example}</button>
             ))}
           </div>
@@ -3144,6 +3682,7 @@ function AccountPanel({
   onForgotPassword,
   onUpdatePassword,
   onProfileUpdate,
+  onDeleteAccount,
   onLogout,
   onCheckout,
   onPortal,
@@ -3169,6 +3708,7 @@ function AccountPanel({
   onForgotPassword: () => void;
   onUpdatePassword: () => void;
   onProfileUpdate: () => void;
+  onDeleteAccount: () => void;
   onLogout: () => void;
   onCheckout: () => void;
   onPortal: () => void;
@@ -3176,6 +3716,7 @@ function AccountPanel({
   billingBusy: boolean;
 }) {
   const [showPassword, setShowPassword] = useState(false);
+  const [deleteConfirmation, setDeleteConfirmation] = useState("");
   const isSignup = authMode === "signup";
   const isForgot = authMode === "forgot-password";
   const isRecovery = authMode === "recovery";
@@ -3282,6 +3823,29 @@ function AccountPanel({
                   {statusText}
                 </p>
               ) : null}
+              <div className="accountDangerZone">
+                <div>
+                  <strong>Delete account</strong>
+                  <span>Permanently removes chats, saved papers, workspaces, feedback, and sign-in access.</span>
+                </div>
+                <input
+                  value={deleteConfirmation}
+                  onChange={(event) => setDeleteConfirmation(event.target.value)}
+                  placeholder="Type DELETE to confirm"
+                  aria-label="Type DELETE to confirm account deletion"
+                  autoComplete="off"
+                  disabled={isBusy}
+                />
+                <button
+                  type="button"
+                  className="cardAction dangerAction"
+                  onClick={onDeleteAccount}
+                  disabled={isBusy || deleteConfirmation !== "DELETE"}
+                >
+                  <Trash2 size={17} strokeWidth={2.2} aria-hidden />
+                  <span>Delete account</span>
+                </button>
+              </div>
             </>
           ) : (
             <>
@@ -3410,7 +3974,7 @@ function AccountPanel({
               </div>
             </div>
             <p className="planPrice"><strong>฿{billing.priceThb}</strong><span>/ month</span></p>
-            <p className="authBenefitIntro">Keep 100 free credits each week, plus a 500-credit Pro top-up every month.</p>
+            <p className="authBenefitIntro">Free includes 100 weekly credits for DeepSeek Flash and GPT-5.6 Luna. Pro adds 500 credits each month.</p>
             {signedIn && billing.creditsRemaining != null && billing.creditsIncluded != null ? (
               <div className="creditMeter" aria-label={`${billing.creditsRemaining} of ${billing.creditsIncluded} answer credits remaining`}>
                 <div><strong>{billing.creditsRemaining}</strong><span>of {billing.creditsIncluded} credits left</span></div>
@@ -3460,6 +4024,11 @@ function AccountPanel({
             <p className="planFinePrint">Pro credits are added monthly. Usage is weighted by model; unused Pro credits do not roll over.</p>
           </aside>
       </div>
+      <nav className="accountLegalLinks" aria-label="Legal and support">
+        <a href="/privacy">Privacy</a>
+        <a href="/terms">Terms</a>
+        <a href="/support">Support &amp; takedowns</a>
+      </nav>
     </section>
   );
 }
@@ -3547,6 +4116,8 @@ export default function Home() {
   const [shareBusy, setShareBusy] = useState(false);
   const [bookmarkedCards, setBookmarkedCards] = useState<Record<string, ResearchCardData>>({});
   const [workspaceItems, setWorkspaceItems] = useState<Record<string, PaperWorkspaceItem>>({});
+  const [workspaceSelection, setWorkspaceSelection] = useState<string[]>([]);
+  const [workspaceSeedSources, setWorkspaceSeedSources] = useState<string[]>([]);
   const [bookmarksReady, setBookmarksReady] = useState(false);
   const [paperTranslations, setPaperTranslations] = useState<Record<string, PaperTranslationState>>({});
   const [translationCacheReady, setTranslationCacheReady] = useState(false);
@@ -3568,19 +4139,28 @@ export default function Home() {
   const [feedNextCursor, setFeedNextCursor] = useState<string | null>(null);
   const [isFeedLoadingMore, setIsFeedLoadingMore] = useState(false);
   const [feedRefreshNonce, setFeedRefreshNonce] = useState(0);
+  const [globalDiscovery, setGlobalDiscovery] = useState<GlobalDiscoveryState>({
+    phase: "idle",
+    query: "",
+    response: null,
+    error: "",
+  });
   const [paperDetail, setPaperDetail] = useState<PaperDetailData | null>(null);
   const [paperDetailStatus, setPaperDetailStatus] = useState<FeedStatus>("ready");
   const [paperDetailError, setPaperDetailError] = useState("");
+  const [paperEvidenceTarget, setPaperEvidenceTarget] = useState<CivilEvidenceItem | null>(null);
   const mainRailRef = useRef<HTMLDivElement | null>(null);
   const saveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const saveControllerRef = useRef<AbortController | null>(null);
   const detailRequestIdRef = useRef(0);
   const chatSessionRequestIdRef = useRef(0);
   const feedKeyRef = useRef("");
+  const globalDiscoveryRequestIdRef = useRef(0);
   const paperLanguageRef = useRef<PaperLanguage>("en");
   const paperTranslationsRef = useRef<Record<string, PaperTranslationState>>({});
   const translationInFlightRef = useRef(new Set<string>());
   const announcePaperLanguageRef = useRef(false);
+  const initialEvidenceLinkOpenedRef = useRef(false);
 
   const setAppView = useCallback((item: MobileNavItem) => {
     setActiveMobileNav(item);
@@ -3628,6 +4208,11 @@ export default function Home() {
   useEffect(() => {
     feedKeyRef.current = `${activeFeedFilter}|${feedQuery}|${selectedCollection}`;
   }, [activeFeedFilter, feedQuery, selectedCollection]);
+
+  useEffect(() => {
+    globalDiscoveryRequestIdRef.current += 1;
+    setGlobalDiscovery({ phase: "idle", query: feedQuery, response: null, error: "" });
+  }, [feedQuery]);
 
   useEffect(() => {
     try {
@@ -3788,6 +4373,10 @@ export default function Home() {
     setPaperDetail(null);
     setPaperDetailStatus("ready");
     setPaperDetailError("");
+    setPaperEvidenceTarget(null);
+    const url = new URL(window.location.href);
+    for (const key of ["paper", "evidence", "section", "chunk", "page"]) url.searchParams.delete(key);
+    window.history.replaceState(window.history.state, "", `${url.pathname}${url.search}${url.hash}`);
   }, []);
 
   const refreshChatSessions = useCallback(async (showLoading = false) => {
@@ -3997,6 +4586,14 @@ export default function Home() {
         setFeedGeneratedAt(payload.generatedAt ?? "");
         setFeedNextCursor(payload.nextCursor ?? null);
         setFeedStatus("ready");
+        if (feedQuery) {
+          trackProductEvent("explore_search", {
+            queryLength: feedQuery.length,
+            resultCount: payload.cards?.length ?? 0,
+            filter: activeFeedFilter,
+            collection: selectedCollection || "all",
+          });
+        }
       } catch (error) {
         if (cancelled || controller.signal.aborted) return;
         setFeedCards([]);
@@ -4038,13 +4635,13 @@ export default function Home() {
       CHAT_MODELS.map((option) => ({
         value: option.id,
         label: option.label,
-        badge: option.requiresPro ? (billing.premiumModels ? `${option.credits} credits` : "PRO") : undefined,
+        badge: option.requiresPro ? (billing.premiumModels ? `${option.credits} credits` : "PRO") : "FREE",
         description:
           option.id === DEFAULT_CHAT_MODEL
             ? "Default · 1 credit · fast research answers"
             : option.requiresPro
               ? `${option.credits} credits · advanced reasoning`
-              : `${option.credits} ${option.credits === 1 ? "credit" : "credits"} · additional model`,
+              : `${option.credits} ${option.credits === 1 ? "credit" : "credits"} · included in Free`,
       })),
     [billing.premiumModels],
   );
@@ -4081,6 +4678,29 @@ export default function Home() {
         .some((value) => String(value).toLowerCase().includes(query));
     });
   }, [activeFeedFilter, bookmarkedCards, feedCards, feedQuery, selectedCollection]);
+
+  const workspacePaperCards = useMemo(() => {
+    const cards = [...Object.values(bookmarkedCards), ...feedCards];
+    const seen = new Set<string>();
+    return cards.filter((card) => {
+      if (!card.source || seen.has(card.source) || card.citable === false) return false;
+      seen.add(card.source);
+      return true;
+    });
+  }, [bookmarkedCards, feedCards]);
+  const workspacePapers = useMemo(
+    () => workspacePaperCards.map((card): ResearchWorkspacePaper => ({
+      id: card.id,
+      source: card.source,
+      title: card.title,
+      paperCode: card.paperCode,
+      collection: card.collection,
+      discipline: card.discipline,
+      pageLabel: card.pageLabel,
+      evidenceCount: card.evidenceCount,
+    })),
+    [workspacePaperCards],
+  );
 
   const isPaperTranslationBusy = Object.values(paperTranslations).some((translation) => translation.status === "loading");
 
@@ -4185,7 +4805,9 @@ export default function Home() {
       return next;
     });
     setStatusText(saved ? "Removed from library" : "Saved to your research library");
+    if (!saved) trackProductEvent("paper_save", { source: card.source, collection: card.collection });
     if (saved) {
+      setWorkspaceSelection((current) => current.filter((source) => source !== card.source));
       setWorkspaceItems((current) => {
         const next = { ...current };
         delete next[card.source];
@@ -4209,6 +4831,27 @@ export default function Home() {
     })
       .then((payload) => setWorkspaceItems((current) => ({ ...current, [card.source]: payload.item })))
       .catch(() => setStatusText("Saved in this browser. Account sync is temporarily unavailable."));
+  };
+
+  const toggleWorkspaceSelection = (card: ResearchCardData) => {
+    setWorkspaceSelection((current) => {
+      if (current.includes(card.source)) return current.filter((source) => source !== card.source);
+      if (current.length >= 6) {
+        setStatusText("Workspace comparison supports up to 6 papers per run.");
+        return current;
+      }
+      return [...current, card.source];
+    });
+  };
+
+  const compareSelectedPapers = () => {
+    if (workspaceSelection.length < 2) {
+      setStatusText("Select at least 2 saved papers to compare.");
+      return;
+    }
+    setWorkspaceSeedSources(workspaceSelection);
+    setAppView("workspace");
+    setStatusText(`${workspaceSelection.length} saved papers are ready to compare.`);
   };
 
   const saveLibraryDetails = async (card: ResearchCardData, note: string, labels: string[]) => {
@@ -4702,7 +5345,31 @@ export default function Home() {
     }
   };
 
-  const openPaperDetailBySource = async (source: string, seedCard?: ResearchCardData) => {
+  const deleteAccount = async () => {
+    setAuthBusy(true);
+    setStatusText("");
+    try {
+      await fetchJson<{ ok: boolean; deleted: boolean }>("/api/auth", {
+        method: "POST",
+        body: JSON.stringify({ action: "delete-account", confirmation: "DELETE" }),
+      });
+      window.localStorage.removeItem("civilmcp-bookmarks");
+      window.localStorage.removeItem(RESEARCH_PATH_KEY);
+      window.localStorage.removeItem(TRANSLATION_CACHE_KEY);
+      setStatusText("Account and synced research data deleted.");
+      window.location.assign("/");
+    } catch (error) {
+      setStatusText(error instanceof Error ? error.message : "Account could not be deleted.");
+    } finally {
+      setAuthBusy(false);
+    }
+  };
+
+  const openPaperDetailBySource = useCallback(async (
+    source: string,
+    seedCard?: ResearchCardData,
+    evidenceTarget: CivilEvidenceItem | null = null,
+  ) => {
     const requestId = detailRequestIdRef.current + 1;
     detailRequestIdRef.current = requestId;
     setPaperDetail(
@@ -4717,11 +5384,31 @@ export default function Home() {
     );
     setPaperDetailStatus("loading");
     setPaperDetailError("");
+    setPaperEvidenceTarget(evidenceTarget);
     try {
-      const detail = await fetchJson<PaperDetailData>(`/api/papers/${encodeURIComponent(source)}`);
+      const params = new URLSearchParams();
+      if (evidenceTarget?.id) params.set("evidence", evidenceTarget.id);
+      if (evidenceTarget?.sectionIndex != null) params.set("section", String(evidenceTarget.sectionIndex));
+      if (evidenceTarget?.chunkIndex != null) params.set("chunk", String(evidenceTarget.chunkIndex));
+      if (evidenceTarget?.pageStart != null) params.set("page", String(evidenceTarget.pageStart));
+      const detail = await fetchJson<PaperDetailData>(`/api/papers/${encodeURIComponent(source)}${params.size ? `?${params.toString()}` : ""}`);
       if (detailRequestIdRef.current !== requestId) return;
       setPaperDetail(detail);
       setPaperDetailStatus("ready");
+      trackProductEvent("paper_open", {
+        source: detail.document.source,
+        collection: detail.document.collection,
+        exactEvidence: Boolean(evidenceTarget),
+      });
+      if (evidenceTarget) {
+        const url = new URL(window.location.href);
+        url.searchParams.set("paper", source);
+        if (evidenceTarget.id) url.searchParams.set("evidence", evidenceTarget.id);
+        if (evidenceTarget.sectionIndex != null) url.searchParams.set("section", String(evidenceTarget.sectionIndex));
+        if (evidenceTarget.chunkIndex != null) url.searchParams.set("chunk", String(evidenceTarget.chunkIndex));
+        if (evidenceTarget.pageStart != null) url.searchParams.set("page", String(evidenceTarget.pageStart));
+        window.history.replaceState(window.history.state, "", `${url.pathname}${url.search}${url.hash}`);
+      }
       if (paperLanguageRef.current === "en") {
         void translatePapersToEnglish([{ card: detail.document, detail }]);
       }
@@ -4730,10 +5417,57 @@ export default function Home() {
       setPaperDetailStatus("error");
       setPaperDetailError(error instanceof Error ? error.message : "Failed to load paper detail.");
     }
-  };
+  }, [translatePapersToEnglish]);
+
+  useEffect(() => {
+    if (!isReady || initialEvidenceLinkOpenedRef.current) return;
+    initialEvidenceLinkOpenedRef.current = true;
+    const params = new URLSearchParams(window.location.search);
+    const source = params.get("paper")?.trim();
+    if (!source) return;
+    const numberParam = (key: string) => {
+      const value = Number.parseInt(params.get(key) ?? "", 10);
+      return Number.isFinite(value) && value >= 0 ? value : null;
+    };
+    const target: CivilEvidenceItem = {
+      evidenceId: "LINK",
+      citation: source,
+      source,
+      id: params.get("evidence")?.slice(0, 120) || undefined,
+      sectionIndex: numberParam("section"),
+      chunkIndex: numberParam("chunk"),
+      pageStart: numberParam("page"),
+      pageEnd: numberParam("page"),
+    };
+    void openPaperDetailBySource(source, undefined, target);
+  }, [isReady, openPaperDetailBySource]);
 
   const openPaperDetail = async (card: ResearchCardData) => {
-    await openPaperDetailBySource(card.source, card);
+    await openPaperDetailBySource(card.source, card, null);
+  };
+
+  const expandGlobalDiscovery = async () => {
+    const query = feedQuery.trim();
+    if (query.length < 2 || globalDiscovery.phase === "loading") return;
+    const requestId = globalDiscoveryRequestIdRef.current + 1;
+    globalDiscoveryRequestIdRef.current = requestId;
+    setGlobalDiscovery({ phase: "loading", query, response: null, error: "" });
+    try {
+      const response = await fetchJson<GlobalDiscoveryResponse>("/api/global-discovery", {
+        method: "POST",
+        body: JSON.stringify({ query }),
+      });
+      if (globalDiscoveryRequestIdRef.current !== requestId) return;
+      setGlobalDiscovery({ phase: "ready", query, response, error: "" });
+    } catch (error) {
+      if (globalDiscoveryRequestIdRef.current !== requestId) return;
+      setGlobalDiscovery({
+        phase: "error",
+        query,
+        response: null,
+        error: error instanceof Error ? error.message : "Global discovery is temporarily unavailable.",
+      });
+    }
   };
 
   const loadMoreFeed = async () => {
@@ -4801,6 +5535,7 @@ export default function Home() {
     anchor.click();
     URL.revokeObjectURL(url);
     setStatusText("Session exported as JSON");
+    trackProductEvent("session_export", { messageCount: messages.length, mode });
   };
 
   const exportEvidenceBrief = (annotation: CivilMissionAnnotation | null = latestMissionAnnotation) => {
@@ -4819,6 +5554,10 @@ export default function Home() {
     anchor.click();
     URL.revokeObjectURL(url);
     setStatusText(`${automated ? "Research Dossier" : "Evidence Brief"} exported as Markdown`);
+    trackProductEvent("evidence_export", {
+      experience: annotation.artifact.experience,
+      evidenceCount: annotation.artifact.trust.evidenceCount,
+    });
   };
 
   const createShareLink = async (copyToClipboard: boolean) => {
@@ -4912,6 +5651,12 @@ export default function Home() {
       setResearchPath(path);
       setCompletedPathStages([]);
       setResearchPathStatus("ready");
+      trackProductEvent("research_path_created", {
+        level: path.level,
+        outcome: path.outcome,
+        paperCount: path.stages.reduce((count, stage) => count + stage.papers.length, 0),
+        collection: selectedCollection || "all",
+      });
     } catch (error) {
       setResearchPathStatus("error");
       setResearchPathError(error instanceof Error ? error.message : "Could not build this research path.");
@@ -5038,19 +5783,27 @@ export default function Home() {
         ) : null}
 
         {activeMobileNav === "explore" ? (
-          <FilterBar
-            activeFilter={activeFeedFilter}
-            setActiveFilter={setActiveFeedFilter}
-            totalDocuments={feedTotal}
-            savedCount={Object.keys(bookmarkedCards).length}
-            filterCounts={feedFilterCounts}
-            paperLanguage={paperLanguage}
-            isTranslating={isPaperTranslationBusy}
-            onPaperLanguageChange={changePaperLanguage}
-            generatedAt={feedGeneratedAt}
-            isRefreshing={feedStatus === "loading"}
-            onRefresh={() => setFeedRefreshNonce((value) => value + 1)}
-          />
+          <>
+            <FilterBar
+              activeFilter={activeFeedFilter}
+              setActiveFilter={setActiveFeedFilter}
+              totalDocuments={feedTotal}
+              savedCount={Object.keys(bookmarkedCards).length}
+              filterCounts={feedFilterCounts}
+              paperLanguage={paperLanguage}
+              isTranslating={isPaperTranslationBusy}
+              onPaperLanguageChange={changePaperLanguage}
+              generatedAt={feedGeneratedAt}
+              isRefreshing={feedStatus === "loading"}
+              onRefresh={() => setFeedRefreshNonce((value) => value + 1)}
+            />
+            <DiscoveryTrustBar citableTotal={feedCitableTotal} metadataOnlyTotal={feedMetadataOnlyTotal} />
+            <GlobalDiscoveryPanel
+              query={activeFeedFilter === "saved" ? "" : feedQuery}
+              state={globalDiscovery}
+              onExpand={() => void expandGlobalDiscovery()}
+            />
+          </>
         ) : null}
 
         {statusText && activeMobileNav !== "settings" ? (
@@ -5066,16 +5819,8 @@ export default function Home() {
 
         {activeMobileNav === "workspace" ? (
           <ResearchWorkspacePanel
-            papers={feedCards.map((card): ResearchWorkspacePaper => ({
-              id: card.id,
-              source: card.source,
-              title: card.title,
-              paperCode: card.paperCode,
-              collection: card.collection,
-              discipline: card.discipline,
-              pageLabel: card.pageLabel,
-              evidenceCount: card.evidenceCount,
-            }))}
+            papers={workspacePapers}
+            seedSources={workspaceSeedSources}
             authenticated={isAuthenticated}
             proEnabled={billing.plan === "founder_pro" && billing.premiumModels}
             onUpgrade={(message) => {
@@ -5137,6 +5882,7 @@ export default function Home() {
             onForgotPassword={() => void sendPasswordRecovery()}
             onUpdatePassword={() => void updatePassword()}
             onProfileUpdate={() => void updateProfile()}
+            onDeleteAccount={() => void deleteAccount()}
             onLogout={() => void logoutChat()}
             onCheckout={() => void openBilling("checkout")}
             onPortal={() => void openBilling("portal")}
@@ -5167,6 +5913,10 @@ export default function Home() {
             onAsk={askPaper}
             onOpen={(card) => void openPaperDetail(card)}
             onToggleBookmark={toggleBookmark}
+            workspaceSelection={workspaceSelection}
+            onToggleWorkspace={toggleWorkspaceSelection}
+            onCompareSelected={compareSelectedPapers}
+            onClearWorkspaceSelection={() => setWorkspaceSelection([])}
             onRetry={() => setFeedRefreshNonce((value) => value + 1)}
             onLoadMore={() => void loadMoreFeed()}
             disabled={!isReady || isLoading}
@@ -5180,7 +5930,14 @@ export default function Home() {
             error={chatError}
             onNewChat={() => void createNewChat()}
             onAsk={(prompt) => void submitPrompt(prompt, undefined, "mcp", "learn")}
-            onOpenEvidence={(source) => void openPaperDetailBySource(source)}
+            onOpenEvidence={(item) => {
+              trackProductEvent("evidence_open", {
+                source: item.source,
+                evidenceId: item.evidenceId,
+                page: item.pageStart ?? null,
+              });
+              void openPaperDetailBySource(item.source, undefined, item);
+            }}
             onExportEvidenceBrief={exportEvidenceBrief}
           />
         )}
@@ -5191,6 +5948,7 @@ export default function Home() {
         error={paperDetailError}
         translation={paperDetail ? paperTranslations[cardKey(paperDetail.document)] : undefined}
         paperLanguage={paperLanguage}
+        highlightedEvidence={paperEvidenceTarget}
         bookmarked={paperDetail ? Boolean(bookmarkedCards[cardKey(paperDetail.document)]) : false}
         libraryItem={paperDetail ? workspaceItems[paperDetail.document.source] : undefined}
         onClose={closePaperDetail}

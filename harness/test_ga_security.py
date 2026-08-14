@@ -38,8 +38,10 @@ class GASecurityContracts(unittest.TestCase):
         page = source("web/app/page.tsx")
         self.assertIn('value?.trim().replace(/^[\'\"]|[\'\"]$/g, "")', auth)
         self.assertIn(".find(isHttpUrl)", auth)
-        self.assertIn("process.env.SUPABASE_SERVICE_KEY", auth)
-        self.assertIn(".find(isUsableKey)", auth)
+        self.assertNotIn("process.env.SUPABASE_SERVICE_KEY", auth)
+        self.assertIn('value.startsWith("sb_publishable_")', auth)
+        self.assertIn('payload.role === "anon"', auth)
+        self.assertIn(".find(isSupabaseAnonKey)", auth)
         authenticated = auth.index("if (authenticated.authUser && authenticated.user)")
         guest = auth.index("signedGuestIdFromRequest(request)")
         self.assertLess(authenticated, guest)
@@ -68,9 +70,41 @@ class GASecurityContracts(unittest.TestCase):
         self.assertIn('rejected ? 401 : 503', auth)
         self.assertIn('response.cookies.delete(name)', auth)
 
+    def test_account_deletion_is_transactional_and_service_role_only(self) -> None:
+        route = source("web/app/api/auth/route.ts")
+        migration = source("supabase/migrations/20260813110000_civil_transactional_account_deletion.sql")
+        rpc_call = route.index('admin.rpc("civil_delete_account_data"')
+        auth_delete = route.index("admin.auth.admin.deleteUser")
+        self.assertLess(rpc_call, auth_delete)
+        self.assertNotIn('admin.from("civil_chat_feedback").delete()', route)
+        self.assertTrue(migration.startswith("begin;"))
+        self.assertTrue(migration.rstrip().endswith("commit;"))
+        for contract in (
+            "create or replace function public.civil_delete_account_data(p_user_id text)",
+            "security definer",
+            "set search_path = public",
+            "active subscription must be canceled before account deletion",
+            "for update",
+            "delete from public.civil_chat_feedback",
+            "select trace_id from public.civil_chat_traces",
+            "select session_id from public.civil_chat_sessions where owner_id = p_user_id",
+            "delete from public.civil_chat_sessions where owner_id = p_user_id",
+            "delete from public.civil_paper_workspace_items where owner_id = p_user_id",
+            "delete from public.civil_paper_workspaces where owner_id = p_user_id",
+            "delete from public.civil_support_requests where user_id = p_user_id",
+            "delete from public.civil_product_events where user_id = p_user_id",
+            "delete from public.civil_credit_ledger where user_id = p_user_id",
+            "delete from public.civil_billing_accounts where user_id = p_user_id",
+            "delete from public.civil_chat_users where user_id = p_user_id",
+            "revoke all on function public.civil_delete_account_data(text) from public, anon, authenticated",
+            "grant execute on function public.civil_delete_account_data(text) to service_role",
+        ):
+            self.assertIn(contract, migration)
+
     def test_chat_quota_is_distributed_bounded_and_fail_closed(self) -> None:
         store = source("web/lib/chat-store.ts")
         route = source("web/app/api/chat/route.ts")
+        translation = source("web/app/api/paper-translation/route.ts")
         for contract in (
             'supabase.rpc("consume_civil_quota"',
             "consume(scope, identityHash, minuteLimit, 60)",
@@ -85,6 +119,17 @@ class GASecurityContracts(unittest.TestCase):
         self.assertIn("await consumeChatQuota({", route)
         self.assertIn('status: 429, headers: rateLimitHeaders(rate)', route)
         self.assertIn('status: 503', route)
+        for contract in (
+            "await resolveChatIdentity(request)",
+            "await consumeChatQuota({",
+            'scope: "paper_translation"',
+            "guestMinuteLimit: GUEST_REQUESTS_PER_MINUTE",
+            "authenticatedHourLimit: AUTH_REQUESTS_PER_HOUR",
+            "applyChatIdentityCookies(response, identity, applyAuthCookies)",
+        ):
+            self.assertIn(contract, translation)
+        self.assertNotIn("checkRateLimit(", translation)
+        self.assertNotIn("requestIdentityKey(", translation)
 
     def test_openai_answer_budget_preserves_visible_output(self) -> None:
         route = source("web/app/api/chat/route.ts")
@@ -140,22 +185,34 @@ class GASecurityContracts(unittest.TestCase):
         model_policy = source("supabase/migrations/20260725120000_civil_deepseek_default_and_pro_models.sql")
         weekly_policy = source("supabase/migrations/20260725203000_civil_free_weekly_credits.sql")
         pro_top_up_policy = source("supabase/migrations/20260725205900_civil_founder_pro_500_credits.sql")
-        self.assertIn('"deepseek-v4-pro", label: "DeepSeek V4 Pro", provider: "deepseek", credits: 3, requiresPro: true', models)
-        self.assertIn('"gpt-5.6-luna", label: "GPT-5.6 Luna", provider: "openai", credits: 3, requiresPro: true', models)
-        self.assertIn('"gpt-5.6-terra", label: "GPT-5.6 Terra", provider: "openai", credits: 6, requiresPro: true', models)
+        stripe_idempotency = source("supabase/migrations/20260813120000_civil_stripe_event_idempotency.sql")
+        credit_ladder = source("supabase/migrations/20260814100000_civil_terra_sol_credit_correction.sql")
+        self.assertIn('"deepseek-v4-pro", label: "DeepSeek V4 Pro", provider: "deepseek", credits: 2, requiresPro: true', models)
+        self.assertIn('"gpt-5.6-luna", label: "GPT-5.6 Luna", provider: "openai", credits: 1, requiresPro: false', models)
+        self.assertIn('"gpt-5.6-terra", label: "GPT-5.6 Terra", provider: "openai", credits: 5, requiresPro: true', models)
         self.assertIn('"gpt-5.6-sol", label: "GPT-5.6 Sol", provider: "openai", credits: 10, requiresPro: true', models)
         self.assertIn("alter column model set default 'deepseek-v4-flash'", model_policy)
-        self.assertIn("p_model in ('deepseek-v4-pro', 'gpt-5.6-luna', 'gpt-5.6-terra', 'gpt-5.6-sol')", model_policy)
+        self.assertIn("p_model in ('deepseek-v4-pro', 'gpt-5.6-terra', 'gpt-5.6-sol')", credit_ladder)
         self.assertIn("if (chatModelRequiresPro(input.model))", billing)
         self.assertIn('reason: "pro_required"', billing)
         self.assertIn("await reserveAnswerCredits({", chat)
-        self.assertIn("await refundAnswerCredits(userId, requestId, creditReservation.charged)", chat)
-        self.assertEqual(chat.count("onError: refundCredits"), 2)
+        self.assertIn("refundAnswerCredits(userId, requestId, creditReservation.charged)", chat)
+        self.assertIn('event: "civilmcp_credit_refund_pending"', chat)
+        self.assertIn("Credit restoration is pending. Contact support with trace", chat)
+        self.assertIn("if (data !== true) throw new Error", billing)
+        self.assertIn("const requestId = safeTraceId();", chat)
+        self.assertNotIn('request.headers.get("x-request-id")', chat)
+        self.assertIn("baselineData.appendMessageAnnotation(creditRecoveryAnnotation(restored))", chat)
+        self.assertIn("data.appendMessageAnnotation(creditRecoveryAnnotation(restored))", chat)
         self.assertIn('status: 402', chat)
         self.assertIn('request.text()', webhook)
         self.assertIn('verifyStripeSignature(payload', webhook)
         self.assertIn('timingSafeEqual(received, expected)', billing)
         self.assertIn("Math.abs(Date.now() / 1000 - seconds) > 300", billing)
+        self.assertIn('rpc("civil_apply_stripe_subscription_event"', billing)
+        billing_route = source("web/app/api/billing/route.ts")
+        self.assertIn('{ error: "Billing is temporarily unavailable.", traceId }', billing_route)
+        self.assertNotIn('{ error: error instanceof Error ? error.message', billing_route)
         for contract in (
             "create table if not exists public.civil_billing_accounts",
             "create table if not exists public.civil_credit_ledger",
@@ -187,13 +244,31 @@ class GASecurityContracts(unittest.TestCase):
         for contract in (
             "free_credits_included",
             "pro_credits_included",
-            "when 'gpt-5.6-luna' then 3",
-            "when 'gpt-5.6-terra' then 6",
-            "when 'gpt-5.6-sol' then 10",
             "pro_credits_included = case when plan = 'founder_pro' then 500",
             "free_credits_included + case when v_is_pro then pro_credits_included",
         ):
             self.assertIn(contract, pro_top_up_policy)
+        for contract in (
+            "when 'deepseek-v4-pro' then 2",
+            "when 'gpt-5.6-terra' then 5",
+            "when 'gpt-5.6-sol' then 10",
+            "p_model in ('deepseek-v4-pro', 'gpt-5.6-terra', 'gpt-5.6-sol')",
+            "Flash/Luna 1, DeepSeek Pro 2, Terra 5, Sol 10",
+        ):
+            self.assertIn(contract, credit_ladder)
+        for contract in (
+            "civil_stripe_event_ledger",
+            "on conflict (event_id) do nothing",
+            "p_event_created_at = v_account.stripe_event_created_at",
+            "v_event_rank = v_previous_rank and p_event_id <= coalesce(v_account.stripe_event_id, '')",
+            "return 'duplicate'",
+            "return 'stale'",
+            "return 'applied'",
+            "if not found then",
+            "Answer credit restoration was not confirmed",
+        ):
+            haystack = billing if contract == "Answer credit restoration was not confirmed" else stripe_idempotency
+            self.assertIn(contract, haystack)
 
     def test_agentic_evidence_mission_is_bounded_and_citation_allowlisted(self) -> None:
         chat = source("web/app/api/chat/route.ts")
@@ -208,10 +283,25 @@ class GASecurityContracts(unittest.TestCase):
         self.assertIn("createDataStreamResponse", chat)
         self.assertIn("getCivilMissionAnnotation", page)
         self.assertIn("evidenceBriefMarkdown", page)
+        self.assertIn("function citationAudit(answer: string, evidenceItems: EvidenceItem[])", chat)
+        self.assertIn("unresolvedCitationMarkers", chat)
+        self.assertIn("answer: generatedAnswer", chat)
+        self.assertIn("answerValidationFailed", chat)
+        self.assertNotIn("? buildFallbackResearchBrief(latestUserForTrace, builtContext)\n        : generatedAnswer;\n      const usage", chat)
+
+    def test_public_read_errors_are_redacted_and_cacheable(self) -> None:
+        feed = source("web/app/api/research-feed/route.ts")
+        papers = source("web/app/api/papers/route.ts")
+        for route in (feed, papers):
+            self.assertIn('"Cache-Control": "public, max-age=0, s-maxage=60, stale-while-revalidate=300"', route)
+            self.assertIn("safeTraceId()", route)
+            self.assertNotIn("detail: error instanceof Error", route)
 
     def test_deep_research_entitlement_and_research_path_boundaries(self) -> None:
         chat = source("web/app/api/chat/route.ts")
         path = source("web/app/api/research-path/route.ts")
+        openalex = source("web/lib/openalex.ts")
+        global_discovery = source("web/app/api/global-discovery/route.ts")
         self.assertIn('experience === "research"', chat)
         self.assertIn('experience === "research" || experience === "automated"', chat)
         self.assertIn("fallbackAutomationProgram", chat)
@@ -221,8 +311,32 @@ class GASecurityContracts(unittest.TestCase):
         self.assertIn('billingState.plan !== "founder_pro"', chat)
         self.assertIn("readBoundedJson<PathRequest>(request, 8_192)", path)
         self.assertIn("goal.length < 8", path)
-        self.assertIn("AbortSignal.timeout(8_000)", path)
-        self.assertIn("process.env.OPENALEX_API_KEY", path)
+        self.assertIn("discoverOpenAlex", path)
+        self.assertIn("research-to-project brief", path)
+        self.assertIn("Do not infer technology readiness", path)
+        self.assertIn("await resolveChatIdentity(request)", path)
+        self.assertIn("await consumeChatQuota({", path)
+        self.assertIn('scope: "research_path"', path)
+        self.assertIn("applyChatIdentityCookies(response, identity, applyAuthCookies)", path)
+        self.assertNotIn('detail: error instanceof Error', path)
+        self.assertIn("const OPENALEX_TIMEOUT_MS = 8_000", openalex)
+        self.assertIn("AbortSignal.timeout(OPENALEX_TIMEOUT_MS)", openalex)
+        self.assertIn("process.env.OPENALEX_API_KEY", openalex)
+        self.assertIn('scope: "global_discovery"', global_discovery)
+
+    def test_metadata_catalog_never_exposes_stored_abstracts(self) -> None:
+        feed = source("web/lib/research-feed.ts")
+        mcp = source("mcp-server/server.py")
+        migration = source("supabase/migrations/20260813100000_civil_catalog_public_rights_boundary.sql")
+        self.assertIn('rpc("search_civil_source_catalog_public_v1"', feed)
+        self.assertNotIn("abstract_local?:", feed)
+        self.assertNotIn("abstract_en?:", feed)
+        self.assertIn("never selected into a public card", feed)
+        self.assertIn('"search_civil_source_catalog_public_v1"', mcp)
+        self.assertNotIn('"abstract_local, abstract_en, authors', mcp)
+        self.assertIn("Stored abstracts are intentionally omitted", migration)
+        self.assertNotIn("abstract_local text", migration)
+        self.assertNotIn("abstract_en text", migration)
 
     def test_research_workspace_is_pro_gated_bounded_and_citation_allowlisted(self) -> None:
         workspace = source("web/app/api/research-workspaces/route.ts")
@@ -235,6 +349,13 @@ class GASecurityContracts(unittest.TestCase):
         self.assertIn('scope: "research_workspace_run"', workspace)
         self.assertIn("await reserveAnswerCredits({", workspace)
         self.assertIn("refundAnswerCredits", workspace)
+        self.assertIn("restoreWorkspaceCredits", workspace)
+        self.assertIn("Credit restoration is pending. Contact support with trace", workspace)
+        self.assertNotIn("failed. Reserved credits were restored.", workspace)
+        self.assertIn("const billingExecutionId = safeTraceId();", workspace)
+        self.assertIn("`${billingExecutionId}:paper:${index + 1}`", workspace)
+        self.assertNotIn("`${parsed.data.runId}:paper:${index + 1}`", workspace)
+        self.assertIn("AbortSignal.timeout(WORKSPACE_GENERATION_TIMEOUT_MS)", workspace)
         self.assertIn('id.startsWith(prefix)', workspace)
         self.assertIn('evidenceIds: z.array(z.string().regex(/^P\\d+E\\d+$/)).max(4)', workspace)
         self.assertIn('notes.length > 550_000', workspace_store)

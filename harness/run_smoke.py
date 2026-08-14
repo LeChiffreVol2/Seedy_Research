@@ -124,6 +124,52 @@ def check_mcp_source_boundary(mcp_url: str, env: dict[str, str]) -> Check:
     )
 
 
+def check_mcp_catalog_search(mcp_url: str, env: dict[str, str]) -> Check:
+    body = {
+        "name": "search_source_catalog",
+        "arguments": {
+            "query": "concrete",
+            "provider": "tci_thaijo",
+            "max_results": 3,
+        },
+    }
+    try:
+        status, payload, latency = http_json(
+            "POST",
+            f"{mcp_url}/tools/call",
+            body=body,
+            headers=auth_headers(env),
+            timeout=60,
+        )
+    except BaseException as exc:
+        if is_connection_error(exc):
+            return Check("mcp_catalog_search", "warn", f"MCP unavailable: {exc}", "Start MCP server or set MCP_URL.")
+        raise
+    structured = payload.get("structuredContent") if isinstance(payload, dict) else None
+    results = structured.get("results") if isinstance(structured, dict) else None
+    safe_results = results if isinstance(results, list) else []
+    ok = (
+        200 <= status < 300
+        and bool(safe_results)
+        and len(safe_results) <= 3
+        and all(
+            isinstance(item, dict)
+            and item.get("provider") == "tci_thaijo"
+            and item.get("citable") is False
+            and "match_score" not in item
+            and "total_count" not in item
+            for item in safe_results
+        )
+    )
+    return Check(
+        "mcp_catalog_search",
+        "pass" if ok else "fail",
+        f"HTTP {status}; results={len(safe_results)}",
+        "Keep source-catalog search bounded, provider-filtered, and metadata-only." if not ok else "",
+        latency,
+    )
+
+
 def check_web_tci_boundary(web_url: str) -> Check:
     try:
         status, payload, latency = http_json("GET", f"{web_url}/api/research-feed?filter=tci&limit=3", timeout=45)
@@ -294,14 +340,25 @@ def check_mcp_tool(mcp_url: str, env: dict[str, str], collection: str) -> Check:
         time.sleep(1)
     structured = payload.get("structuredContent") if isinstance(payload, dict) else None
     results = structured.get("results") if isinstance(structured, dict) else None
+    meta = payload.get("_meta") if isinstance(payload, dict) else None
+    degraded = bool(isinstance(meta, dict) and meta.get("degraded") is True)
+    retrieval_mode = str(meta.get("retrieval_mode") or "unknown") if isinstance(meta, dict) else "unknown"
     ok = 200 <= status < 300 and isinstance(results, list) and len(results) > 0
     return Check(
         f"mcp_search_chunks_{collection}",
-        "pass" if ok else "fail",
-        f"HTTP {status}; results={len(results) if isinstance(results, list) else 'missing'}; {'; '.join(attempts)}",
-        "Verify Supabase v2 data, MCP auth, and search_civil_chunks response shape.",
+        "warn" if ok and degraded else "pass" if ok else "fail",
+        (
+            f"HTTP {status}; results={len(results) if isinstance(results, list) else 'missing'}; "
+            f"retrieval_mode={retrieval_mode}; {'; '.join(attempts)}"
+        ),
+        "Restore semantic embeddings; lexical fallback is serving page-linked evidence." if ok and degraded
+        else "Verify Supabase v2 data, MCP auth, and search_civil_chunks response shape.",
         latency,
-        {"resultCount": len(results) if isinstance(results, list) else 0},
+        {
+            "resultCount": len(results) if isinstance(results, list) else 0,
+            "retrievalMode": retrieval_mode,
+            "degraded": degraded,
+        },
     )
 
 
@@ -322,17 +379,25 @@ def check_web_chat(web_url: str, collection: str) -> Check:
         raise
     stats = payload.get("contextStats") if isinstance(payload, dict) else None
     evidence = payload.get("evidenceItems") if isinstance(payload, dict) else None
+    degraded = bool(isinstance(stats, dict) and stats.get("retrievalDegraded") is True)
+    retrieval_mode = str(stats.get("retrievalMode") or "unknown") if isinstance(stats, dict) else "unknown"
     ok = 200 <= status < 300 and isinstance(stats, dict) and isinstance(evidence, list) and len(evidence) > 0
     return Check(
         f"web_chat_context_{collection or 'all'}",
-        "pass" if ok else "fail",
-        f"HTTP {status}; contextStats={bool(stats)}; evidence={len(evidence) if isinstance(evidence, list) else 'missing'}",
-        "" if ok else "Check /api/chat debug contextOnly response and MCP_URL/web env.",
+        "warn" if ok and degraded else "pass" if ok else "fail",
+        (
+            f"HTTP {status}; contextStats={bool(stats)}; evidence={len(evidence) if isinstance(evidence, list) else 'missing'}; "
+            f"retrieval_mode={retrieval_mode}"
+        ),
+        "Restore semantic embeddings; the web is intentionally exposing lexical fallback state." if ok and degraded
+        else "" if ok else "Check /api/chat debug contextOnly response and MCP_URL/web env.",
         latency,
         {
             "toolCalls": stats.get("toolCalls") if isinstance(stats, dict) else None,
             "chunksSent": stats.get("chunksSent") if isinstance(stats, dict) else None,
             "evidenceCount": len(evidence) if isinstance(evidence, list) else 0,
+            "retrievalMode": retrieval_mode,
+            "degraded": degraded,
         },
     )
 
@@ -434,6 +499,7 @@ def main() -> None:
         checks.append(check_mcp_rejects_missing_auth(mcp_url))
         checks.append(check_mcp_transport_rejects_missing_auth(mcp_url))
         checks.append(check_mcp_source_boundary(mcp_url, env))
+        checks.append(check_mcp_catalog_search(mcp_url, env))
         checks.append(check_mcp_tool(mcp_url, env, "ce_project"))
         checks.append(check_mcp_tool(mcp_url, env, "ncce"))
 

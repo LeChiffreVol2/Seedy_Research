@@ -172,13 +172,15 @@ export async function reserveAnswerCredits(input: {
   };
 }
 
-export async function refundAnswerCredits(userId: string, requestId: string, charged: number): Promise<void> {
-  if (charged <= 0) return;
-  const { error } = await getSupabaseAdmin().rpc("civil_refund_answer_credits", {
+export async function refundAnswerCredits(userId: string, requestId: string, charged: number): Promise<boolean> {
+  if (charged <= 0) return true;
+  const { data, error } = await getSupabaseAdmin().rpc("civil_refund_answer_credits", {
     p_user_id: userId,
     p_request_id: requestId,
   });
-  if (error) console.error("civilmcp_credit_refund_failed", error.message);
+  if (error) throw new Error(`Failed to restore answer credits: ${error.message}`);
+  if (data !== true) throw new Error("Answer credit restoration was not confirmed.");
+  return true;
 }
 
 async function stripeRequest(path: string, body: URLSearchParams): Promise<Record<string, any>> {
@@ -260,7 +262,9 @@ function stripeDate(value: unknown): string | null {
 
 export async function syncStripeSubscription(event: Record<string, any>): Promise<void> {
   const subscription = event.data?.object as Record<string, any> | undefined;
-  if (!subscription || !text(subscription.id) || !text(subscription.customer)) {
+  const eventId = text(event.id);
+  const eventType = text(event.type);
+  if (!eventId || !eventType || !subscription || !text(subscription.id) || !text(subscription.customer)) {
     throw new Error("Stripe subscription payload is incomplete.");
   }
   const firstItem = subscription.items?.data?.[0] as Record<string, any> | undefined;
@@ -268,7 +272,7 @@ export async function syncStripeSubscription(event: Record<string, any>): Promis
   const expectedPriceId = process.env.STRIPE_FOUNDER_PRO_PRICE_ID?.trim();
   if (expectedPriceId && priceId !== expectedPriceId) return;
   const status = event.type === "customer.subscription.deleted" ? "canceled" : text(subscription.status);
-  const { error } = await getSupabaseAdmin().rpc("civil_sync_stripe_subscription", {
+  const { data, error } = await getSupabaseAdmin().rpc("civil_apply_stripe_subscription_event", {
     p_user_id: text(subscription.metadata?.user_id) || null,
     p_customer_id: text(subscription.customer),
     p_subscription_id: text(subscription.id),
@@ -277,6 +281,11 @@ export async function syncStripeSubscription(event: Record<string, any>): Promis
     p_period_end: stripeDate(subscription.current_period_end ?? firstItem?.current_period_end),
     p_price_id: priceId || null,
     p_event_created_at: stripeDate(event.created),
+    p_event_id: eventId,
+    p_event_type: eventType,
   });
   if (error) throw new Error(`Failed to sync Stripe subscription: ${error.message}`);
+  if (!["applied", "duplicate", "stale"].includes(text(data))) {
+    throw new Error("Stripe subscription event was not durably recorded.");
+  }
 }

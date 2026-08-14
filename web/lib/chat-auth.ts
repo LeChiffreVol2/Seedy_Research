@@ -70,21 +70,31 @@ function getSupabaseAuthConfig() {
       return false;
     }
   };
-  const isUsableKey = (value: string | undefined) => Boolean(value && value.length >= 32 && !isPlaceholderSecret(value));
+  const isSupabaseAnonKey = (value: string | undefined) => {
+    if (!value || value.length < 32 || isPlaceholderSecret(value)) return false;
+    if (value.startsWith("sb_publishable_")) return true;
+
+    const segments = value.split(".");
+    if (segments.length !== 3) return false;
+    try {
+      const payload = JSON.parse(Buffer.from(segments[1], "base64url").toString("utf8")) as { role?: unknown };
+      return payload.role === "anon";
+    } catch {
+      return false;
+    }
+  };
   const supabaseUrl = [process.env.NEXT_PUBLIC_SUPABASE_URL, process.env.SUPABASE_URL]
     .map(normalizeEnv)
     .find(isHttpUrl);
-  // This module is server-only. Service-role fallback keeps auth available until the malformed anon env is rotated.
   const supabaseAnonKey = [
     process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY,
     process.env.SUPABASE_ANON_KEY,
-    process.env.SUPABASE_SERVICE_KEY,
   ]
     .map(normalizeEnv)
-    .find(isUsableKey);
+    .find(isSupabaseAnonKey);
 
   if (!supabaseUrl || !supabaseAnonKey) {
-    throw new Error("SUPABASE_URL and SUPABASE_ANON_KEY are required for Supabase Auth.");
+    throw new ChatIdentityError("Authentication is temporarily unavailable.", 503);
   }
 
   return { supabaseUrl, supabaseAnonKey };

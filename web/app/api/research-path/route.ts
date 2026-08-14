@@ -1,7 +1,10 @@
-import { NextRequest } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
 
+import { applyChatIdentityCookies, chatIdentityErrorResponse, resolveChatIdentity } from "@/lib/chat-auth";
+import { consumeChatQuota } from "@/lib/chat-store";
+import { discoverOpenAlex, normalizeOpenAlexQuery } from "@/lib/openalex";
 import { listResearchFeed, type ResearchFeedCard } from "@/lib/research-feed";
-import { readBoundedJson } from "@/lib/server-guards";
+import { getRequestIp, rateLimitHeaders, readBoundedJson, safeTraceId } from "@/lib/server-guards";
 
 export const runtime = "nodejs";
 export const preferredRegion = ["sin1"];
@@ -17,23 +20,12 @@ type PathRequest = {
   collection?: unknown;
 };
 
-type OpenAlexWork = {
-  id?: string;
-  doi?: string | null;
-  display_name?: string;
-  publication_year?: number | null;
-  cited_by_count?: number | null;
-  primary_topic?: { display_name?: string } | null;
-};
-
 const LEVELS = new Set<PathLevel>(["foundation", "applied", "research"]);
 const OUTCOMES = new Set<PathOutcome>(["literature_review", "study_plan", "decision_brief"]);
 const STAGE_TITLES = ["Map the field", "Inspect the methods", "Compare the evidence", "Build your position"];
 
 function compactGoal(value: unknown): string {
-  return typeof value === "string"
-    ? value.replace(/[\u0000-\u001F]/g, " ").replace(/\s+/g, " ").trim().slice(0, 280)
-    : "";
+  return normalizeOpenAlexQuery(value);
 }
 
 function pathPaper(card: ResearchFeedCard) {
@@ -60,59 +52,72 @@ function uniqueCards(cards: ResearchFeedCard[], limit = 8): ResearchFeedCard[] {
   });
 }
 
-async function openAlexBridge(goal: string) {
-  const searchUrl = `https://openalex.org/works?search=${encodeURIComponent(goal)}`;
-  const apiKey = process.env.OPENALEX_API_KEY?.trim();
-  if (!apiKey) return { status: "link_only" as const, searchUrl, works: [] };
-
-  try {
-    const url = new URL("https://api.openalex.org/works");
-    url.searchParams.set("search", goal);
-    url.searchParams.set("per-page", "4");
-    url.searchParams.set("select", "id,doi,display_name,publication_year,cited_by_count,primary_topic");
-    url.searchParams.set("api_key", apiKey);
-    const response = await fetch(url, { cache: "no-store", signal: AbortSignal.timeout(8_000) });
-    if (!response.ok) return { status: "unavailable" as const, searchUrl, works: [] };
-    const payload = (await response.json()) as { results?: OpenAlexWork[] };
-    const works = (payload.results ?? []).slice(0, 4).map((work) => ({
-      id: work.id ?? "",
-      title: (work.display_name ?? "Untitled research work").slice(0, 220),
-      year: work.publication_year ?? null,
-      citedByCount: work.cited_by_count ?? 0,
-      topic: work.primary_topic?.display_name?.slice(0, 120) ?? null,
-      url: work.doi || work.id || searchUrl,
-    }));
-    return { status: "connected" as const, searchUrl, works };
-  } catch {
-    return { status: "unavailable" as const, searchUrl, works: [] };
-  }
-}
-
 export async function POST(request: NextRequest) {
+  let resolved: Awaited<ReturnType<typeof resolveChatIdentity>>;
+  try {
+    resolved = await resolveChatIdentity(request);
+  } catch (error) {
+    return chatIdentityErrorResponse(error, request);
+  }
+  const { identity, applyAuthCookies } = resolved;
+  const finalize = (response: NextResponse) => applyChatIdentityCookies(response, identity, applyAuthCookies);
+
   let body: PathRequest;
   try {
     body = await readBoundedJson<PathRequest>(request, 8_192);
   } catch (error) {
-    return Response.json({ error: error instanceof Error ? error.message : "Invalid request." }, { status: 400 });
+    const status = (error as { statusCode?: number }).statusCode === 413 ? 413 : 400;
+    return finalize(NextResponse.json({ error: status === 413 ? "Research path request is too large." : "Invalid research path request." }, { status }));
   }
 
   const goal = compactGoal(body.goal);
   const level = LEVELS.has(body.level as PathLevel) ? (body.level as PathLevel) : "applied";
   const outcome = OUTCOMES.has(body.outcome as PathOutcome) ? (body.outcome as PathOutcome) : "literature_review";
   const collection = body.collection === "ncce" || body.collection === "ce_project" ? body.collection : "";
-  if (goal.length < 8) return Response.json({ error: "Describe a research goal in at least 8 characters." }, { status: 422 });
+  if (goal.length < 8) return finalize(NextResponse.json({ error: "Describe a research goal in at least 8 characters." }, { status: 422 }));
+
+  const quota = await consumeChatQuota({
+    scope: "research_path",
+    userId: identity.userId,
+    ipAddress: getRequestIp(request),
+    isAuthenticated: identity.isAuthenticated,
+    guestMinuteLimit: 2,
+    guestHourLimit: 12,
+    authenticatedMinuteLimit: 5,
+    authenticatedHourLimit: 40,
+  }).catch(() => null);
+  if (!quota) {
+    return finalize(NextResponse.json(
+      { error: "Research Path quota service is temporarily unavailable." },
+      { status: 503, headers: { "Cache-Control": "no-store" } },
+    ));
+  }
+  const quotaHeaders = { ...rateLimitHeaders(quota), "Cache-Control": "private, no-store" };
+  if (!quota.allowed) {
+    return finalize(NextResponse.json(
+      { error: "Research Path limit reached.", resetAt: new Date(quota.resetAt).toISOString() },
+      { status: 429, headers: quotaHeaders },
+    ));
+  }
 
   try {
     const matched = await listResearchFeed({ filter: "evidence", collection, q: goal, limit: 12 });
     const cards = uniqueCards(matched.cards);
     if (cards.length < 4) {
-      return Response.json(
+      return finalize(NextResponse.json(
         { error: "CivilMCP found too few strong matches. Make the topic more specific or try a related engineering term." },
-        { status: 422, headers: { "Cache-Control": "no-store" } },
-      );
+        { status: 422, headers: quotaHeaders },
+      ));
     }
     const sourceCodes = cards.map((card) => card.paperCode || card.source.replace(/\.md$/i, ""));
-    const openAlex = await openAlexBridge(goal);
+    const openAlexResult = await discoverOpenAlex(goal, { maxResults: 4 });
+    const openAlex = {
+      status: openAlexResult.status === "disabled" || openAlexResult.status === "rate_limited"
+        ? "unavailable" as const
+        : openAlexResult.status,
+      searchUrl: openAlexResult.searchUrl,
+      works: openAlexResult.works.map(({ citable: _citable, doi: _doi, ...work }) => work),
+    };
 
     const levelInstruction = {
       foundation: "Build vocabulary first and explain each method in plain language.",
@@ -122,7 +127,11 @@ export async function POST(request: NextRequest) {
     const outcomeInstruction = {
       literature_review: "End with a defensible literature map and research gap.",
       study_plan: "End with a concise study sequence and self-check questions.",
-      decision_brief: "End with a decision-ready brief that separates evidence from inference.",
+      decision_brief: [
+        "End with a research-to-project brief covering the Thai problem context, supporting evidence,",
+        "a proposed method, capability needed, uncertainty, and the next bounded experiment.",
+        "Do not infer technology readiness, intellectual-property freedom, or commercial viability.",
+      ].join(" "),
     }[outcome];
 
     const stagePapers = Array.from({ length: STAGE_TITLES.length }, () => [] as ResearchFeedCard[]);
@@ -152,7 +161,7 @@ export async function POST(request: NextRequest) {
       };
     });
 
-    return Response.json({
+    return finalize(NextResponse.json({
       version: "civilmcp-research-path-v2",
       goal,
       level,
@@ -161,11 +170,16 @@ export async function POST(request: NextRequest) {
       stages,
       openAlex,
       generatedAt: new Date().toISOString(),
-    }, { headers: { "Cache-Control": "no-store" } });
+    }, { headers: quotaHeaders }));
   } catch (error) {
-    return Response.json(
-      { error: "CivilMCP could not build this research path.", detail: error instanceof Error ? error.message : "Unknown error" },
-      { status: 503, headers: { "Cache-Control": "no-store" } },
-    );
+    const traceId = safeTraceId();
+    console.error("civilmcp_research_path_failed", {
+      traceId,
+      error: error instanceof Error ? error.message : "Unknown error",
+    });
+    return finalize(NextResponse.json(
+      { error: "CivilMCP could not build this research path.", traceId },
+      { status: 503, headers: quotaHeaders },
+    ));
   }
 }
