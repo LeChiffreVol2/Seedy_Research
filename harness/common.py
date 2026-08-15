@@ -222,10 +222,17 @@ def run_command(name: str, command: list[str], cwd: Path | None = None, timeout:
 def http_json(method: str, url: str, body: dict[str, Any] | None = None, headers: dict[str, str] | None = None, timeout: int = 60) -> tuple[int, Any, float]:
     data = None if body is None else json.dumps(body).encode("utf-8")
     request_headers = {"Accept": "application/json", **(headers or {})}
-    bypass = os.getenv("VERCEL_AUTOMATION_BYPASS_SECRET", "").strip()
+    mcp_url = os.getenv("MCP_URL", "").rstrip("/")
+    web_url = os.getenv("WEB_URL", "").rstrip("/")
+    bypass = (
+        os.getenv("MCP_VERCEL_AUTOMATION_BYPASS_SECRET", "").strip()
+        if mcp_url and url.startswith(mcp_url)
+        else os.getenv("WEB_VERCEL_AUTOMATION_BYPASS_SECRET", "").strip()
+        if web_url and url.startswith(web_url)
+        else ""
+    ) or os.getenv("VERCEL_AUTOMATION_BYPASS_SECRET", "").strip()
     if bypass and "vercel.app" in url:
         request_headers.setdefault("x-vercel-protection-bypass", bypass)
-        request_headers.setdefault("x-vercel-set-bypass-cookie", "true")
     if body is not None:
         request_headers["Content-Type"] = "application/json"
     request = urllib.request.Request(url, data=data, headers=request_headers, method=method.upper())

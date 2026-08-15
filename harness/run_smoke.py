@@ -9,7 +9,7 @@ from typing import Any
 from common import Check, http_json, is_connection_error, load_env, make_report, print_report, write_report
 
 DEFAULT_QUESTION = "ค้นงาน NCCE ด้านโครงสร้างที่เกี่ยวกับคอนกรีต"
-EXPECTED_MCP_TOOLS = {
+READ_ONLY_MCP_TOOLS = {
     "search_civil_knowledge",
     "search_civil_sections",
     "search_civil_chunks",
@@ -21,7 +21,16 @@ EXPECTED_MCP_TOOLS = {
     "search_source_catalog",
     "find_related_papers",
     "list_source_providers",
+    "search_global_research",
+    "map_citation_network",
+    "get_evidence_snapshot",
+    "list_library_items",
+    "list_private_sources",
+    "fetch_private_source_pages",
 }
+WRITE_MCP_TOOLS = {"save_library_item"}
+DELETE_MCP_TOOLS = {"remove_library_item"}
+EXPECTED_MCP_TOOLS = READ_ONLY_MCP_TOOLS | WRITE_MCP_TOOLS | DELETE_MCP_TOOLS
 
 
 def question_for_collection(collection: str) -> str:
@@ -64,23 +73,27 @@ def check_mcp_tools_contract(mcp_url: str) -> Check:
     tools = payload.get("tools") if isinstance(payload, dict) else None
     names = {str(tool.get("name")) for tool in tools if isinstance(tool, dict)} if isinstance(tools, list) else set()
     missing = sorted(EXPECTED_MCP_TOOLS - names)
-    annotation_issues = [
-        str(tool.get("name"))
-        for tool in (tools or [])
-        if isinstance(tool, dict)
-        and tool.get("name") in EXPECTED_MCP_TOOLS
-        and (
-            not isinstance(tool.get("annotations"), dict)
-            or tool["annotations"].get("readOnlyHint") is not True
-            or tool["annotations"].get("destructiveHint") is not False
+    annotation_issues: list[str] = []
+    for tool in tools or []:
+        if not isinstance(tool, dict) or tool.get("name") not in EXPECTED_MCP_TOOLS:
+            continue
+        name = str(tool.get("name"))
+        annotations = tool.get("annotations")
+        expected = (
+            (True, False) if name in READ_ONLY_MCP_TOOLS
+            else (False, True) if name in DELETE_MCP_TOOLS
+            else (False, False)
         )
-    ]
+        if not isinstance(annotations, dict) or (
+            annotations.get("readOnlyHint"), annotations.get("destructiveHint")
+        ) != expected:
+            annotation_issues.append(name)
     ok = 200 <= status < 300 and not missing and not annotation_issues
     return Check(
         "mcp_tools_list",
         "pass" if ok else "fail",
         f"HTTP {status}; tools={len(names)}; missing={missing}; annotation_issues={annotation_issues}",
-        "" if ok else "Expose all 11 read-only CivilMCP tools with non-destructive annotations.",
+        "" if ok else "Expose all 19 CivilMCP tools with accurate read/write/destructive annotations.",
         latency,
         {"toolCount": len(names)},
     )

@@ -228,6 +228,8 @@ jobs:
       WEB_URL: ${{ needs.deploy-web-preview.outputs.url }}
       MCP_HARNESS_API_KEY: ${{ secrets.MCP_HARNESS_API_KEY }}
       VERCEL_AUTOMATION_BYPASS_SECRET: ${{ secrets.VERCEL_AUTOMATION_BYPASS_SECRET }}
+      MCP_VERCEL_AUTOMATION_BYPASS_SECRET: ${{ secrets.MCP_VERCEL_AUTOMATION_BYPASS_SECRET }}
+      WEB_VERCEL_AUTOMATION_BYPASS_SECRET: ${{ secrets.WEB_VERCEL_AUTOMATION_BYPASS_SECRET }}
     steps:
       - uses: actions/checkout@v4
         with:
@@ -360,6 +362,8 @@ jobs:
       WEB_URL: ${{ needs.stage-production.outputs.web_url }}
       MCP_HARNESS_API_KEY: ${{ secrets.MCP_HARNESS_API_KEY }}
       VERCEL_AUTOMATION_BYPASS_SECRET: ${{ secrets.VERCEL_AUTOMATION_BYPASS_SECRET }}
+      MCP_VERCEL_AUTOMATION_BYPASS_SECRET: ${{ secrets.MCP_VERCEL_AUTOMATION_BYPASS_SECRET }}
+      WEB_VERCEL_AUTOMATION_BYPASS_SECRET: ${{ secrets.WEB_VERCEL_AUTOMATION_BYPASS_SECRET }}
     steps:
       - uses: actions/checkout@v4
         with:

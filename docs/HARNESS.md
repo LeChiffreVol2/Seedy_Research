@@ -40,7 +40,7 @@ Quality scoring rejects reports older than `HARNESS_MAX_REPORT_AGE_HOURS` (defau
 - `--strict` and `--fail-on-warn` are aliases. They preserve the report's `warn` status for diagnosis but exit non-zero when any check warns.
 
 ## CI And Deploy Readiness
-`.github/workflows/ci.yml` runs CivilMCP source checks only. `.github/workflows/preview-release.yml` builds the CivilMCP MCP and web Vercel Preview deployments from the same commit, runs strict cross-service smoke, and stores harness reports as workflow artifacts.
+`.github/workflows/ci.yml` runs CivilMCP source checks only. `.github/workflows/preview-release.yml` builds the CivilMCP MCP and web Vercel Preview deployments from the same commit, runs strict cross-service smoke, and stores harness reports as workflow artifacts. Protected projects may use separate `MCP_VERCEL_AUTOMATION_BYPASS_SECRET` and `WEB_VERCEL_AUTOMATION_BYPASS_SECRET` values; the shared secret remains a fallback.
 
 The workflow first applies the additive CivilMCP migrations to `SUPABASE_PREVIEW_DB_URL` from the protected GitHub `preview` environment. Production release is manual through `workflow_dispatch` with `promote=true`, `GA_PROMOTION_ENABLED=true` in the protected GitHub `production` environment. After approval it migrates `SUPABASE_DB_URL`, creates staged Production deployments, smokes those exact URLs, then promotes MCP followed by CivilMCP web. The final gate compares canonical aliases with the staged deployment IDs. No rebuild occurs between production-candidate smoke and promotion.
 
@@ -48,7 +48,7 @@ Source checks include:
 - Python syntax: `py_compile` over harness, MCP server, pipeline, Supabase, and eval Python files.
 - Architecture/product invariants: `python harness/check_invariants.py`.
 - Web build: `cd web && npm ci && npm run build` with server-only placeholder env values.
-- Candidate smoke: `python harness/run_smoke.py --strict` using `MCP_HARNESS_API_KEY` and optional `VERCEL_AUTOMATION_BYPASS_SECRET`.
+- Candidate smoke: `python harness/run_smoke.py --strict` using `MCP_HARNESS_API_KEY` plus optional per-project Vercel automation bypass secrets.
 
 ## Eval Scope
 `eval/harness_questions.json` is the fixed smoke suite. It covers CE Project, NCCE, and all-collection queries across simple lookup, compare, summarize, methodology, and citation search intents.
