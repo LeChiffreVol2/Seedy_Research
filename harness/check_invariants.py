@@ -319,6 +319,8 @@ def check_backbone_guardrails() -> Check:
             and release_text.count("20260815100000_civil_activation_events.sql") == 2
             and release_text.count("20260815110000_civil_private_library_and_watches.sql") == 2
             and release_text.count("20260815120000_civil_personal_mcp_access.sql") == 2
+            and release_text.count("20260815130000_civil_mcp_v2_library.sql") == 2
+            and release_text.count("20260815140000_civil_mcp_oauth_audience_hook.sql") == 2
             and release_text.count('-Atqc "$CIVIL_BILLING_HARDENING_SQL"') == 2
             and "civil_apply_stripe_subscription_event" in release_text
         ),
@@ -369,6 +371,7 @@ def check_product_contract() -> Check:
     living_reviews = (ROOT / "web" / "app" / "api" / "living-reviews" / "route.ts").read_text(encoding="utf-8", errors="replace")
     openalex = (ROOT / "web" / "lib" / "openalex.ts").read_text(encoding="utf-8", errors="replace")
     mcp_server = (ROOT / "mcp-server" / "server.py").read_text(encoding="utf-8", errors="replace")
+    oauth_grants_text = (ROOT / "web" / "app" / "api" / "oauth-grants" / "route.ts").read_text(encoding="utf-8", errors="replace")
     ci = (ROOT / ".github" / "workflows" / "ci.yml").read_text(encoding="utf-8", errors="replace")
     release = (ROOT / ".github" / "workflows" / "preview-release.yml").read_text(encoding="utf-8", errors="replace")
     score = (ROOT / "harness" / "score_quality.py").read_text(encoding="utf-8", errors="replace")
@@ -378,6 +381,13 @@ def check_product_contract() -> Check:
     billing_period_guard = (ROOT / "supabase" / "migrations" / "20260720163000_civil_billing_period_guards.sql").read_text(encoding="utf-8", errors="replace")
     model_policy_migration = (ROOT / "supabase" / "migrations" / "20260725120000_civil_deepseek_default_and_pro_models.sql").read_text(encoding="utf-8", errors="replace")
     credit_ladder_migration = (ROOT / "supabase" / "migrations" / "20260814100000_civil_terra_sol_credit_correction.sql").read_text(encoding="utf-8", errors="replace")
+    public_mcp_v2_tools = set(re.findall(r'@_mcp_v2_tool_decorator\("([a-z_]+)"\)', mcp_server))
+    expected_public_mcp_v2_tools = {
+        "discover_research", "get_paper", "query_papers", "compare_papers",
+        "map_citation_network", "get_evidence_snapshot", "list_library",
+        "create_library_folder", "rename_library_folder", "delete_library_folder",
+        "save_papers", "move_papers", "remove_papers", "list_private_sources",
+    }
     required = {
         "deepseek_default": 'DEFAULT_CHAT_MODEL: ChatModel = "deepseek-v4-flash"' in models,
         "gpt_5_6_picker": all(model in models for model in ("gpt-5.6-luna", "gpt-5.6-terra", "gpt-5.6-sol")),
@@ -478,6 +488,16 @@ def check_product_contract() -> Check:
             marker in mcp_server
             for marker in ("search_global_research", "map_citation_network", "get_evidence_snapshot", "save_library_item", "list_private_sources", "fetch_private_source_pages")
         ) and (ROOT / "web" / "app" / "api" / "mcp-access" / "route.ts").exists(),
+        "public_mcp_v2": (
+            public_mcp_v2_tools == expected_public_mcp_v2_tools
+            and 'app.mount("/v2"' in mcp_server
+            and "stateless_http=True" in mcp_server
+            and "civil_mcp_access_token_hook" in (ROOT / "supabase" / "migrations" / "20260815140000_civil_mcp_oauth_audience_hook.sql").read_text(encoding="utf-8")
+            and "civil_mcp_library_folders" in (ROOT / "supabase" / "migrations" / "20260815130000_civil_mcp_v2_library.sql").read_text(encoding="utf-8")
+            and all(marker in oauth_grants_text for marker in ("listGrants", "revokeGrant"))
+            and (ROOT / "web" / "app" / "oauth" / "consent" / "page.tsx").exists()
+            and (ROOT / "web" / "app" / "developers" / "page.tsx").exists()
+        ),
         "deep_research_pro_gate": all(
             marker in chat
             for marker in ('experience === "research"', "getBillingState(userId)", 'billingState.plan !== "founder_pro"')

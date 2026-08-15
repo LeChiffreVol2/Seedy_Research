@@ -70,7 +70,7 @@ python3.10 harness/export_feedback_eval.py
 python3.10 harness/run_smoke.py --strict
 ```
 
-The smoke suite now includes negative checks for unauthenticated MCP `/tools/call`, unauthenticated mounted MCP transport, and invalid/oversized `/api/chat` payloads. Eval now checks citation correctness by ensuring `[E#]` markers map back to returned evidence items, not only that citation markers exist.
+The smoke suite now includes negative checks for unauthenticated MCP `/tools/call`, both unauthenticated mounted transports, and invalid/oversized `/api/chat` payloads. It also initializes the stateless public `/v2/mcp` transport and requires the exact 14-tool public contract before a candidate can be promoted. Eval checks citation correctness by ensuring `[E#]` markers map back to returned evidence items, not only that citation markers exist.
 
 Latency SLOs are report-first by default. Set `HARNESS_ENFORCE_SLO=true` to make latency violations fail eval.
 

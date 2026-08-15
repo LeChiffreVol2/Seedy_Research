@@ -31,6 +31,22 @@ READ_ONLY_MCP_TOOLS = {
 WRITE_MCP_TOOLS = {"save_library_item"}
 DELETE_MCP_TOOLS = {"remove_library_item"}
 EXPECTED_MCP_TOOLS = READ_ONLY_MCP_TOOLS | WRITE_MCP_TOOLS | DELETE_MCP_TOOLS
+EXPECTED_PUBLIC_MCP_V2_TOOLS = {
+    "discover_research",
+    "get_paper",
+    "query_papers",
+    "compare_papers",
+    "map_citation_network",
+    "get_evidence_snapshot",
+    "list_library",
+    "create_library_folder",
+    "rename_library_folder",
+    "delete_library_folder",
+    "save_papers",
+    "move_papers",
+    "remove_papers",
+    "list_private_sources",
+}
 
 
 def question_for_collection(collection: str) -> str:
@@ -95,6 +111,66 @@ def check_mcp_tools_contract(mcp_url: str) -> Check:
         f"HTTP {status}; tools={len(names)}; missing={missing}; annotation_issues={annotation_issues}",
         "" if ok else "Expose all 19 CivilMCP tools with accurate read/write/destructive annotations.",
         latency,
+        {"toolCount": len(names)},
+    )
+
+
+def check_public_mcp_v2_contract(mcp_url: str, env: dict[str, str]) -> Check:
+    headers = {
+        **auth_headers(env),
+        "Accept": "application/json, text/event-stream",
+    }
+    initialize = {
+        "jsonrpc": "2.0",
+        "id": "civilmcp-v2-initialize",
+        "method": "initialize",
+        "params": {
+            "protocolVersion": "2025-06-18",
+            "capabilities": {},
+            "clientInfo": {"name": "civilmcp-harness", "version": "1"},
+        },
+    }
+    listing = {"jsonrpc": "2.0", "id": "civilmcp-v2-tools", "method": "tools/list", "params": {}}
+    evidence_call = {
+        "jsonrpc": "2.0",
+        "id": "civilmcp-v2-evidence",
+        "method": "tools/call",
+        "params": {"name": "get_evidence_snapshot", "arguments": {"source": "NCCE31_CEM-06.md"}},
+    }
+    try:
+        init_status, init_payload, init_latency = http_json(
+            "POST", f"{mcp_url}/v2/mcp", body=initialize, headers=headers, timeout=45
+        )
+        list_status, list_payload, list_latency = http_json(
+            "POST", f"{mcp_url}/v2/mcp", body=listing, headers=headers, timeout=45
+        )
+        call_status, call_payload, call_latency = http_json(
+            "POST", f"{mcp_url}/v2/mcp", body=evidence_call, headers=headers, timeout=45
+        )
+    except BaseException as exc:
+        if is_connection_error(exc):
+            return Check("public_mcp_v2_contract", "warn", f"MCP v2 unavailable: {exc}", "Deploy the public MCP v2 transport.")
+        raise
+    tools = list_payload.get("result", {}).get("tools", []) if isinstance(list_payload, dict) else []
+    names = {str(tool.get("name")) for tool in tools if isinstance(tool, dict)}
+    missing = sorted(EXPECTED_PUBLIC_MCP_V2_TOOLS - names)
+    call_result = call_payload.get("result", {}) if isinstance(call_payload, dict) else {}
+    snapshot = call_result.get("structuredContent", {}) if isinstance(call_result, dict) else {}
+    ok = (
+        init_status == 200
+        and list_status == 200
+        and call_status == 200
+        and call_result.get("isError") is False
+        and snapshot.get("found") is True
+        and not missing
+        and len(names) == len(EXPECTED_PUBLIC_MCP_V2_TOOLS)
+    )
+    return Check(
+        "public_mcp_v2_contract",
+        "pass" if ok else "fail",
+        f"initialize={init_status}; list={list_status}; evidence={call_status}/{snapshot.get('found')}; tools={len(names)}; missing={missing}; init={json.dumps(init_payload, ensure_ascii=False)[:300]}",
+        "" if ok else "Restore the stateless public MCP v2 transport and its 14 high-level tools.",
+        init_latency + list_latency + call_latency,
         {"toolCount": len(names)},
     )
 
@@ -451,6 +527,39 @@ def check_mcp_transport_rejects_missing_auth(mcp_url: str) -> Check:
     )
 
 
+def check_public_mcp_v2_rejects_missing_auth(mcp_url: str) -> Check:
+    body = {
+        "jsonrpc": "2.0",
+        "id": "negative-v2-smoke",
+        "method": "initialize",
+        "params": {
+            "protocolVersion": "2025-06-18",
+            "capabilities": {},
+            "clientInfo": {"name": "civilmcp-harness", "version": "1"},
+        },
+    }
+    try:
+        status, payload, latency = http_json(
+            "POST",
+            f"{mcp_url}/v2/mcp",
+            body=body,
+            headers={"Accept": "application/json, text/event-stream"},
+            timeout=30,
+        )
+    except BaseException as exc:
+        if is_connection_error(exc):
+            return Check("public_mcp_v2_rejects_missing_auth", "warn", f"MCP v2 unavailable: {exc}", "Deploy the public MCP v2 transport.")
+        raise
+    ok = status == 401
+    return Check(
+        "public_mcp_v2_rejects_missing_auth",
+        "pass" if ok else "fail",
+        f"HTTP {status}: {json.dumps(payload, ensure_ascii=False)[:500]}",
+        "" if ok else "Require authentication before MCP v2 initialization.",
+        latency,
+    )
+
+
 def check_web_chat_rejects_invalid_body(web_url: str) -> Check:
     try:
         status, payload, latency = http_json("POST", f"{web_url}/api/chat", body={}, timeout=30)
@@ -509,8 +618,10 @@ def main() -> None:
         checks.append(check_get_json("mcp_health", f"{mcp_url}/health", "status"))
         checks.append(check_get_json("mcp_readiness", f"{mcp_url}/health/ready", "dependencies"))
         checks.append(check_mcp_tools_contract(mcp_url))
+        checks.append(check_public_mcp_v2_contract(mcp_url, env))
         checks.append(check_mcp_rejects_missing_auth(mcp_url))
         checks.append(check_mcp_transport_rejects_missing_auth(mcp_url))
+        checks.append(check_public_mcp_v2_rejects_missing_auth(mcp_url))
         checks.append(check_mcp_source_boundary(mcp_url, env))
         checks.append(check_mcp_catalog_search(mcp_url, env))
         checks.append(check_mcp_tool(mcp_url, env, "ce_project"))

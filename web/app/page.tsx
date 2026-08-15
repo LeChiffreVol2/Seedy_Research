@@ -3861,9 +3861,11 @@ function PersonalizedResearchPathPanel({
 }
 
 type McpAccessKey = { key_id: string; token_prefix: string; label: string; last_used_at?: string | null; created_at?: string };
+type OAuthGrant = { client: { id: string; name: string; uri?: string }; scopes: string[]; granted_at: string };
 
 function McpAccessCard() {
   const [keys, setKeys] = useState<McpAccessKey[]>([]);
+  const [grants, setGrants] = useState<OAuthGrant[]>([]);
   const [endpoint, setEndpoint] = useState("");
   const [revealedToken, setRevealedToken] = useState("");
   const [busy, setBusy] = useState(false);
@@ -3871,9 +3873,13 @@ function McpAccessCard() {
 
   const load = useCallback(async () => {
     try {
-      const payload = await fetchJson<{ keys: McpAccessKey[]; endpoint: string }>("/api/mcp-access");
+      const [payload, grantPayload] = await Promise.all([
+        fetchJson<{ keys: McpAccessKey[]; endpoint: string }>("/api/mcp-access"),
+        fetchJson<{ grants: OAuthGrant[]; oauthAvailable: boolean }>("/api/oauth-grants").catch(() => ({ grants: [], oauthAvailable: false })),
+      ]);
       setKeys(payload.keys ?? []);
       setEndpoint(payload.endpoint ?? "");
+      setGrants(grantPayload.grants ?? []);
     } catch {
       setMessage("MCP access is temporarily unavailable.");
     }
@@ -3911,17 +3917,31 @@ function McpAccessCard() {
     }
   };
 
+  const revokeGrant = async (clientId: string) => {
+    setBusy(true);
+    try {
+      await fetchJson("/api/oauth-grants", { method: "DELETE", body: JSON.stringify({ clientId }) });
+      setMessage("Connected app access revoked.");
+      await load();
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : "Connected app access could not be revoked.");
+    } finally {
+      setBusy(false);
+    }
+  };
+
   return (
     <section className="mcpAccessCard" aria-label="Personal MCP access">
       <header>
         <div><span className="workspaceEyebrow"><Terminal size={14} aria-hidden /> API &amp; MCP</span><strong>Use your CivilMCP library from research agents.</strong><small>Personal keys are owner-scoped, rate-limited, and revocable.</small></div>
         <button type="button" className="cardAction primary" onClick={() => void createKey()} disabled={busy || keys.length >= 5}><KeyRound size={15} aria-hidden /> Create key</button>
       </header>
-      {endpoint ? <div className="mcpEndpoint"><span>Endpoint</span><code>{endpoint}</code><button type="button" onClick={() => void navigator.clipboard?.writeText(endpoint)}><Copy size={14} aria-hidden /> Copy</button></div> : null}
+      {endpoint ? <div className="mcpEndpoint"><span>MCP v2 endpoint</span><code>{endpoint}</code><button type="button" onClick={() => void navigator.clipboard?.writeText(endpoint)}><Copy size={14} aria-hidden /> Copy</button></div> : null}
       {revealedToken ? <div className="mcpTokenReveal" role="status"><code>{revealedToken}</code><button type="button" onClick={() => void navigator.clipboard?.writeText(revealedToken)}><Copy size={14} aria-hidden /> Copy key</button></div> : null}
       {keys.length ? <div className="mcpKeyList">{keys.map((key) => <article key={key.key_id}><div><strong>{key.label}</strong><span>{key.token_prefix}{key.last_used_at ? ` · used ${new Date(key.last_used_at).toLocaleDateString("en-GB")}` : " · never used"}</span></div><button type="button" onClick={() => void revokeKey(key.key_id)} disabled={busy}>Revoke</button></article>)}</div> : <p>No personal MCP keys yet.</p>}
+      {grants.length ? <div className="mcpKeyList">{grants.map((grant) => <article key={grant.client.id}><div><strong>{grant.client.name || "Connected research client"}</strong><span>OAuth · connected {new Date(grant.granted_at).toLocaleDateString("en-GB")}</span></div><button type="button" onClick={() => void revokeGrant(grant.client.id)} disabled={busy}>Disconnect</button></article>)}</div> : null}
       {message ? <small className="mcpAccessMessage">{message}</small> : null}
-      <p className="mcpAccessScope">Available tools include Thai/global discovery, page-linked evidence, citation maps, and owner-scoped library save/list/remove.</p>
+      <p className="mcpAccessScope">14 high-level tools cover Thai/global discovery, exact-page evidence, comparison, private PDFs, and folder-based library workflows. <a href="/developers">Setup and tool reference</a></p>
     </section>
   );
 }
@@ -4738,6 +4758,7 @@ export default function Home() {
         const searchParams = new URLSearchParams(window.location.search);
         const shareId = searchParams.get("share")?.trim();
         const isRecovery = searchParams.get("auth") === "recovery";
+        const requestedView = searchParams.get("view");
         const payload = shareId
           ? await fetchJson<SessionPayload>(`/api/history?share=${encodeURIComponent(shareId)}`)
           : await fetchJson<SessionPayload>("/api/history");
@@ -4756,6 +4777,7 @@ export default function Home() {
         setLoginEmail(normalized.user?.email ?? "");
         setIsSharedView(Boolean(shareId));
         setSyncState("saved");
+        if (requestedView === "settings") setAppView("settings");
         const billingResult = searchParams.get("billing");
         if (billingResult) {
           setAppView("settings");

@@ -3,7 +3,7 @@
 ## System Shape
 CivilMCP has three production surfaces:
 - `web/`: Next.js 15 app with research feed, chat UI, bounded Agentic Context Engine orchestration in `/api/chat`, adaptive learning-path assembly in `/api/research-path`, and a bounded Verified Review matrix in `/api/research-workspaces`.
-- `mcp-server/`: Python FastAPI MCP-style retrieval service exposing `/health`, `/metrics`, `/tools/list`, `/tools/call`, and MCP ASGI transport.
+- `mcp-server/`: Python FastAPI service exposing the public stateless MCP v2 endpoint at `/v2/mcp`, OAuth protected-resource metadata, and the existing `/tools/list`, `/tools/call`, and legacy MCP transport used by first-party consumers.
 - `pipeline/` + `supabase/`: provider registry, metadata harvesting, page-preserving PDF/OCR extraction, markdown/preview generation, v2 section/chunk embedding, and Supabase pgvector readiness checks.
 
 ## Runtime Flow
@@ -66,6 +66,9 @@ When a server-only `OPENALEX_API_KEY` is configured, the route adds up to four g
 - `/api/events` records an allow-listed set of activation events without raw research queries. `/api/support` stores rate-limited support, privacy, copyright, and source-takedown requests for operator review.
 - Event properties are server-stamped with `trafficClass`, environment, release SHA, and deployment ID so human activation is not mixed with E2E, smoke, or eval traffic.
 - Personal MCP tokens use the `cvmcp_` prefix, are displayed once, stored only as SHA-256 hashes, owner-scoped, revocable, rate-limited, and cascaded on account deletion.
+- Public MCP v2 exposes 14 task-level tools rather than the retrieval plumbing used by the web app. It reuses the same bounded evidence, OpenAlex, private-PDF, and library implementations. The legacy 19-tool contract remains unchanged for CivilMCP web and CityMCP.
+- OAuth-capable MCP clients use Supabase Auth as the authorization server. A custom access-token hook binds third-party tokens to the exact `/v2/mcp` audience and adds evidence/private/library permissions. The MCP server validates claims and verifies the live token with Supabase Auth; unverified JWT contents never grant access by themselves.
+- V2 Streamable HTTP is stateless and both FastMCP session managers run under the parent FastAPI lifespan. Distributed quota is enforced before the mounted transport handles a request.
 - Account deletion rejects active subscriptions, removes all first-party account rows through one service-role-only transactional RPC, and only then removes Supabase Auth access.
 - Privacy, Terms, and Support are public static routes. They do not imply professional engineering approval or full-text redistribution rights.
 

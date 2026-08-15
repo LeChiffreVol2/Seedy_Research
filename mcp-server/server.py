@@ -10,6 +10,7 @@ Highlights:
 from __future__ import annotations
 
 import asyncio
+import base64
 import hashlib
 import hmac
 import inspect
@@ -24,6 +25,7 @@ import urllib.parse
 import urllib.request
 from collections import defaultdict, deque
 from concurrent.futures import ThreadPoolExecutor
+from contextlib import AsyncExitStack, asynccontextmanager
 from contextvars import ContextVar
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
@@ -35,6 +37,7 @@ from dotenv import load_dotenv
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.responses import JSONResponse
 from mcp.server.fastmcp import FastMCP
+from mcp.types import CallToolResult, TextContent
 from openai import APIError, APITimeoutError, OpenAI, RateLimitError
 from pydantic import BaseModel, Field
 from supabase import create_client
@@ -73,6 +76,16 @@ REQUIRE_TOOL_AUTH = os.getenv("REQUIRE_TOOL_AUTH", "true").lower() == "true"
 MCP_SERVER_API_KEY = os.getenv("MCP_SERVER_API_KEY", "")
 MCP_CLIENT_KEYS_JSON = os.getenv("MCP_CLIENT_KEYS_JSON", "").strip()
 MCP_WEB_API_KEY_SHA256 = os.getenv("MCP_WEB_API_KEY_SHA256", "").strip().lower()
+MCP_PUBLIC_URL = os.getenv(
+    "MCP_PUBLIC_URL",
+    "https://civil-mcp-server.vercel.app/v2/mcp",
+).strip().rstrip("/")
+MCP_OAUTH_AUDIENCE = os.getenv("MCP_OAUTH_AUDIENCE", MCP_PUBLIC_URL).strip().rstrip("/")
+MCP_OAUTH_ENABLED = os.getenv("MCP_OAUTH_ENABLED", "false").lower() == "true"
+MCP_DOCUMENTATION_URL = os.getenv(
+    "MCP_DOCUMENTATION_URL",
+    "https://civil-mcp-web.vercel.app/developers",
+).strip()
 PLACEHOLDER_MCP_KEYS = {
     "replace-with-random-secret",
     "change-me",
@@ -94,6 +107,23 @@ logger = logging.getLogger("civil_mcp_server")
 def is_placeholder_secret(value: str | None) -> bool:
     normalized = (value or "").strip().lower()
     return not normalized or normalized in PLACEHOLDER_MCP_KEYS or normalized.startswith("replace-")
+
+
+def validate_public_mcp_url(value: str) -> str:
+    try:
+        parsed = urllib.parse.urlparse(value)
+    except ValueError as exc:
+        raise RuntimeError("MCP_PUBLIC_URL must be an absolute HTTPS URL") from exc
+    local = parsed.hostname in {"127.0.0.1", "localhost"}
+    if not parsed.hostname or (parsed.scheme != "https" and not (local and parsed.scheme == "http")):
+        raise RuntimeError("MCP_PUBLIC_URL must be an absolute HTTPS URL")
+    return value
+
+
+validate_public_mcp_url(MCP_PUBLIC_URL)
+if MCP_OAUTH_AUDIENCE != MCP_PUBLIC_URL:
+    raise RuntimeError("MCP_OAUTH_AUDIENCE must match MCP_PUBLIC_URL")
+MCP_TRANSPORT_HOST = urllib.parse.urlparse(MCP_PUBLIC_URL).hostname or "127.0.0.1"
 
 
 def log_event(level: int, event: str, **fields: Any) -> None:
@@ -155,8 +185,23 @@ if REQUIRE_TOOL_AUTH:
 
 oa = OpenAI(api_key=OPENAI_API_KEY, timeout=OPENAI_TIMEOUT_SECONDS, max_retries=OPENAI_MAX_RETRIES)
 sb = create_client(SUPABASE_URL, SUPABASE_SERVICE_KEY)
-mcp = FastMCP("civil-engineering-mcp")
+mcp = FastMCP("civil-engineering-mcp", host=MCP_TRANSPORT_HOST)
+mcp_v2 = FastMCP(
+    "civilmcp-research",
+    instructions=(
+        "Discover Thai civil-engineering research, retrieve exact-page evidence, compare papers, "
+        "and manage the authenticated user's private research library. Metadata-only records are "
+        "never citable CivilMCP evidence."
+    ),
+    host=MCP_TRANSPORT_HOST,
+    json_response=True,
+    stateless_http=True,
+)
 MCP_CALLER_CONTEXT: ContextVar[str] = ContextVar("civilmcp_caller", default="")
+MCP_PERMISSION_CONTEXT: ContextVar[frozenset[str]] = ContextVar(
+    "civilmcp_permissions",
+    default=frozenset(),
+)
 
 VALID_DISCIPLINES = {
     "",
@@ -282,6 +327,70 @@ TOOL_DEFINITIONS: dict[str, dict[str, Any]] = {
     },
 }
 
+PUBLIC_V2_TOOL_DEFINITIONS: dict[str, dict[str, Any]] = {
+    "discover_research": {
+        "description": (
+            "Discover and rank Thai page-cited evidence, Thai journal metadata, and optional "
+            "OpenAlex metadata for a research question. Every result declares whether it is citable."
+        ),
+        "annotations": READ_ONLY_ANNOTATIONS,
+    },
+    "get_paper": {
+        "description": (
+            "Read an indexed CivilMCP paper or an authenticated private PDF with bounded page text, "
+            "outline metadata, and explicit provenance."
+        ),
+        "annotations": READ_ONLY_ANNOTATIONS,
+    },
+    "query_papers": {
+        "description": (
+            "Answer multiple evidence-retrieval queries across selected indexed or private papers and "
+            "return citation-ready page packets without synthesizing unsupported claims."
+        ),
+        "annotations": READ_ONLY_ANNOTATIONS,
+    },
+    "compare_papers": {
+        "description": (
+            "Build a deterministic cross-paper evidence matrix for methods, findings, limitations, "
+            "and Thai applicability from exact-page CivilMCP evidence."
+        ),
+        "annotations": READ_ONLY_ANNOTATIONS,
+    },
+    "map_citation_network": TOOL_DEFINITIONS["map_citation_network"],
+    "get_evidence_snapshot": TOOL_DEFINITIONS["get_evidence_snapshot"],
+    "list_library": {
+        "description": "List the authenticated user's folders and saved CivilMCP papers.",
+        "annotations": READ_ONLY_ANNOTATIONS,
+    },
+    "create_library_folder": {
+        "description": "Create an owner-scoped library folder, optionally nested under another folder.",
+        "annotations": WRITE_ANNOTATIONS,
+    },
+    "rename_library_folder": {
+        "description": "Rename an owner-scoped custom library folder.",
+        "annotations": WRITE_ANNOTATIONS,
+    },
+    "delete_library_folder": {
+        "description": "Delete a library folder while keeping its papers in the user's library.",
+        "annotations": DELETE_ANNOTATIONS,
+    },
+    "save_papers": {
+        "description": "Save up to 50 indexed CivilMCP papers, optionally into a library folder.",
+        "annotations": WRITE_ANNOTATIONS,
+    },
+    "move_papers": {
+        "description": "Move up to 50 saved papers between owner-scoped library folders.",
+        "annotations": WRITE_ANNOTATIONS,
+    },
+    "remove_papers": {
+        "description": (
+            "Remove up to 50 papers from one folder, or remove them from the library when folder_id is omitted."
+        ),
+        "annotations": DELETE_ANNOTATIONS,
+    },
+    "list_private_sources": TOOL_DEFINITIONS["list_private_sources"],
+}
+
 
 class ToolCallError(Exception):
     def __init__(self, message: str, status_code: int, error_code: str) -> None:
@@ -298,6 +407,12 @@ class InputValidationError(ToolCallError):
 class UnauthorizedToolCall(ToolCallError):
     def __init__(self, message: str) -> None:
         super().__init__(message, status_code=401, error_code="unauthorized")
+
+
+class InsufficientPermissionToolCall(ToolCallError):
+    def __init__(self, message: str, required: str) -> None:
+        super().__init__(message, status_code=403, error_code="insufficient_scope")
+        self.required = required
 
 
 class RateLimitedToolCall(ToolCallError):
@@ -558,9 +673,71 @@ def citation_for_result(result: dict[str, Any]) -> str:
     )
 
 
+def _set_mcp_principal(caller: str, permissions: set[str] | frozenset[str]) -> str:
+    MCP_CALLER_CONTEXT.set(caller)
+    MCP_PERMISSION_CONTEXT.set(frozenset(permissions))
+    return caller
+
+
+def _jwt_payload(token: str) -> dict[str, Any]:
+    parts = token.split(".")
+    if len(parts) != 3:
+        raise UnauthorizedToolCall("Invalid OAuth access token")
+    try:
+        padded = parts[1] + "=" * (-len(parts[1]) % 4)
+        payload = json.loads(base64.urlsafe_b64decode(padded).decode("utf-8"))
+    except (ValueError, UnicodeDecodeError, json.JSONDecodeError) as exc:
+        raise UnauthorizedToolCall("Invalid OAuth access token") from exc
+    if not isinstance(payload, dict):
+        raise UnauthorizedToolCall("Invalid OAuth access token")
+    return payload
+
+
+def _validate_supabase_oauth_token(token: str) -> tuple[str, set[str]]:
+    if not MCP_OAUTH_ENABLED:
+        raise UnauthorizedToolCall("OAuth access is not enabled; use a CivilMCP personal API key")
+    payload = _jwt_payload(token)
+    expected_issuer = f"{SUPABASE_URL.rstrip('/')}/auth/v1"
+    audience = payload.get("aud")
+    audiences = {str(value) for value in audience} if isinstance(audience, list) else {str(audience or "")}
+    if (
+        payload.get("iss") != expected_issuer
+        or MCP_OAUTH_AUDIENCE not in audiences
+        or payload.get("civilmcp_mcp") is not True
+        or not str(payload.get("client_id") or "").strip()
+    ):
+        raise UnauthorizedToolCall("OAuth token is not issued for CivilMCP MCP v2")
+    try:
+        expiry = int(payload.get("exp") or 0)
+    except (TypeError, ValueError) as exc:
+        raise UnauthorizedToolCall("Invalid OAuth access token") from exc
+    if expiry <= int(time.time()):
+        raise UnauthorizedToolCall("OAuth access token has expired")
+
+    request = urllib.request.Request(
+        f"{expected_issuer}/user",
+        headers={"Authorization": f"Bearer {token}", "apikey": SUPABASE_SERVICE_KEY},
+    )
+    try:
+        with urllib.request.urlopen(request, timeout=8) as response:  # noqa: S310
+            verified = json.loads(response.read(200_000).decode("utf-8"))
+    except urllib.error.HTTPError as exc:
+        if exc.code in {401, 403}:
+            raise UnauthorizedToolCall("Invalid or revoked OAuth access token") from exc
+        raise UpstreamToolCallError("OAuth verification is temporarily unavailable") from exc
+    except (urllib.error.URLError, TimeoutError, json.JSONDecodeError) as exc:
+        raise UpstreamToolCallError("OAuth verification is temporarily unavailable") from exc
+    owner_id = str(verified.get("id") or verified.get("sub") or "").strip() if isinstance(verified, dict) else ""
+    if not re.fullmatch(r"[0-9a-fA-F-]{36}", owner_id) or owner_id != str(payload.get("sub") or ""):
+        raise UnauthorizedToolCall("OAuth token subject could not be verified")
+    raw_permissions = payload.get("civilmcp_permissions")
+    permissions = {str(value) for value in raw_permissions if isinstance(value, str)} if isinstance(raw_permissions, list) else set()
+    return owner_id, permissions
+
+
 def authenticate_mcp_request(request: Request, surface: str = "mcp") -> str:
     if not REQUIRE_TOOL_AUTH:
-        return "anonymous"
+        return _set_mcp_principal("anonymous", {"evidence:read"})
 
     auth = request.headers.get("authorization", "")
     bearer = auth[7:].strip() if auth.lower().startswith("bearer ") else ""
@@ -575,10 +752,10 @@ def authenticate_mcp_request(request: Request, surface: str = "mcp") -> str:
             else:
                 matches = hmac.compare_digest(provided, configured)
             if matches:
-                return caller
+                return _set_mcp_principal(caller, {"evidence:read"})
         legacy = MCP_SERVER_API_KEY.strip()
         if legacy and legacy.lower() not in PLACEHOLDER_MCP_KEYS and hmac.compare_digest(provided, legacy):
-            return "legacy"
+            return _set_mcp_principal("legacy", {"evidence:read"})
         if provided.startswith("cvmcp_"):
             try:
                 rows = (
@@ -595,9 +772,15 @@ def authenticate_mcp_request(request: Request, surface: str = "mcp") -> str:
                     sb.table("civil_mcp_access_keys").update(
                         {"last_used_at": datetime.now(timezone.utc).isoformat()}
                     ).eq("key_id", rows[0]["key_id"]).execute()
-                    return f"user:{rows[0]['owner_id']}"
+                    return _set_mcp_principal(
+                        f"user:{rows[0]['owner_id']}",
+                        {"evidence:read", "private:read", "library:read", "library:write"},
+                    )
             except Exception as exc:  # noqa: BLE001
                 log_event(logging.WARNING, "personal_mcp_key_lookup_failed", error=type(exc).__name__)
+        if bearer and bearer.count(".") == 2:
+            owner_id, permissions = _validate_supabase_oauth_token(bearer)
+            return _set_mcp_principal(f"user:{owner_id}", permissions)
     raise UnauthorizedToolCall(f"Missing or invalid API key for {surface}")
 
 
@@ -617,7 +800,28 @@ PUBLIC_ENDPOINTS: set[tuple[str, str]] = {
     ("GET", "/health"),
     ("GET", "/health/ready"),
     ("GET", "/tools/list"),
+    ("GET", "/.well-known/oauth-protected-resource"),
+    ("GET", "/.well-known/oauth-protected-resource/v2/mcp"),
 }
+
+
+def require_mcp_permission(permission: str) -> None:
+    if permission not in MCP_PERMISSION_CONTEXT.get():
+        raise InsufficientPermissionToolCall(
+            f"This tool requires {permission} permission",
+            required=permission,
+        )
+
+
+def oauth_resource_metadata_url() -> str:
+    parsed = urllib.parse.urlparse(MCP_PUBLIC_URL)
+    return f"{parsed.scheme}://{parsed.netloc}/.well-known/oauth-protected-resource/v2/mcp"
+
+
+def oauth_challenge(required: str = "openid email profile") -> str:
+    if not MCP_OAUTH_ENABLED:
+        return 'Bearer realm="CivilMCP", error="invalid_token"'
+    return f'Bearer resource_metadata="{oauth_resource_metadata_url()}", scope="{required}"'
 
 
 def consume_distributed_mcp_quota(caller: str, surface: str) -> tuple[bool, int]:
@@ -685,6 +889,14 @@ def tool_error_response(exc: ToolCallError, request_id: str) -> JSONResponse:
     if isinstance(exc, RateLimitedToolCall) and exc.retry_after_seconds is not None:
         detail["retry_after_seconds"] = round(exc.retry_after_seconds, 2)
         headers["Retry-After"] = str(max(1, int(exc.retry_after_seconds)))
+    if isinstance(exc, UnauthorizedToolCall):
+        headers["WWW-Authenticate"] = oauth_challenge()
+    if isinstance(exc, InsufficientPermissionToolCall):
+        headers["WWW-Authenticate"] = (
+            'Bearer error="insufficient_scope", scope="openid email profile", '
+            f'resource_metadata="{oauth_resource_metadata_url()}", '
+            f'error_description="CivilMCP permission {exc.required} is required"'
+        )
     return JSONResponse({"detail": detail}, status_code=exc.status_code, headers=headers)
 
 
@@ -2416,6 +2628,624 @@ def _fetch_paper_outline_impl(source: str) -> ToolExecutionResult:
     )
 
 
+def _bounded_string_list(value: Any, name: str, minimum: int, maximum: int, max_length: int = 320) -> list[str]:
+    if not isinstance(value, list):
+        raise InputValidationError(f"{name} must be a list")
+    cleaned = list(dict.fromkeys(
+        re.sub(r"[\x00-\x1f]+", " ", str(item)).strip()[:max_length]
+        for item in value
+        if str(item).strip()
+    ))
+    if not minimum <= len(cleaned) <= maximum:
+        raise InputValidationError(f"{name} must contain between {minimum} and {maximum} values")
+    return cleaned
+
+
+def _discover_research_v2_impl(
+    question: str,
+    keywords: Any = None,
+    difficulty: int = 5,
+    discipline: str = "",
+    collection: str = "",
+    include_global: bool = True,
+) -> ToolExecutionResult:
+    require_mcp_permission("evidence:read")
+    cleaned_question = re.sub(r"[\x00-\x1f]+", " ", question).strip()[:500]
+    if len(cleaned_question) < 3:
+        raise InputValidationError("question must contain at least 3 characters")
+    clean_keywords = _bounded_string_list(keywords or [], "keywords", 0, 6, 80)
+    safe_difficulty = max(1, min(int(difficulty), 10))
+    query = " ".join([cleaned_question, *clean_keywords]).strip()
+    result_limit = max(5, min(15, safe_difficulty + 4))
+
+    evidence = _search_civil_knowledge_impl(
+        query=query,
+        discipline=discipline,
+        collection=collection,
+        max_results=min(result_limit, CONTEXT_MAX_CHUNKS),
+    )
+    grouped: dict[str, dict[str, Any]] = {}
+    for packet in evidence.structured_content.get("results", []):
+        if not isinstance(packet, dict):
+            continue
+        source = str(packet.get("source") or "").strip()
+        if not source:
+            continue
+        paper = grouped.setdefault(source, {
+            "kind": "page_cited_evidence",
+            "source": source,
+            "paper_code": packet.get("paper_code"),
+            "collection": packet.get("collection"),
+            "discipline": packet.get("discipline"),
+            "citable": True,
+            "evidence_status": "indexed",
+            "evidence": [],
+            "score": packet.get("similarity"),
+        })
+        if len(paper["evidence"]) < 3:
+            paper["evidence"].append({
+                "evidence_id": packet.get("id"),
+                "section_title": packet.get("section_title"),
+                "page_start": packet.get("page_start"),
+                "page_end": packet.get("page_end"),
+                "excerpt": re.sub(r"\s+", " ", str(packet.get("content") or "")).strip()[:1200],
+            })
+
+    catalog = _search_source_catalog_impl(
+        query=query,
+        discipline=discipline,
+        max_results=result_limit,
+    )
+    catalog_results = [
+        {"kind": "thai_metadata", **row}
+        for row in catalog.structured_content.get("results", [])
+        if isinstance(row, dict) and not row.get("citable")
+    ][:result_limit]
+
+    global_result: dict[str, Any] = {
+        "status": "disabled",
+        "search_url": _openalex_search_url(query),
+        "results": [],
+        "citable": False,
+    }
+    if include_global:
+        try:
+            global_tool = _search_global_research_impl(query=query, max_results=min(6, result_limit))
+            global_result = dict(global_tool.structured_content)
+            global_result["results"] = [
+                {"kind": "global_metadata", **row}
+                for row in global_result.get("results", [])
+                if isinstance(row, dict)
+            ]
+        except RateLimitedToolCall:
+            global_result.update({"status": "rate_limited"})
+        except UpstreamToolCallError:
+            global_result.update({"status": "unavailable"})
+
+    evidence_papers = list(grouped.values())[:result_limit]
+    content_lines = [
+        f"- [citable · {paper.get('collection')}] {paper['source']} · {len(paper['evidence'])} exact-page packets"
+        for paper in evidence_papers
+    ]
+    content_lines.extend(
+        f"- [metadata only · {row.get('provider')}] {row.get('title_en') or row.get('title_local') or row.get('provider_record_id')}"
+        for row in catalog_results[:6]
+    )
+    return ToolExecutionResult(
+        tool="discover_research",
+        structured_content={
+            "question": cleaned_question,
+            "keywords": clean_keywords,
+            "difficulty": safe_difficulty,
+            "trust_boundary": {
+                "page_cited_evidence": "May support claims with the returned exact pages.",
+                "thai_metadata": "Discovery only; do not cite as CivilMCP evidence.",
+                "global_metadata": "OpenAlex discovery only; do not cite as CivilMCP evidence.",
+            },
+            "evidence": evidence_papers,
+            "thai_metadata": catalog_results,
+            "global": global_result,
+            "counts": {
+                "evidence_papers": len(evidence_papers),
+                "thai_metadata": len(catalog_results),
+                "global_metadata": len(global_result.get("results", [])),
+            },
+            "retrieval_mode": evidence.structured_content.get("retrieval_mode", "semantic"),
+            "degraded": bool(evidence.structured_content.get("degraded")),
+        },
+        content_text="\n".join(content_lines) or "No matching research was found.",
+        meta={
+            "evidence_papers": len(evidence_papers),
+            "thai_metadata": len(catalog_results),
+            "global_status": global_result.get("status"),
+        },
+    )
+
+
+def _get_paper_v2_impl(source: str, max_pages: int = 8) -> ToolExecutionResult:
+    require_mcp_permission("evidence:read")
+    cleaned = source.strip()[:320]
+    if not cleaned:
+        raise InputValidationError("source must not be empty")
+    safe_pages = max(1, min(int(max_pages), 20))
+    if cleaned.startswith("private:"):
+        require_mcp_permission("private:read")
+        private = _fetch_private_source_pages_impl(source=cleaned, start_page=1, max_pages=min(safe_pages, 10))
+        private.tool = "get_paper"
+        private.structured_content.update({"citable": True, "shareable": False, "provenance": "account_private_pdf"})
+        return private
+
+    paper = _fetch_civil_paper_impl(
+        source=cleaned,
+        include_sections=True,
+        include_chunks=True,
+        max_sections=80,
+        max_chunks=min(80, safe_pages * 4),
+    )
+    paper.tool = "get_paper"
+    paper.structured_content.update({
+        "citable": bool(paper.structured_content.get("found")),
+        "shareable": bool(paper.structured_content.get("found")),
+        "provenance": "civilmcp_page_linked_evidence",
+    })
+    return paper
+
+
+def _private_query_packets(source: str, queries: list[str], max_pages: int = 6) -> list[dict[str, Any]]:
+    require_mcp_permission("private:read")
+    owner_id = _personal_owner_id()
+    try:
+        rows = (
+            sb.table("civil_private_library_items")
+            .select("source,title,page_count,pages")
+            .eq("owner_id", owner_id)
+            .eq("source", source)
+            .limit(1)
+            .execute()
+            .data
+            or []
+        )
+    except Exception as exc:  # noqa: BLE001
+        raise UpstreamToolCallError("Private source is temporarily unavailable") from exc
+    if not rows:
+        return []
+    terms = {
+        term.lower()
+        for query in queries
+        for term in re.findall(r"[\w\u0E00-\u0E7F-]{2,}", query, flags=re.UNICODE)
+    }
+    ranked: list[tuple[int, int, str]] = []
+    for page in rows[0].get("pages") or []:
+        if not isinstance(page, dict) or not str(page.get("page", "")).isdigit():
+            continue
+        text = re.sub(r"\s+", " ", str(page.get("text") or "")).strip()
+        lowered = text.lower()
+        score = sum(lowered.count(term) for term in terms)
+        if text and score:
+            ranked.append((score, int(page["page"]), text))
+    ranked.sort(key=lambda item: (-item[0], item[1]))
+    return [
+        {
+            "evidence_id": f"{source}:page:{page}",
+            "source": source,
+            "page_start": page,
+            "page_end": page,
+            "excerpt": text[:5000],
+            "citable": True,
+            "private": True,
+            "shareable": False,
+            "lexical_score": score,
+        }
+        for score, page, text in ranked[:max_pages]
+    ]
+
+
+def _query_papers_v2_impl(sources: Any, queries: Any, max_evidence: int = 20) -> ToolExecutionResult:
+    require_mcp_permission("evidence:read")
+    clean_sources = _bounded_string_list(sources, "sources", 1, 10)
+    clean_queries = _bounded_string_list(queries, "queries", 1, 6, 240)
+    safe_max = max(1, min(int(max_evidence), 30))
+    public_sources = [source for source in clean_sources if not source.startswith("private:")]
+    private_sources = [source for source in clean_sources if source.startswith("private:")]
+    packets: list[dict[str, Any]] = []
+    unmatched = set(public_sources)
+
+    if public_sources:
+        try:
+            rows = (
+                sb.table("civil_documents_v2")
+                .select("id,source,source_pdf,collection,paper_code,discipline")
+                .in_("source", public_sources)
+                .execute()
+                .data
+                or []
+            )
+            missing_aliases = [source for source in public_sources if source not in {row.get("source") for row in rows}]
+            if missing_aliases:
+                rows.extend(
+                    sb.table("civil_documents_v2")
+                    .select("id,source,source_pdf,collection,paper_code,discipline")
+                    .in_("source_pdf", missing_aliases)
+                    .execute()
+                    .data
+                    or []
+                )
+        except Exception as exc:  # noqa: BLE001
+            raise UpstreamToolCallError("Selected papers could not be resolved") from exc
+        document_ids = list(dict.fromkeys(str(row["id"]) for row in rows if row.get("id")))
+        for row in rows:
+            unmatched.discard(str(row.get("source") or ""))
+            unmatched.discard(str(row.get("source_pdf") or ""))
+        if document_ids:
+            result = _search_civil_chunks_impl(
+                query="; ".join(clean_queries),
+                document_ids=document_ids,
+                max_results=safe_max,
+            )
+            for packet in result.structured_content.get("results", []):
+                if isinstance(packet, dict):
+                    packets.append({
+                        "evidence_id": packet.get("id"),
+                        "source": packet.get("source"),
+                        "paper_code": packet.get("paper_code"),
+                        "collection": packet.get("collection"),
+                        "discipline": packet.get("discipline"),
+                        "section_title": packet.get("section_title"),
+                        "page_start": packet.get("page_start"),
+                        "page_end": packet.get("page_end"),
+                        "excerpt": re.sub(r"\s+", " ", str(packet.get("content") or "")).strip()[:5000],
+                        "score": packet.get("similarity"),
+                        "citable": True,
+                        "private": False,
+                        "shareable": True,
+                    })
+
+    for source in private_sources:
+        private_packets = _private_query_packets(source, clean_queries, max_pages=min(6, safe_max))
+        if not private_packets:
+            unmatched.add(source)
+        packets.extend(private_packets)
+
+    packets = packets[:safe_max]
+    lines = [
+        f"[E{index}] {packet['source']} · p.{packet['page_start']}{'' if packet['page_start'] == packet['page_end'] else '-' + str(packet['page_end'])}\n{packet['excerpt']}"
+        for index, packet in enumerate(packets, start=1)
+    ]
+    return ToolExecutionResult(
+        tool="query_papers",
+        structured_content={
+            "sources": clean_sources,
+            "queries": clean_queries,
+            "evidence_count": len(packets),
+            "evidence": packets,
+            "unmatched_sources": sorted(unmatched),
+            "citation_policy": "Use only returned page packets for claims. Private packets must not be shared publicly.",
+        },
+        content_text="\n\n".join(lines) if lines else "No page-linked evidence matched the selected papers and queries.",
+        meta={"evidence_count": len(packets), "unmatched_count": len(unmatched)},
+    )
+
+
+def _compare_papers_v2_impl(sources: Any) -> ToolExecutionResult:
+    require_mcp_permission("evidence:read")
+    clean_sources = _bounded_string_list(sources, "sources", 2, 4)
+    comparisons: list[dict[str, Any]] = []
+    for source in clean_sources:
+        if source.startswith("private:"):
+            comparisons.append({"source": source, "found": False, "reason": "Private PDFs require query_papers."})
+            continue
+        snapshot = _get_evidence_snapshot_impl(source)
+        comparisons.append({
+            "source": source,
+            "found": bool(snapshot.structured_content.get("found")),
+            "document": snapshot.structured_content.get("document"),
+            "fields": snapshot.structured_content.get("fields", {}),
+            "field_coverage": snapshot.structured_content.get("field_coverage", 0),
+            "human_reviewed": False,
+        })
+    return ToolExecutionResult(
+        tool="compare_papers",
+        structured_content={
+            "sources": clean_sources,
+            "papers": comparisons,
+            "review_state": "machine_organized_needs_human_review",
+            "citable": True,
+        },
+        content_text=(
+            f"Built an exact-page evidence matrix for {sum(1 for row in comparisons if row['found'])}/{len(comparisons)} papers. "
+            "Review each excerpt before using a comparative claim."
+        ),
+        meta={"paper_count": len(comparisons), "human_reviewed": False},
+    )
+
+
+def _folder_id(value: str, field_name: str = "folder_id", allow_empty: bool = False) -> str | None:
+    cleaned = value.strip()
+    if not cleaned and allow_empty:
+        return None
+    try:
+        return str(uuid.UUID(cleaned))
+    except ValueError as exc:
+        raise InputValidationError(f"{field_name} must be a valid folder id") from exc
+
+
+def _owned_folder(owner_id: str, folder_id: str) -> dict[str, Any]:
+    try:
+        rows = (
+            sb.table("civil_mcp_library_folders")
+            .select("folder_id,owner_id,name,parent_folder_id,created_at,updated_at")
+            .eq("owner_id", owner_id)
+            .eq("folder_id", folder_id)
+            .limit(1)
+            .execute()
+            .data
+            or []
+        )
+    except Exception as exc:  # noqa: BLE001
+        raise UpstreamToolCallError("Library folders are temporarily unavailable") from exc
+    if not rows:
+        raise InputValidationError("folder was not found in this user's library")
+    return rows[0]
+
+
+def _list_library_v2_impl(max_results: int = 100) -> ToolExecutionResult:
+    require_mcp_permission("library:read")
+    owner_id = _personal_owner_id()
+    safe_limit = max(1, min(int(max_results), 100))
+    try:
+        folders = (
+            sb.table("civil_mcp_library_folders")
+            .select("folder_id,name,parent_folder_id,created_at,updated_at")
+            .eq("owner_id", owner_id)
+            .order("updated_at", desc=True)
+            .limit(100)
+            .execute()
+            .data
+            or []
+        )
+        items = (
+            sb.table("civil_paper_workspace_items")
+            .select("id,document_id,source,collection,paper_code,note,labels,folder_ids,created_at,updated_at")
+            .eq("owner_id", owner_id)
+            .order("updated_at", desc=True)
+            .limit(safe_limit)
+            .execute()
+            .data
+            or []
+        )
+    except Exception as exc:  # noqa: BLE001
+        raise UpstreamToolCallError("Private library is temporarily unavailable") from exc
+    counts = {
+        str(folder["folder_id"]): sum(str(folder["folder_id"]) in {str(value) for value in item.get("folder_ids") or []} for item in items)
+        for folder in folders
+    }
+    folder_rows = [{**folder, "paper_count": counts.get(str(folder["folder_id"]), 0)} for folder in folders]
+    return ToolExecutionResult(
+        tool="list_library",
+        structured_content={"folders": folder_rows, "items": items, "folder_count": len(folders), "item_count": len(items)},
+        content_text=f"Library contains {len(items)} papers in {len(folders)} folders.",
+        meta={"folder_count": len(folders), "item_count": len(items)},
+    )
+
+
+def _clean_folder_name(name: str) -> str:
+    cleaned = re.sub(r"[\x00-\x1f]+", " ", name).strip()[:100]
+    if not cleaned:
+        raise InputValidationError("folder name must not be empty")
+    return cleaned
+
+
+def _create_library_folder_v2_impl(name: str, parent_folder_id: str = "") -> ToolExecutionResult:
+    require_mcp_permission("library:write")
+    owner_id = _personal_owner_id()
+    parent_id = _folder_id(parent_folder_id, "parent_folder_id", allow_empty=True)
+    if parent_id:
+        _owned_folder(owner_id, parent_id)
+    row = {
+        "folder_id": str(uuid.uuid4()),
+        "owner_id": owner_id,
+        "name": _clean_folder_name(name),
+        "parent_folder_id": parent_id,
+    }
+    try:
+        created = sb.table("civil_mcp_library_folders").insert(row).execute().data or [row]
+    except Exception as exc:  # noqa: BLE001
+        if "duplicate" in str(exc).lower() or "23505" in str(exc):
+            raise InputValidationError("a folder with this name already exists here") from exc
+        raise UpstreamToolCallError("Library folder could not be created") from exc
+    return ToolExecutionResult(
+        tool="create_library_folder",
+        structured_content={"created": True, "folder": created[0]},
+        content_text=f"Created library folder {row['name']}.",
+        meta={"created": True},
+    )
+
+
+def _rename_library_folder_v2_impl(folder_id: str, name: str) -> ToolExecutionResult:
+    require_mcp_permission("library:write")
+    owner_id = _personal_owner_id()
+    clean_id = _folder_id(folder_id) or ""
+    _owned_folder(owner_id, clean_id)
+    try:
+        rows = (
+            sb.table("civil_mcp_library_folders")
+            .update({"name": _clean_folder_name(name), "updated_at": datetime.now(timezone.utc).isoformat()})
+            .eq("owner_id", owner_id)
+            .eq("folder_id", clean_id)
+            .execute()
+            .data
+            or []
+        )
+    except Exception as exc:  # noqa: BLE001
+        if "duplicate" in str(exc).lower() or "23505" in str(exc):
+            raise InputValidationError("a folder with this name already exists here") from exc
+        raise UpstreamToolCallError("Library folder could not be renamed") from exc
+    return ToolExecutionResult(
+        tool="rename_library_folder",
+        structured_content={"renamed": True, "folder": rows[0] if rows else {"folder_id": clean_id, "name": name}},
+        content_text=f"Renamed library folder to {_clean_folder_name(name)}.",
+        meta={"renamed": True},
+    )
+
+
+def _delete_library_folder_v2_impl(folder_id: str) -> ToolExecutionResult:
+    require_mcp_permission("library:write")
+    owner_id = _personal_owner_id()
+    clean_id = _folder_id(folder_id) or ""
+    folder = _owned_folder(owner_id, clean_id)
+    try:
+        response = sb.rpc("civil_mcp_delete_library_folder", {"p_owner_id": owner_id, "p_folder_id": clean_id}).execute()
+    except Exception as exc:  # noqa: BLE001
+        raise UpstreamToolCallError("Library folder could not be deleted") from exc
+    deleted = bool(response.data)
+    return ToolExecutionResult(
+        tool="delete_library_folder",
+        structured_content={"deleted": deleted, "folder_id": clean_id, "papers_preserved": True},
+        content_text=f"Deleted {folder.get('name')}; saved papers remain in the library.",
+        meta={"deleted": deleted},
+    )
+
+
+def _save_papers_v2_impl(sources: Any, folder_id: str = "", note: str = "") -> ToolExecutionResult:
+    require_mcp_permission("library:write")
+    owner_id = _personal_owner_id()
+    clean_sources = _bounded_string_list(sources, "sources", 1, 50)
+    clean_folder_id = _folder_id(folder_id, allow_empty=True)
+    if clean_folder_id:
+        _owned_folder(owner_id, clean_folder_id)
+    try:
+        documents = (
+            sb.table("civil_documents_v2")
+            .select("id,source,source_pdf,collection,paper_code")
+            .in_("source", clean_sources)
+            .execute()
+            .data
+            or []
+        )
+        aliases = [source for source in clean_sources if source not in {str(row.get("source")) for row in documents}]
+        if aliases:
+            documents.extend(
+                sb.table("civil_documents_v2")
+                .select("id,source,source_pdf,collection,paper_code")
+                .in_("source_pdf", aliases)
+                .execute()
+                .data
+                or []
+            )
+        documents = list({str(row.get("source")): row for row in documents if row.get("source")}.values())
+        canonical_sources = [str(row.get("source")) for row in documents if row.get("source")]
+        existing = (
+            sb.table("civil_paper_workspace_items")
+            .select("source,note,labels,folder_ids")
+            .eq("owner_id", owner_id)
+            .in_("source", canonical_sources)
+            .execute()
+            .data
+            or []
+        ) if canonical_sources else []
+        existing_by_source = {str(row.get("source")): row for row in existing}
+        clean_note = re.sub(r"[\x00-\x1f]+", " ", note).strip()[:2000]
+        rows = []
+        for document in documents:
+            source = str(document.get("source"))
+            previous = existing_by_source.get(source, {})
+            folders = [str(value) for value in previous.get("folder_ids") or []]
+            if clean_folder_id and clean_folder_id not in folders:
+                folders.append(clean_folder_id)
+            rows.append({
+                "id": hashlib.sha256(f"{owner_id}\n{source}".encode("utf-8")).hexdigest()[:32],
+                "owner_id": owner_id,
+                "document_id": document.get("id"),
+                "source": source,
+                "collection": document.get("collection") or "",
+                "paper_code": document.get("paper_code"),
+                "note": clean_note or previous.get("note") or "",
+                "labels": previous.get("labels") or [],
+                "folder_ids": folders,
+                "updated_at": datetime.now(timezone.utc).isoformat(),
+            })
+        if rows:
+            sb.table("civil_paper_workspace_items").upsert(rows, on_conflict="owner_id,source").execute()
+    except Exception as exc:  # noqa: BLE001
+        raise UpstreamToolCallError("Papers could not be saved") from exc
+    resolved = {str(row.get("source")) for row in documents} | {str(row.get("source_pdf")) for row in documents}
+    missing = [source for source in clean_sources if source not in resolved]
+    return ToolExecutionResult(
+        tool="save_papers",
+        structured_content={"saved_count": len(rows), "missing": missing, "folder_id": clean_folder_id, "papers": rows},
+        content_text=f"Saved {len(rows)} paper(s)." + (f" {len(missing)} source(s) were not indexed." if missing else ""),
+        meta={"saved_count": len(rows), "missing_count": len(missing)},
+    )
+
+
+def _move_papers_v2_impl(sources: Any, to_folder_id: str, from_folder_id: str = "") -> ToolExecutionResult:
+    require_mcp_permission("library:write")
+    owner_id = _personal_owner_id()
+    clean_sources = _bounded_string_list(sources, "sources", 1, 50)
+    to_id = _folder_id(to_folder_id, "to_folder_id") or ""
+    from_id = _folder_id(from_folder_id, "from_folder_id", allow_empty=True)
+    _owned_folder(owner_id, to_id)
+    if from_id:
+        _owned_folder(owner_id, from_id)
+    try:
+        response = sb.rpc("civil_mcp_move_library_papers", {
+            "p_owner_id": owner_id,
+            "p_sources": clean_sources,
+            "p_to_folder_id": to_id,
+            "p_from_folder_id": from_id,
+        }).execute()
+    except Exception as exc:  # noqa: BLE001
+        raise UpstreamToolCallError("Papers could not be moved") from exc
+    moved = int(response.data or 0)
+    return ToolExecutionResult(
+        tool="move_papers",
+        structured_content={"moved_count": moved, "to_folder_id": to_id, "from_folder_id": from_id},
+        content_text=f"Moved {moved} paper(s) to the destination folder.",
+        meta={"moved_count": moved},
+    )
+
+
+def _remove_papers_v2_impl(sources: Any, folder_id: str = "") -> ToolExecutionResult:
+    require_mcp_permission("library:write")
+    owner_id = _personal_owner_id()
+    clean_sources = _bounded_string_list(sources, "sources", 1, 50)
+    clean_folder_id = _folder_id(folder_id, allow_empty=True)
+    try:
+        if clean_folder_id:
+            _owned_folder(owner_id, clean_folder_id)
+            response = sb.rpc("civil_mcp_move_library_papers", {
+                "p_owner_id": owner_id,
+                "p_sources": clean_sources,
+                "p_to_folder_id": None,
+                "p_from_folder_id": clean_folder_id,
+            }).execute()
+            removed = int(response.data or 0)
+            removed_from = "folder"
+        else:
+            existing = (
+                sb.table("civil_paper_workspace_items")
+                .select("source")
+                .eq("owner_id", owner_id)
+                .in_("source", clean_sources)
+                .execute()
+                .data
+                or []
+            )
+            sb.table("civil_paper_workspace_items").delete().eq("owner_id", owner_id).in_("source", clean_sources).execute()
+            removed = len(existing)
+            removed_from = "library"
+    except ToolCallError:
+        raise
+    except Exception as exc:  # noqa: BLE001
+        raise UpstreamToolCallError("Papers could not be removed") from exc
+    return ToolExecutionResult(
+        tool="remove_papers",
+        structured_content={"removed_count": removed, "removed_from": removed_from, "folder_id": clean_folder_id},
+        content_text=f"Removed {removed} paper(s) from the {removed_from}.",
+        meta={"removed_count": removed, "removed_from": removed_from},
+    )
+
+
 def _dispatch_tool_call(name: str, arguments: dict[str, Any]) -> ToolExecutionResult:
     if name == "search_civil_knowledge":
         return _search_civil_knowledge_impl(
@@ -2512,6 +3342,78 @@ def _dispatch_tool_call(name: str, arguments: dict[str, Any]) -> ToolExecutionRe
     raise InputValidationError(f"Unknown tool: {name}")
 
 
+def _dispatch_public_v2_tool(name: str, arguments: dict[str, Any]) -> ToolExecutionResult:
+    if name == "discover_research":
+        return _discover_research_v2_impl(
+            question=str(arguments.get("question", "")),
+            keywords=arguments.get("keywords"),
+            difficulty=int(arguments.get("difficulty", 5)),
+            discipline=str(arguments.get("discipline", "")),
+            collection=str(arguments.get("collection", "")),
+            include_global=normalize_bool(arguments.get("include_global"), default=True),
+        )
+    if name == "get_paper":
+        return _get_paper_v2_impl(
+            source=str(arguments.get("source", "")),
+            max_pages=int(arguments.get("max_pages", 8)),
+        )
+    if name == "query_papers":
+        return _query_papers_v2_impl(
+            sources=arguments.get("sources"),
+            queries=arguments.get("queries"),
+            max_evidence=int(arguments.get("max_evidence", 20)),
+        )
+    if name == "compare_papers":
+        return _compare_papers_v2_impl(arguments.get("sources"))
+    if name == "map_citation_network":
+        require_mcp_permission("evidence:read")
+        result = _map_citation_network_impl(query=str(arguments.get("query", "")))
+        result.tool = name
+        return result
+    if name == "get_evidence_snapshot":
+        require_mcp_permission("evidence:read")
+        result = _get_evidence_snapshot_impl(source=str(arguments.get("source", "")))
+        result.tool = name
+        return result
+    if name == "list_library":
+        return _list_library_v2_impl(max_results=int(arguments.get("max_results", 100)))
+    if name == "create_library_folder":
+        return _create_library_folder_v2_impl(
+            name=str(arguments.get("name", "")),
+            parent_folder_id=str(arguments.get("parent_folder_id", "")),
+        )
+    if name == "rename_library_folder":
+        return _rename_library_folder_v2_impl(
+            folder_id=str(arguments.get("folder_id", "")),
+            name=str(arguments.get("name", "")),
+        )
+    if name == "delete_library_folder":
+        return _delete_library_folder_v2_impl(folder_id=str(arguments.get("folder_id", "")))
+    if name == "save_papers":
+        return _save_papers_v2_impl(
+            sources=arguments.get("sources"),
+            folder_id=str(arguments.get("folder_id", "")),
+            note=str(arguments.get("note", "")),
+        )
+    if name == "move_papers":
+        return _move_papers_v2_impl(
+            sources=arguments.get("sources"),
+            to_folder_id=str(arguments.get("to_folder_id", "")),
+            from_folder_id=str(arguments.get("from_folder_id", "")),
+        )
+    if name == "remove_papers":
+        return _remove_papers_v2_impl(
+            sources=arguments.get("sources"),
+            folder_id=str(arguments.get("folder_id", "")),
+        )
+    if name == "list_private_sources":
+        require_mcp_permission("private:read")
+        result = _list_private_sources_impl(max_results=int(arguments.get("max_results", 50)))
+        result.tool = name
+        return result
+    raise InputValidationError(f"Unknown public v2 tool: {name}")
+
+
 def _mcp_tool_decorator(annotations: dict[str, Any]):
     try:
         signature = inspect.signature(mcp.tool)
@@ -2520,6 +3422,21 @@ def _mcp_tool_decorator(annotations: dict[str, Any]):
     except Exception:  # noqa: BLE001
         pass
     return mcp.tool()
+
+
+def _mcp_v2_tool_decorator(name: str):
+    detail = PUBLIC_V2_TOOL_DEFINITIONS[name]
+    try:
+        signature = inspect.signature(mcp_v2.tool)
+        if "annotations" in signature.parameters:
+            return mcp_v2.tool(
+                name=name,
+                description=detail["description"],
+                annotations=detail["annotations"],
+            )
+    except Exception:  # noqa: BLE001
+        pass
+    return mcp_v2.tool(name=name, description=detail["description"])
 
 
 def _execute_mcp_decorated_tool(name: str, arguments: dict[str, Any]) -> dict[str, Any]:
@@ -2540,13 +3457,37 @@ def _execute_mcp_decorated_tool(name: str, arguments: dict[str, Any]) -> dict[st
     return result.to_payload(request_id="mcp-tool", latency_ms=latency_ms)
 
 
+def _execute_public_v2_tool(name: str, arguments: dict[str, Any]) -> CallToolResult:
+    started = time.perf_counter()
+    try:
+        result = _dispatch_public_v2_tool(name, arguments)
+    except ToolCallError as exc:
+        latency_ms = (time.perf_counter() - started) * 1000
+        METRICS.record_tool(name, latency_ms=latency_ms, ok=False, error_code=exc.error_code)
+        raise
+    except Exception:
+        latency_ms = (time.perf_counter() - started) * 1000
+        METRICS.record_tool(name, latency_ms=latency_ms, ok=False, error_code="internal_error")
+        raise
+
+    latency_ms = (time.perf_counter() - started) * 1000
+    METRICS.record_tool(name, latency_ms=latency_ms, ok=True)
+    meta = dict(result.meta)
+    meta.update({"tool": result.tool, "latency_ms": round(latency_ms, 2)})
+    return CallToolResult(
+        content=[TextContent(type="text", text=result.content_text)],
+        structuredContent=result.structured_content,
+        meta=meta,
+    )
+
+
 @_mcp_tool_decorator(TOOL_DEFINITIONS["search_civil_knowledge"]["annotations"])
 def search_civil_knowledge(
     query: str,
     discipline: str = "",
     max_results: int = 5,
     collection: str = "",
-) -> dict[str, Any]:
+) -> CallToolResult:
     return _execute_mcp_decorated_tool(
         "search_civil_knowledge",
         {"query": query, "discipline": discipline, "max_results": max_results, "collection": collection},
@@ -2720,12 +3661,118 @@ def fetch_private_source_pages(source: str, start_page: int = 1, max_pages: int 
     )
 
 
+@_mcp_v2_tool_decorator("discover_research")
+def discover_research(
+    question: str,
+    keywords: list[str] | None = None,
+    difficulty: int = 5,
+    discipline: str = "",
+    collection: str = "",
+    include_global: bool = True,
+) -> CallToolResult:
+    return _execute_public_v2_tool("discover_research", {
+        "question": question,
+        "keywords": keywords or [],
+        "difficulty": difficulty,
+        "discipline": discipline,
+        "collection": collection,
+        "include_global": include_global,
+    })
+
+
+@_mcp_v2_tool_decorator("get_paper")
+def get_paper(source: str, max_pages: int = 8) -> CallToolResult:
+    return _execute_public_v2_tool("get_paper", {"source": source, "max_pages": max_pages})
+
+
+@_mcp_v2_tool_decorator("query_papers")
+def query_papers(sources: list[str], queries: list[str], max_evidence: int = 20) -> CallToolResult:
+    return _execute_public_v2_tool(
+        "query_papers",
+        {"sources": sources, "queries": queries, "max_evidence": max_evidence},
+    )
+
+
+@_mcp_v2_tool_decorator("compare_papers")
+def compare_papers(sources: list[str]) -> CallToolResult:
+    return _execute_public_v2_tool("compare_papers", {"sources": sources})
+
+
+@_mcp_v2_tool_decorator("map_citation_network")
+def public_map_citation_network(query: str) -> CallToolResult:
+    return _execute_public_v2_tool("map_citation_network", {"query": query})
+
+
+@_mcp_v2_tool_decorator("get_evidence_snapshot")
+def public_get_evidence_snapshot(source: str) -> CallToolResult:
+    return _execute_public_v2_tool("get_evidence_snapshot", {"source": source})
+
+
+@_mcp_v2_tool_decorator("list_library")
+def list_library(max_results: int = 100) -> CallToolResult:
+    return _execute_public_v2_tool("list_library", {"max_results": max_results})
+
+
+@_mcp_v2_tool_decorator("create_library_folder")
+def create_library_folder(name: str, parent_folder_id: str = "") -> CallToolResult:
+    return _execute_public_v2_tool(
+        "create_library_folder",
+        {"name": name, "parent_folder_id": parent_folder_id},
+    )
+
+
+@_mcp_v2_tool_decorator("rename_library_folder")
+def rename_library_folder(folder_id: str, name: str) -> CallToolResult:
+    return _execute_public_v2_tool("rename_library_folder", {"folder_id": folder_id, "name": name})
+
+
+@_mcp_v2_tool_decorator("delete_library_folder")
+def delete_library_folder(folder_id: str) -> CallToolResult:
+    return _execute_public_v2_tool("delete_library_folder", {"folder_id": folder_id})
+
+
+@_mcp_v2_tool_decorator("save_papers")
+def save_papers(sources: list[str], folder_id: str = "", note: str = "") -> CallToolResult:
+    return _execute_public_v2_tool(
+        "save_papers",
+        {"sources": sources, "folder_id": folder_id, "note": note},
+    )
+
+
+@_mcp_v2_tool_decorator("move_papers")
+def move_papers(sources: list[str], to_folder_id: str, from_folder_id: str = "") -> CallToolResult:
+    return _execute_public_v2_tool(
+        "move_papers",
+        {"sources": sources, "to_folder_id": to_folder_id, "from_folder_id": from_folder_id},
+    )
+
+
+@_mcp_v2_tool_decorator("remove_papers")
+def remove_papers(sources: list[str], folder_id: str = "") -> CallToolResult:
+    return _execute_public_v2_tool("remove_papers", {"sources": sources, "folder_id": folder_id})
+
+
+@_mcp_v2_tool_decorator("list_private_sources")
+def public_list_private_sources(max_results: int = 50) -> CallToolResult:
+    return _execute_public_v2_tool("list_private_sources", {"max_results": max_results})
+
+
 class ToolCallPayload(BaseModel):
     name: str
     arguments: dict[str, Any] = Field(default_factory=dict)
 
 
-app = FastAPI(title="Civil Engineering MCP Server")
+@asynccontextmanager
+async def app_lifespan(_: FastAPI):
+    async with AsyncExitStack() as stack:
+        for server in (mcp, mcp_v2):
+            manager = getattr(server, "session_manager", None)
+            if manager is not None:
+                await stack.enter_async_context(manager.run())
+        yield
+
+
+app = FastAPI(title="Civil Engineering MCP Server", lifespan=app_lifespan)
 
 
 @app.middleware("http")
@@ -2812,6 +3859,21 @@ async def health() -> JSONResponse:
     return JSONResponse({"status": "ok"})
 
 
+@app.get("/.well-known/oauth-protected-resource")
+@app.get("/.well-known/oauth-protected-resource/v2/mcp")
+async def oauth_protected_resource() -> JSONResponse:
+    if not MCP_OAUTH_ENABLED:
+        return JSONResponse({"error": "oauth_not_enabled"}, status_code=404)
+    return JSONResponse({
+        "resource": MCP_PUBLIC_URL,
+        "authorization_servers": [f"{SUPABASE_URL.rstrip('/')}/auth/v1"],
+        "scopes_supported": ["openid", "email", "profile"],
+        "bearer_methods_supported": ["header"],
+        "resource_name": "CivilMCP Research API",
+        "resource_documentation": MCP_DOCUMENTATION_URL,
+    })
+
+
 @app.get("/health/ready")
 async def readiness() -> JSONResponse:
     def check_dependencies() -> dict[str, Any]:
@@ -2839,6 +3901,8 @@ async def readiness() -> JSONResponse:
                     "circuit": embedding_circuit_status(),
                 },
                 "auth_clients": len(MCP_CLIENT_KEYS) + (1 if MCP_SERVER_API_KEY.strip() else 0),
+                "oauth_enabled": MCP_OAUTH_ENABLED,
+                "public_mcp_v2": MCP_PUBLIC_URL,
             }
         )
     except Exception as exc:  # noqa: BLE001
@@ -2862,6 +3926,8 @@ async def root_info() -> JSONResponse:
                 "readiness": "/health/ready",
                 "tools_list": "/tools/list",
                 "tools_call": "/tools/call",
+                "public_mcp_v2": "/v2/mcp",
+                "oauth_resource_metadata": "/.well-known/oauth-protected-resource/v2/mcp",
             },
         }
     )
@@ -2952,6 +4018,10 @@ async def tools_call(payload: ToolCallPayload, request: Request) -> dict[str, An
         if isinstance(exc, RateLimitedToolCall) and exc.retry_after_seconds is not None:
             detail["retry_after_seconds"] = round(exc.retry_after_seconds, 2)
             headers["Retry-After"] = str(max(1, int(exc.retry_after_seconds)))
+        if isinstance(exc, UnauthorizedToolCall):
+            headers["WWW-Authenticate"] = oauth_challenge()
+        if isinstance(exc, InsufficientPermissionToolCall):
+            headers["WWW-Authenticate"] = oauth_challenge()
 
         raise HTTPException(
             status_code=exc.status_code,
@@ -2987,7 +4057,17 @@ async def tools_call(payload: ToolCallPayload, request: Request) -> dict[str, An
     return result.to_payload(request_id=request_id, latency_ms=latency_ms)
 
 
-# Mount MCP ASGI app for streamable MCP HTTP transport.
+# Mount the public high-level contract before the legacy root transport.
+if hasattr(mcp_v2, "streamable_http_app"):
+    app.mount("/v2", mcp_v2.streamable_http_app())
+elif hasattr(mcp_v2, "get_asgi_app"):
+    app.mount("/v2", mcp_v2.get_asgi_app())
+elif hasattr(mcp_v2, "asgi_app"):
+    app.mount("/v2", mcp_v2.asgi_app)
+else:
+    raise RuntimeError("Public MCP v2 requires a streamable HTTP compatible FastMCP SDK.")
+
+# Mount legacy MCP ASGI app for existing CivilMCP Web and CityMCP consumers.
 if hasattr(mcp, "streamable_http_app"):
     app.mount("/", mcp.streamable_http_app())
 elif hasattr(mcp, "get_asgi_app"):

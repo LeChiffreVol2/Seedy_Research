@@ -26,7 +26,8 @@ async function identityOrResponse(request: NextRequest) {
 }
 
 function endpoint() {
-  return (process.env.MCP_URL || process.env.NEXT_PUBLIC_MCP_URL || "").replace(/\/+$/, "");
+  const base = (process.env.MCP_URL || process.env.NEXT_PUBLIC_MCP_URL || "").replace(/\/+$/, "");
+  return base ? `${base}/v2/mcp` : "";
 }
 
 export async function GET(request: NextRequest) {

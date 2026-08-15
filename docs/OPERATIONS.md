@@ -149,10 +149,22 @@ privacy incident and follow the support escalation path.
 
 Apply `20260815100000_civil_activation_events.sql`,
 `20260815110000_civil_private_library_and_watches.sql`, and
-`20260815120000_civil_personal_mcp_access.sql` before deploying the matching
-web/MCP code. Verify all three tables exist through the release readiness probe.
+`20260815120000_civil_personal_mcp_access.sql`,
+`20260815130000_civil_mcp_v2_library.sql`, and
+`20260815140000_civil_mcp_oauth_audience_hook.sql` before deploying the matching
+web/MCP code. Verify the tables and folder RPCs through the release readiness probe.
 Personal MCP tokens are shown once; revoke a suspected token from Account and
 confirm its hash row has `revoked_at` before rotating client configuration.
+
+For public MCP OAuth, set the Supabase OAuth authorization path to
+`/oauth/consent`, enable dynamic client registration, and select
+`public.civil_mcp_access_token_hook` as the Custom Access Token hook. Then set
+`MCP_PUBLIC_URL` and `MCP_OAUTH_AUDIENCE` to the exact production
+`https://civil-mcp-server.vercel.app/v2/mcp` resource and enable
+`MCP_OAUTH_ENABLED`. Verify protected-resource metadata, consent, token use, and
+grant revocation from Account before rollout. Roll back OAuth without disabling
+personal keys by setting `MCP_OAUTH_ENABLED=false`; revoke a compromised client
+or grant in Supabase and from the user's Account panel.
 
 Private PDF extraction is capped before persistence. Investigate unusual
 `private_library_import` quota volume, and treat any cross-owner read as a P0

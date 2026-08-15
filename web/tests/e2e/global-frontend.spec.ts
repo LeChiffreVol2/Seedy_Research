@@ -197,6 +197,25 @@ test("global discovery is explicit, metadata-only, and recoverable", async ({ pa
   expect(requestCount).toBe(1);
 });
 
+test("developer setup and OAuth consent stay clear on desktop and mobile", async ({ page }) => {
+  await page.setViewportSize({ width: 1280, height: 900 });
+  await page.goto("/developers");
+  await expect(page.getByRole("heading", { name: "Thai research evidence for any AI agent." })).toBeVisible();
+  await expect(page.getByText("https://civil-mcp-server.vercel.app/v2/mcp").first()).toBeVisible();
+  await expect(page.getByRole("heading", { name: "One endpoint, two secure paths." })).toBeVisible();
+  await expect(page.getByText("Evidence and metadata never blur together.")).toBeVisible();
+  await expectNoPageOverflow(page);
+  await expectNoInteractiveOverlap(page);
+
+  await page.goto("/oauth/consent");
+  await expect(page.getByText("This authorization request is invalid or has expired.")).toBeVisible();
+  await expect(page.getByRole("link", { name: "Return to API setup" })).toHaveAttribute("href", "/developers");
+
+  await page.setViewportSize({ width: 390, height: 844 });
+  await expectNoPageOverflow(page);
+  await expectNoInteractiveOverlap(page);
+});
+
 test("paper detail exposes library, citation export, global comparison, and related evidence", async ({ page }) => {
   await page.setViewportSize({ width: 1440, height: 1000 });
   await page.goto("/");

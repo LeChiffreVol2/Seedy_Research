@@ -2,7 +2,7 @@
 
 **Turn Thai civil-engineering research into a defensible literature review—with every supported claim linked to the exact page.** CivilMCP is a Public Research Preview for finding local work global indexes miss, comparing methods and findings, and exporting an auditable review pack.
 
-[Open the public preview](https://civil-mcp-web.vercel.app/) · [Product thesis](docs/PRODUCT_THESIS.md) · [Deep-tech roadmap](docs/THAI_DEEP_TECH_ROADMAP.md) · [Launch readiness](docs/LAUNCH_READINESS.md) · [Data sources and rights](DATA_SOURCES.md)
+[Open the public preview](https://civil-mcp-web.vercel.app/) · [Connect an AI agent](https://civil-mcp-web.vercel.app/developers) · [Product thesis](docs/PRODUCT_THESIS.md) · [Deep-tech roadmap](docs/THAI_DEEP_TECH_ROADMAP.md) · [Launch readiness](docs/LAUNCH_READINESS.md) · [Data sources and rights](DATA_SOURCES.md)
 
 > Research evidence, not professional engineering advice.
 
@@ -51,7 +51,7 @@ Explore remains the feed-first discovery surface: search, filter, inspect a pape
 
 `Research Path` adds a different outcome: evidence-grounded learning. Each stage now has a checkpoint; learners mark a concept understood or needing review, and CivilMCP rebuilds the path around those explicit knowledge gaps while keeping the cited Thai evidence visible.
 
-Signed-in users can create revocable personal MCP keys from Account. The MCP surface exposes 19 bounded tools: Thai evidence search/read, metadata discovery, OpenAlex search/citation mapping, deterministic evidence snapshots, and owner-scoped library/private-source operations. Tokens are shown once and stored only as SHA-256 hashes.
+Signed-in users can create revocable personal MCP keys from Account or authorize an OAuth-capable client. The public stateless endpoint at `https://civil-mcp-server.vercel.app/v2/mcp` exposes 14 high-level tools for discovery, exact-page reading, selected-paper queries, comparison, citation mapping, private PDFs, and folder-based library workflows. The existing 19-tool low-level contract remains available for CivilMCP web and CityMCP compatibility. Personal tokens are shown once and stored only as SHA-256 hashes.
 
 ## Model behavior
 
@@ -88,7 +88,7 @@ question
 ```
 
 - `web/`: Next.js research feed, chat, Research Workspace Pro, paper detail, translation, history, and feedback.
-- `mcp-server/`: FastAPI MCP service with 19 bounded tools: 17 read-only evidence/discovery tools plus explicit owner-scoped save/remove operations.
+- `mcp-server/`: FastAPI MCP service with a 14-tool public v2 contract plus the 19-tool compatibility contract used by existing first-party consumers.
 - `pipeline/`: provider registry, metadata harvesting, page-preserving PDF/OCR extraction, normalization, chunking, and indexing.
 - `supabase/`: shared schema and additive migration ledger.
 - `harness/` and `eval/`: CivilMCP release, security, retrieval, citation, and memory gates.
@@ -116,6 +116,15 @@ Required server-only environment variables:
 - `SUPABASE_ANON_KEY`
 - `MCP_SERVER_API_KEY`
 - `GUEST_SESSION_HMAC_KEY`
+
+The OAuth consent page additionally requires browser-safe
+`NEXT_PUBLIC_SUPABASE_URL` and `NEXT_PUBLIC_SUPABASE_ANON_KEY`. They must point
+to the same Supabase project and the latter must be an anon/publishable key,
+never the service-role key.
+
+Public MCP v2 also uses `MCP_PUBLIC_URL`, `MCP_OAUTH_AUDIENCE`,
+`MCP_DOCUMENTATION_URL`, and `MCP_OAUTH_ENABLED`. Keep OAuth disabled until the
+Supabase OAuth server and `civil_mcp_access_token_hook` are enabled together.
 
 `DEEPSEEK_API_KEY` powers the default chat, router, translation, and Workspace path. `OPENAI_API_KEY` remains server-only for Pro GPT models and embedding jobs. `OPENALEX_API_KEY` is optional and server-only; without it, Explore and Research Path keep a safe link-only bridge to OpenAlex search. Never expose provider, service-role, or MCP keys through `NEXT_PUBLIC_*` variables.
 

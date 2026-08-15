@@ -30,9 +30,10 @@ The launch promise is narrow and testable:
   checks with metadata/evidence separation.
 - Public paper records: indexable metadata, canonical URL, JSON-LD, page ranges,
   and rights-safe outline without raw full text.
-- MCP: 19 authenticated tools with explicit read/write/destructive annotations
-  and revocable owner-scoped personal keys. Metadata-only records are never
-  returned as citable evidence.
+- MCP: 14 public task-level tools over stateless Streamable HTTP, plus the
+  19-tool first-party compatibility contract. OAuth and revocable owner-scoped
+  personal keys share the same permission and distributed-quota boundary.
+  Metadata-only records are never returned as citable evidence.
 - Trust and support: public Privacy, Terms, Support/takedown, self-service
   account deletion, and first-party activation events without raw queries.
 
@@ -56,8 +57,9 @@ All of the following must pass against the same source state:
 10. every cited-answer fixture resolves its evidence IDs, opens the targeted
     packet/page, and exports a provenance audit without claiming scientific
     validation;
-11. private-library ownership, Living Review ownership, and personal MCP key
-    create/use/revoke/delete pass authenticated isolation tests;
+11. private-library ownership, Living Review ownership, personal MCP key
+    create/use/revoke/delete, OAuth grant revoke, and public MCP v2
+    initialize/list/call pass authenticated isolation tests;
 12. `npm audit --omit=dev` has no high or critical production advisory, and any
     deferred low advisory has an owner and migration plan.
 
@@ -84,8 +86,6 @@ coordination and must not be represented as shipped:
 - author–institution graph and researcher social network;
 - weekly email digest for Living Reviews;
 - real-time collaboration;
-- standards-based OAuth 2.1 MCP authorization (personal revocable keys are the
-  current limited-rollout access path);
 - commercial full-text ingestion without provider-level rights review;
 - paid subscriptions while the deployment remains on Vercel Hobby.
 - unattended support SLA or legal-response automation; the preview queue is

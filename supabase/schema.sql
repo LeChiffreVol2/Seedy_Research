@@ -749,6 +749,7 @@ create table if not exists civil_paper_workspace_items (
   paper_code  text,
   note        text not null default '',
   labels      jsonb not null default '[]'::jsonb,
+  folder_ids  uuid[] not null default '{}'::uuid[],
   created_at  timestamptz not null default now(),
   updated_at  timestamptz not null default now(),
   unique(owner_id, source)
@@ -1160,14 +1161,97 @@ create table if not exists public.civil_mcp_access_keys (
 create index if not exists civil_mcp_access_keys_owner_created_idx
 on public.civil_mcp_access_keys (owner_id, created_at desc);
 
+create table if not exists public.civil_mcp_library_folders (
+  folder_id uuid primary key default gen_random_uuid(),
+  owner_id text not null references public.civil_chat_users(user_id) on delete cascade,
+  name text not null check (char_length(btrim(name)) between 1 and 100),
+  parent_folder_id uuid,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now(),
+  unique (owner_id, folder_id),
+  constraint civil_mcp_library_folders_owner_parent_fk
+    foreign key (owner_id, parent_folder_id)
+    references public.civil_mcp_library_folders(owner_id, folder_id)
+);
+
+create unique index if not exists civil_mcp_library_folders_owner_name_uq
+on public.civil_mcp_library_folders (owner_id, lower(name), coalesce(parent_folder_id, '00000000-0000-0000-0000-000000000000'::uuid));
+
+create or replace function public.civil_mcp_delete_library_folder(p_owner_id text, p_folder_id uuid)
+returns boolean language plpgsql security definer set search_path = public as $$
+declare v_deleted integer;
+begin
+  update public.civil_mcp_library_folders set parent_folder_id = null, updated_at = now()
+  where owner_id = p_owner_id and parent_folder_id = p_folder_id;
+  update public.civil_paper_workspace_items set folder_ids = array_remove(folder_ids, p_folder_id), updated_at = now()
+  where owner_id = p_owner_id and p_folder_id = any(folder_ids);
+  delete from public.civil_mcp_library_folders where owner_id = p_owner_id and folder_id = p_folder_id;
+  get diagnostics v_deleted = row_count;
+  return v_deleted = 1;
+end;
+$$;
+
+create or replace function public.civil_mcp_move_library_papers(
+  p_owner_id text, p_sources text[], p_to_folder_id uuid default null, p_from_folder_id uuid default null
+)
+returns integer language plpgsql security definer set search_path = public as $$
+declare v_updated integer;
+begin
+  if coalesce(array_length(p_sources, 1), 0) = 0 or array_length(p_sources, 1) > 50 then
+    raise exception 'p_sources must contain between 1 and 50 values';
+  end if;
+  if p_to_folder_id is not null and not exists (
+    select 1 from public.civil_mcp_library_folders where owner_id = p_owner_id and folder_id = p_to_folder_id
+  ) then raise exception 'destination folder not found'; end if;
+  if p_from_folder_id is not null and not exists (
+    select 1 from public.civil_mcp_library_folders where owner_id = p_owner_id and folder_id = p_from_folder_id
+  ) then raise exception 'source folder not found'; end if;
+  update public.civil_paper_workspace_items
+  set folder_ids = case
+        when p_to_folder_id is null then array_remove(folder_ids, p_from_folder_id)
+        when p_from_folder_id is null then array_append(array_remove(folder_ids, p_to_folder_id), p_to_folder_id)
+        else array_append(array_remove(array_remove(folder_ids, p_from_folder_id), p_to_folder_id), p_to_folder_id)
+      end,
+      updated_at = now()
+  where owner_id = p_owner_id and source = any(p_sources)
+    and (p_from_folder_id is null or p_from_folder_id = any(folder_ids));
+  get diagnostics v_updated = row_count;
+  return v_updated;
+end;
+$$;
+
+create or replace function public.civil_mcp_access_token_hook(event jsonb)
+returns jsonb language plpgsql stable as $$
+declare claims jsonb;
+begin
+  claims := event->'claims';
+  if nullif(claims->>'client_id', '') is not null then
+    claims := jsonb_set(claims, '{aud}', to_jsonb('https://civil-mcp-server.vercel.app/v2/mcp'::text));
+    claims := jsonb_set(claims, '{civilmcp_mcp}', 'true'::jsonb);
+    claims := jsonb_set(claims, '{civilmcp_permissions}', '["evidence:read","private:read","library:read","library:write"]'::jsonb);
+  end if;
+  return jsonb_set(event, '{claims}', claims);
+end;
+$$;
+
 alter table public.civil_private_library_items enable row level security;
 alter table public.civil_living_review_watches enable row level security;
 alter table public.civil_mcp_access_keys enable row level security;
+alter table public.civil_mcp_library_folders enable row level security;
 revoke all on table public.civil_private_library_items from public, anon, authenticated;
 revoke all on table public.civil_living_review_watches from public, anon, authenticated;
 revoke all on table public.civil_mcp_access_keys from public, anon, authenticated;
+revoke all on table public.civil_mcp_library_folders from public, anon, authenticated;
 grant all on table public.civil_private_library_items to service_role;
 grant all on table public.civil_living_review_watches to service_role;
 grant all on table public.civil_mcp_access_keys to service_role;
+grant all on table public.civil_mcp_library_folders to service_role;
+revoke all on function public.civil_mcp_delete_library_folder(text, uuid) from public, anon, authenticated;
+revoke all on function public.civil_mcp_move_library_papers(text, text[], uuid, uuid) from public, anon, authenticated;
+grant execute on function public.civil_mcp_delete_library_folder(text, uuid) to service_role;
+grant execute on function public.civil_mcp_move_library_papers(text, text[], uuid, uuid) to service_role;
+grant usage on schema public to supabase_auth_admin;
+grant execute on function public.civil_mcp_access_token_hook(jsonb) to supabase_auth_admin;
+revoke execute on function public.civil_mcp_access_token_hook(jsonb) from public, anon, authenticated;
 
 notify pgrst, 'reload schema';
