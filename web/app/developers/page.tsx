@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
-import { ArrowLeft, BookOpenCheck, Braces, Database, KeyRound, Network, ShieldCheck } from "lucide-react";
+import { ArrowLeft, BookOpenCheck, Braces, Database, Gauge, KeyRound, Network, ShieldCheck } from "lucide-react";
 
+import { MCP_API_SCALE_PREVIEW, MCP_FOUNDER_MONTHLY_UNITS, MCP_FREE_MONTHLY_UNITS, MCP_TOOL_UNIT_PRICING } from "@/lib/mcp-pricing";
 import styles from "./developers.module.css";
 
 export const metadata: Metadata = {
@@ -33,6 +34,20 @@ export default function DevelopersPage() {
         <article><Database size={18} aria-hidden /><strong>Thai-first corpus</strong><span>NCCE and student research plus rights-reviewed Thai journal discovery.</span></article>
         <article><BookOpenCheck size={18} aria-hidden /><strong>Exact-page evidence</strong><span>Evidence packets remain separate from metadata-only discovery records.</span></article>
         <article><ShieldCheck size={18} aria-hidden /><strong>Owner-scoped access</strong><span>Revocable personal keys today; OAuth 2.1 for supported interactive clients.</span></article>
+      </section>
+
+      <section className={styles.section} id="pricing">
+        <div><p className={styles.eyebrow}>Research Units</p><h2>Predictable API usage, separate from AI credits.</h2><p className={styles.sectionLead}>A unit prices the research workload, not tokens. Failed tool calls are restored automatically.</p></div>
+        <div className={styles.pricingGrid}>
+          <article><span>Free</span><h3>฿0</h3><strong>{MCP_FREE_MONTHLY_UNITS.toLocaleString()} units / month</strong><p>Personal MCP key, OAuth, exact-page evidence, and private library tools.</p></article>
+          <article className={styles.featuredPlan}><span>Founder Pro</span><h3>฿299 <small>/ month</small></h3><strong>{MCP_FOUNDER_MONTHLY_UNITS.toLocaleString()} units / month</strong><p>Included with Founder Pro. The existing 100 weekly + 500 monthly AI credits stay separate.</p></article>
+          <article><span>API Scale · preview</span><h3>฿{MCP_API_SCALE_PREVIEW.priceThb.toLocaleString()} <small>/ month</small></h3><strong>{MCP_API_SCALE_PREVIEW.monthlyUnits.toLocaleString()} units / month</strong><p>Planned after paid infrastructure launch; extra {MCP_API_SCALE_PREVIEW.extraUnits.toLocaleString()} units target ฿{MCP_API_SCALE_PREVIEW.extraPriceThb}.</p></article>
+        </div>
+      </section>
+
+      <section className={styles.unitSchedule} aria-label="Research Unit tool pricing">
+        <Gauge size={19} aria-hidden />
+        <div><strong>Per successful call</strong><p>{MCP_TOOL_UNIT_PRICING.map((item) => `${item.label} ${item.units}`).join(" · ")}</p></div>
       </section>
 
       <section className={styles.section}>

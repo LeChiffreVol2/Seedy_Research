@@ -6,6 +6,7 @@ import { z } from "zod";
 
 import { applyChatIdentityCookies, chatIdentityErrorResponse, resolveChatIdentity } from "@/lib/chat-auth";
 import { consumeChatQuota } from "@/lib/chat-store";
+import { MCP_API_SCALE_PREVIEW, MCP_FOUNDER_MONTHLY_UNITS, MCP_FREE_MONTHLY_UNITS, MCP_TOOL_UNIT_PRICING } from "@/lib/mcp-pricing";
 import { getRequestIp, rateLimitHeaders, readBoundedJson } from "@/lib/server-guards";
 
 export const runtime = "nodejs";
@@ -30,17 +31,29 @@ function endpoint() {
   return base ? `${base}/v2/mcp` : "";
 }
 
+const pricing = {
+  free: { monthlyUnits: MCP_FREE_MONTHLY_UNITS, priceThb: 0 },
+  founderPro: { monthlyUnits: MCP_FOUNDER_MONTHLY_UNITS, priceThb: 299 },
+  apiScalePreview: MCP_API_SCALE_PREVIEW,
+  tools: MCP_TOOL_UNIT_PRICING,
+};
+
 export async function GET(request: NextRequest) {
   const result = await identityOrResponse(request);
   if (result.response) return result.response;
   const { identity, applyAuthCookies } = result.resolved!;
   const finalize = (response: NextResponse) => applyChatIdentityCookies(response, identity, applyAuthCookies);
-  if (!identity.isAuthenticated) return finalize(NextResponse.json({ keys: [], endpoint: endpoint() }));
-  const { data, error } = await admin().from("civil_mcp_access_keys")
-    .select("key_id, token_prefix, label, last_used_at, created_at")
-    .eq("owner_id", identity.userId).is("revoked_at", null).order("created_at", { ascending: false }).limit(5);
-  if (error) return finalize(NextResponse.json({ error: "MCP access is temporarily unavailable." }, { status: 503 }));
-  return finalize(NextResponse.json({ keys: data ?? [], endpoint: endpoint() }));
+  if (!identity.isAuthenticated) return finalize(NextResponse.json({ keys: [], endpoint: endpoint(), usage: null, pricing }));
+  const client = admin();
+  const [{ data, error }, usageResult] = await Promise.all([
+    client.from("civil_mcp_access_keys")
+      .select("key_id, token_prefix, label, last_used_at, created_at")
+      .eq("owner_id", identity.userId).is("revoked_at", null).order("created_at", { ascending: false }).limit(5),
+    client.rpc("civil_get_mcp_usage", { p_owner_id: identity.userId }),
+  ]);
+  if (error || usageResult.error) return finalize(NextResponse.json({ error: "MCP access is temporarily unavailable." }, { status: 503 }));
+  const usage = Array.isArray(usageResult.data) ? usageResult.data[0] : usageResult.data;
+  return finalize(NextResponse.json({ keys: data ?? [], endpoint: endpoint(), usage: usage ?? null, pricing }));
 }
 
 export async function POST(request: NextRequest) {

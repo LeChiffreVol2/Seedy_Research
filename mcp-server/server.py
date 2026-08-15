@@ -849,9 +849,80 @@ def consume_distributed_mcp_quota(caller: str, surface: str) -> tuple[bool, int]
 
             reset = datetime.fromisoformat(reset_at.replace("Z", "+00:00"))
             retry_after = max(1, int((reset - datetime.now(timezone.utc)).total_seconds()) + 1)
-        except ValueError:
+        except (TypeError, ValueError):
             pass
     return bool(row["allowed"]), retry_after
+
+
+def _personal_mcp_owner_id() -> str:
+    caller = MCP_CALLER_CONTEXT.get()
+    owner_id = caller.removeprefix("user:") if caller.startswith("user:") else ""
+    return owner_id if re.fullmatch(r"[0-9a-fA-F-]{36}", owner_id) else ""
+
+
+def reserve_public_mcp_units(tool_name: str) -> dict[str, Any] | None:
+    """Meter only personal-key/OAuth calls; first-party compatibility keys stay internal."""
+    owner_id = _personal_mcp_owner_id()
+    if not owner_id:
+        return None
+    request_id = f"mcp_{uuid.uuid4()}"
+    try:
+        response = sb.rpc(
+            "civil_consume_mcp_units",
+            {"p_owner_id": owner_id, "p_tool_name": tool_name, "p_request_id": request_id},
+        ).execute()
+    except Exception as exc:  # noqa: BLE001
+        raise UpstreamToolCallError("Research Unit service is temporarily unavailable") from exc
+    data = response.data
+    row = data[0] if isinstance(data, list) and data else data
+    if not isinstance(row, dict) or not isinstance(row.get("allowed"), bool):
+        raise UpstreamToolCallError("Research Unit service returned an invalid response")
+    if not row["allowed"]:
+        reset_at = str(row.get("reset_at") or "")
+        retry_after = None
+        try:
+            retry_after = max(
+                1,
+                int((datetime.fromisoformat(reset_at.replace("Z", "+00:00")) - datetime.now(timezone.utc)).total_seconds()),
+            )
+        except (TypeError, ValueError):
+            pass
+        raise RateLimitedToolCall(
+            "Monthly Research Units exhausted. Upgrade or retry after the monthly reset.",
+            retry_after_seconds=retry_after,
+        )
+    return {
+        "owner_id": owner_id,
+        "request_id": request_id,
+        "charged": int(row.get("charged") or 0),
+        "plan": str(row.get("plan") or "free"),
+        "included": int(row.get("included_units") or 0),
+        "used": int(row.get("used_units") or 0),
+        "remaining": int(row.get("remaining_units") or 0),
+        "reset_at": row.get("reset_at"),
+    }
+
+
+def refund_public_mcp_units(reservation: dict[str, Any] | None) -> None:
+    if not reservation or int(reservation.get("charged") or 0) <= 0:
+        return
+    try:
+        response = sb.rpc(
+            "civil_refund_mcp_units",
+            {
+                "p_owner_id": reservation["owner_id"],
+                "p_request_id": reservation["request_id"],
+            },
+        ).execute()
+        if response.data is not True:
+            raise RuntimeError("refund was not confirmed")
+    except Exception as exc:  # noqa: BLE001
+        log_event(
+            logging.ERROR,
+            "mcp_unit_refund_failed",
+            request_id=reservation.get("request_id"),
+            error=type(exc).__name__,
+        )
 
 
 async def enforce_mcp_rate_limit(caller: str, surface: str, client_host: str) -> None:
@@ -3459,13 +3530,17 @@ def _execute_mcp_decorated_tool(name: str, arguments: dict[str, Any]) -> dict[st
 
 def _execute_public_v2_tool(name: str, arguments: dict[str, Any]) -> CallToolResult:
     started = time.perf_counter()
+    reservation: dict[str, Any] | None = None
     try:
+        reservation = reserve_public_mcp_units(name)
         result = _dispatch_public_v2_tool(name, arguments)
     except ToolCallError as exc:
+        refund_public_mcp_units(reservation)
         latency_ms = (time.perf_counter() - started) * 1000
         METRICS.record_tool(name, latency_ms=latency_ms, ok=False, error_code=exc.error_code)
         raise
     except Exception:
+        refund_public_mcp_units(reservation)
         latency_ms = (time.perf_counter() - started) * 1000
         METRICS.record_tool(name, latency_ms=latency_ms, ok=False, error_code="internal_error")
         raise
@@ -3474,6 +3549,11 @@ def _execute_public_v2_tool(name: str, arguments: dict[str, Any]) -> CallToolRes
     METRICS.record_tool(name, latency_ms=latency_ms, ok=True)
     meta = dict(result.meta)
     meta.update({"tool": result.tool, "latency_ms": round(latency_ms, 2)})
+    if reservation:
+        meta["research_units"] = {
+            key: reservation[key]
+            for key in ("charged", "plan", "included", "used", "remaining", "reset_at")
+        }
     return CallToolResult(
         content=[TextContent(type="text", text=result.content_text)],
         structuredContent=result.structured_content,
@@ -3886,7 +3966,12 @@ async def readiness() -> JSONResponse:
             for key in ("quota_table", "quota_rpc", "retention_rpc", "lexical_section_rpc", "lexical_chunk_rpc")
         ):
             raise RuntimeError("CivilMCP backbone migration is incomplete")
-        return {"documents": int(docs.count or 0), "backbone": readiness_row}
+        usage_response = sb.rpc("civil_mcp_usage_readiness").execute()
+        usage_data = usage_response.data
+        usage_row = usage_data[0] if isinstance(usage_data, list) and usage_data else usage_data
+        if not isinstance(usage_row, dict) or not all(usage_row.values()):
+            raise RuntimeError("CivilMCP Research Unit migration is incomplete")
+        return {"documents": int(docs.count or 0), "backbone": readiness_row, "research_units": usage_row}
 
     try:
         dependencies = await asyncio.wait_for(asyncio.to_thread(check_dependencies), timeout=5)

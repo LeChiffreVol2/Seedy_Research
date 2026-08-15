@@ -151,10 +151,17 @@ Apply `20260815100000_civil_activation_events.sql`,
 `20260815110000_civil_private_library_and_watches.sql`, and
 `20260815120000_civil_personal_mcp_access.sql`,
 `20260815130000_civil_mcp_v2_library.sql`, and
-`20260815140000_civil_mcp_oauth_audience_hook.sql` before deploying the matching
+`20260815140000_civil_mcp_oauth_audience_hook.sql`, and
+`20260815150000_civil_mcp_research_units.sql` before deploying the matching
 web/MCP code. Verify the tables and folder RPCs through the release readiness probe.
 Personal MCP tokens are shown once; revoke a suspected token from Account and
 confirm its hash row has `revoked_at` before rotating client configuration.
+
+Apply `20260815150000_civil_mcp_research_units.sql` before deploying metered
+public MCP v2 code. `/health/ready` and the release database probe must confirm
+both usage tables plus `civil_get_mcp_usage`, `civil_consume_mcp_units`, and
+`civil_refund_mcp_units`. PostgreSQL is the tool-cost authority. Never adjust AI
+answer-credit balances to correct MCP usage; the two ledgers are independent.
 
 For public MCP OAuth, set the Supabase OAuth authorization path to
 `/oauth/consent`, enable dynamic client registration, and select

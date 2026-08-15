@@ -16,7 +16,7 @@ export default function TermsPage() {
     >
       <section>
         <h2>Preview service</h2>
-        <p>CivilMCP helps users discover, compare, and inspect civil-engineering research. Features, indexed sources, quotas, and availability may change during the preview. The service is provided as available and may be suspended to protect users, data, or infrastructure.</p>
+        <p>CivilMCP helps users discover, compare, and inspect civil-engineering research. Features, indexed sources, quotas, Research Unit weights, and availability may change during the preview. API Research Units and AI answer credits are separate allowances. The service is provided as available and may be suspended to protect users, data, or infrastructure.</p>
       </section>
       <section>
         <h2>No professional advice</h2>

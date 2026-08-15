@@ -195,6 +195,7 @@ def check_backbone_guardrails() -> Check:
     mcp_requirements = (ROOT / "mcp-server" / "requirements.txt").read_text(encoding="utf-8", errors="replace")
     catalog_boundary = (ROOT / "supabase" / "migrations" / "20260813100000_civil_catalog_public_rights_boundary.sql").read_text(encoding="utf-8", errors="replace")
     account_deletion = (ROOT / "supabase" / "migrations" / "20260813110000_civil_transactional_account_deletion.sql").read_text(encoding="utf-8", errors="replace")
+    mcp_units = (ROOT / "supabase" / "migrations" / "20260815150000_civil_mcp_research_units.sql").read_text(encoding="utf-8", errors="replace")
     billing_release_chain = [
         "20260720160000_civil_founder_pro.sql",
         "20260720163000_civil_billing_period_guards.sql",
@@ -266,6 +267,16 @@ def check_backbone_guardrails() -> Check:
             and "cvmcp_" in server_text
             and "civil_mcp_access_keys" in schema_text
         ),
+        "public_mcp_research_units": (
+            "civil_consume_mcp_units" in server_text
+            and 'request_id = f"mcp_{uuid.uuid4()}"' in server_text
+            and "civil_refund_mcp_units" in server_text
+            and "civil_mcp_usage_accounts" in schema_text
+            and "civil_mcp_usage_ledger" in schema_text
+            and "grant execute on function public.civil_consume_mcp_units(text, text, text) to service_role" in mcp_units
+            and "revoke all on function public.civil_consume_mcp_units(text, text, text) from public, anon, authenticated" in mcp_units
+            and 'client.rpc("civil_get_mcp_usage"' in mcp_access_text
+        ),
         "metadata_abstract_public_boundary": (
             "search_civil_source_catalog_public_v1" in server_text
             and "search_civil_source_catalog_public_v1" in catalog_boundary
@@ -321,6 +332,7 @@ def check_backbone_guardrails() -> Check:
             and release_text.count("20260815120000_civil_personal_mcp_access.sql") == 2
             and release_text.count("20260815130000_civil_mcp_v2_library.sql") == 2
             and release_text.count("20260815140000_civil_mcp_oauth_audience_hook.sql") == 2
+            and release_text.count("20260815150000_civil_mcp_research_units.sql") == 2
             and release_text.count('-Atqc "$CIVIL_BILLING_HARDENING_SQL"') == 2
             and "civil_apply_stripe_subscription_event" in release_text
         ),

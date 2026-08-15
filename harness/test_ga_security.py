@@ -370,6 +370,38 @@ class GASecurityContracts(unittest.TestCase):
         self.assertIn('label: "Workspace"', page)
         self.assertNotIn('label: "Automated Research"', page)
 
+    def test_public_mcp_units_are_atomic_server_owned_and_separate_from_ai_credits(self) -> None:
+        server = source("mcp-server/server.py")
+        migration = source("supabase/migrations/20260815150000_civil_mcp_research_units.sql")
+        access = source("web/app/api/mcp-access/route.ts")
+        models = source("web/lib/chat-models.ts")
+        self.assertTrue(migration.startswith("begin;"))
+        self.assertTrue(migration.rstrip().endswith("commit;"))
+        for contract in (
+            "civil_mcp_usage_accounts",
+            "civil_mcp_usage_ledger",
+            "create or replace function public.civil_get_mcp_usage",
+            "create or replace function public.civil_consume_mcp_units",
+            "create or replace function public.civil_refund_mcp_units",
+            "when 'discover_research' then 3",
+            "when 'compare_papers' then 5",
+            "when 'save_papers' then 0",
+            "grant execute on function public.civil_consume_mcp_units(text, text, text) to service_role",
+        ):
+            self.assertIn(contract, migration)
+        self.assertIn('request_id = f"mcp_{uuid.uuid4()}"', server)
+        self.assertIn("refund_public_mcp_units(reservation)", server)
+        self.assertIn('meta["research_units"]', server)
+        self.assertIn('client.rpc("civil_get_mcp_usage"', access)
+        for unchanged_weight in (
+            'id: "gpt-5.6-luna", label: "GPT-5.6 Luna", provider: "openai", credits: 1',
+            'id: "gpt-5.6-terra", label: "GPT-5.6 Terra", provider: "openai", credits: 5',
+            'id: "gpt-5.6-sol", label: "GPT-5.6 Sol", provider: "openai", credits: 10',
+            'id: "deepseek-v4-flash", label: "DeepSeek V4 Flash", provider: "deepseek", credits: 1',
+            'id: "deepseek-v4-pro", label: "DeepSeek V4 Pro", provider: "deepseek", credits: 2',
+        ):
+            self.assertIn(unchanged_weight, models)
+
 
 if __name__ == "__main__":
     unittest.main(verbosity=2)

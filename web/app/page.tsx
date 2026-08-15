@@ -3862,11 +3862,15 @@ function PersonalizedResearchPathPanel({
 
 type McpAccessKey = { key_id: string; token_prefix: string; label: string; last_used_at?: string | null; created_at?: string };
 type OAuthGrant = { client: { id: string; name: string; uri?: string }; scopes: string[]; granted_at: string };
+type McpUsage = { plan: "free" | "founder_pro"; included_units: number; used_units: number; remaining_units: number; reset_at: string };
+type McpPricing = { tools: Array<{ label: string; units: number }>; founderPro: { monthlyUnits: number; priceThb: number } };
 
 function McpAccessCard() {
   const [keys, setKeys] = useState<McpAccessKey[]>([]);
   const [grants, setGrants] = useState<OAuthGrant[]>([]);
   const [endpoint, setEndpoint] = useState("");
+  const [usage, setUsage] = useState<McpUsage | null>(null);
+  const [pricing, setPricing] = useState<McpPricing | null>(null);
   const [revealedToken, setRevealedToken] = useState("");
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState("");
@@ -3874,11 +3878,13 @@ function McpAccessCard() {
   const load = useCallback(async () => {
     try {
       const [payload, grantPayload] = await Promise.all([
-        fetchJson<{ keys: McpAccessKey[]; endpoint: string }>("/api/mcp-access"),
+        fetchJson<{ keys: McpAccessKey[]; endpoint: string; usage: McpUsage | null; pricing: McpPricing }>("/api/mcp-access"),
         fetchJson<{ grants: OAuthGrant[]; oauthAvailable: boolean }>("/api/oauth-grants").catch(() => ({ grants: [], oauthAvailable: false })),
       ]);
       setKeys(payload.keys ?? []);
       setEndpoint(payload.endpoint ?? "");
+      setUsage(payload.usage ?? null);
+      setPricing(payload.pricing ?? null);
       setGrants(grantPayload.grants ?? []);
     } catch {
       setMessage("MCP access is temporarily unavailable.");
@@ -3937,11 +3943,16 @@ function McpAccessCard() {
         <button type="button" className="cardAction primary" onClick={() => void createKey()} disabled={busy || keys.length >= 5}><KeyRound size={15} aria-hidden /> Create key</button>
       </header>
       {endpoint ? <div className="mcpEndpoint"><span>MCP v2 endpoint</span><code>{endpoint}</code><button type="button" onClick={() => void navigator.clipboard?.writeText(endpoint)}><Copy size={14} aria-hidden /> Copy</button></div> : null}
+      {usage ? <div className="mcpUnitMeter" aria-label={`${usage.remaining_units} of ${usage.included_units} Research Units remaining`}>
+        <div><span>{usage.plan === "founder_pro" ? "Founder Pro API" : "Free API"}</span><strong>{usage.remaining_units.toLocaleString()} <small>of {usage.included_units.toLocaleString()} units left</small></strong></div>
+        <progress value={usage.remaining_units} max={usage.included_units} />
+        <small>Resets {new Date(usage.reset_at).toLocaleDateString("en-GB", { day: "numeric", month: "short" })}. AI answer credits are separate.</small>
+      </div> : null}
       {revealedToken ? <div className="mcpTokenReveal" role="status"><code>{revealedToken}</code><button type="button" onClick={() => void navigator.clipboard?.writeText(revealedToken)}><Copy size={14} aria-hidden /> Copy key</button></div> : null}
       {keys.length ? <div className="mcpKeyList">{keys.map((key) => <article key={key.key_id}><div><strong>{key.label}</strong><span>{key.token_prefix}{key.last_used_at ? ` · used ${new Date(key.last_used_at).toLocaleDateString("en-GB")}` : " · never used"}</span></div><button type="button" onClick={() => void revokeKey(key.key_id)} disabled={busy}>Revoke</button></article>)}</div> : <p>No personal MCP keys yet.</p>}
       {grants.length ? <div className="mcpKeyList">{grants.map((grant) => <article key={grant.client.id}><div><strong>{grant.client.name || "Connected research client"}</strong><span>OAuth · connected {new Date(grant.granted_at).toLocaleDateString("en-GB")}</span></div><button type="button" onClick={() => void revokeGrant(grant.client.id)} disabled={busy}>Disconnect</button></article>)}</div> : null}
       {message ? <small className="mcpAccessMessage">{message}</small> : null}
-      <p className="mcpAccessScope">14 high-level tools cover Thai/global discovery, exact-page evidence, comparison, private PDFs, and folder-based library workflows. <a href="/developers">Setup and tool reference</a></p>
+      <p className="mcpAccessScope">14 high-level tools cover Thai/global discovery, exact-page evidence, comparison, private PDFs, and folder-based library workflows. {pricing ? `${pricing.tools.map((item) => `${item.label} ${item.units}`).join(" · ")}. Founder Pro includes ${pricing.founderPro.monthlyUnits.toLocaleString()} monthly units.` : ""} <a href="/developers">Setup, usage, and pricing</a></p>
     </section>
   );
 }

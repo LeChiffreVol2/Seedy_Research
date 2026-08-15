@@ -61,9 +61,15 @@ env:
       and to_regclass('public.civil_living_review_watches') is not null
       and to_regclass('public.civil_mcp_access_keys') is not null
       and to_regclass('public.civil_mcp_library_folders') is not null
+      and to_regclass('public.civil_mcp_usage_accounts') is not null
+      and to_regclass('public.civil_mcp_usage_ledger') is not null
       and to_regprocedure('public.civil_mcp_delete_library_folder(text,uuid)') is not null
       and to_regprocedure('public.civil_mcp_move_library_papers(text,text[],uuid,uuid)') is not null
       and to_regprocedure('public.civil_mcp_access_token_hook(jsonb)') is not null
+      and to_regprocedure('public.civil_get_mcp_usage(text)') is not null
+      and to_regprocedure('public.civil_consume_mcp_units(text,text,text)') is not null
+      and to_regprocedure('public.civil_refund_mcp_units(text,text)') is not null
+      and to_regprocedure('public.civil_mcp_usage_readiness()') is not null
       then 'ready' else 'missing' end;
 
 jobs:
@@ -155,6 +161,7 @@ jobs:
           psql "$SUPABASE_PREVIEW_DB_URL" -v ON_ERROR_STOP=1 -f supabase/migrations/20260815120000_civil_personal_mcp_access.sql
           psql "$SUPABASE_PREVIEW_DB_URL" -v ON_ERROR_STOP=1 -f supabase/migrations/20260815130000_civil_mcp_v2_library.sql
           psql "$SUPABASE_PREVIEW_DB_URL" -v ON_ERROR_STOP=1 -f supabase/migrations/20260815140000_civil_mcp_oauth_audience_hook.sql
+          psql "$SUPABASE_PREVIEW_DB_URL" -v ON_ERROR_STOP=1 -f supabase/migrations/20260815150000_civil_mcp_research_units.sql
           test "$(psql "$SUPABASE_PREVIEW_DB_URL" -v ON_ERROR_STOP=1 -Atqc "$CIVIL_DATA_RPC_STATE_SQL")" = "ready"
 
   deploy-mcp-preview:
@@ -324,6 +331,7 @@ jobs:
           psql "$SUPABASE_DB_URL" -v ON_ERROR_STOP=1 -f supabase/migrations/20260815120000_civil_personal_mcp_access.sql
           psql "$SUPABASE_DB_URL" -v ON_ERROR_STOP=1 -f supabase/migrations/20260815130000_civil_mcp_v2_library.sql
           psql "$SUPABASE_DB_URL" -v ON_ERROR_STOP=1 -f supabase/migrations/20260815140000_civil_mcp_oauth_audience_hook.sql
+          psql "$SUPABASE_DB_URL" -v ON_ERROR_STOP=1 -f supabase/migrations/20260815150000_civil_mcp_research_units.sql
           test "$(psql "$SUPABASE_DB_URL" -v ON_ERROR_STOP=1 -Atqc "$CIVIL_DATA_RPC_STATE_SQL")" = "ready"
       - name: Stage MCP production deployment
         id: stage_mcp

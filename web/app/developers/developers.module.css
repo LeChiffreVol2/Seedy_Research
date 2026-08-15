@@ -18,6 +18,19 @@
 .proof span { color: #687589; font-size: 13px; line-height: 1.55; }
 .section { display: grid; grid-template-columns: .72fr 1.28fr; gap: 70px; padding: 108px 0 0; }
 .section h2, .boundary h2 { margin: 0; font: 700 32px/1.1 var(--font-heading), sans-serif; letter-spacing: -.04em; }
+.sectionLead { color: #687589; font-size: 13px; line-height: 1.6; }
+.pricingGrid { display: grid; grid-template-columns: repeat(3,minmax(0,1fr)); gap: 10px; }
+.pricingGrid article { min-width: 0; padding: 21px; border: 1px solid #e0e6ee; border-radius: 16px; background: rgba(255,255,255,.82); }
+.pricingGrid article > span { color: #687589; font-size: 11px; font-weight: 760; letter-spacing: .04em; text-transform: uppercase; }
+.pricingGrid h3 { margin: 18px 0 7px; font-size: 25px; letter-spacing: -.04em; }
+.pricingGrid h3 small { color: #7b8797; font-size: 11px; letter-spacing: 0; }
+.pricingGrid strong { font-size: 13px; }
+.pricingGrid p { margin: 10px 0 0; color: #687589; font-size: 12px; line-height: 1.55; }
+.pricingGrid .featuredPlan { border-color: rgba(8,126,99,.3); box-shadow: inset 0 3px 0 #087e63; }
+.unitSchedule { width: min(1120px, calc(100% - 40px)); display: flex; align-items: center; gap: 14px; margin: 18px auto 0; padding: 17px 20px; border: 1px solid #dde4ed; border-radius: 14px; background: rgba(255,255,255,.72); }
+.unitSchedule svg { flex: 0 0 auto; color: #087e63; }
+.unitSchedule strong { font-size: 12px; }
+.unitSchedule p { margin: 4px 0 0; color: #687589; font-size: 12px; }
 .connectGrid { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
 .connectGrid article { padding: 23px; border: 1px solid #e0e6ee; border-radius: 16px; background: rgba(255,255,255,.82); }
 .connectGrid svg { color: #1768d4; }
@@ -39,7 +52,7 @@
   .hero { padding-top: 54px; }
   .endpoint, .footer { align-items: stretch; flex-direction: column; }
   .endpoint code { overflow-wrap: anywhere; }
-  .proof, .connectGrid { grid-template-columns: 1fr; }
+  .proof, .connectGrid, .pricingGrid { grid-template-columns: 1fr; }
   .section { grid-template-columns: 1fr; gap: 32px; padding-top: 76px; }
   .boundary { margin-top: 76px; }
 }

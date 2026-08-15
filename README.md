@@ -66,6 +66,15 @@ Signed-in users can create revocable personal MCP keys from Account or authorize
 - Free account: DeepSeek Flash and GPT-5.6 Luna at 1 credit per answer, synced history, and 100 weighted answer credits per week, resetting Monday at 00:00 UTC.
 - Founder Pro: ฿299/month, the same 100 weekly free credits plus a 500-credit monthly Pro top-up, DeepSeek Pro at 2 credits, GPT-5.6 Terra at 5 credits, GPT-5.6 Sol at 10 credits, and Pro research workflows; unused Pro credits do not roll over.
 
+Public MCP/API use has a separate monthly Research Unit wallet so API traffic
+cannot consume chat credits: Free includes 500 units and Founder Pro includes
+5,000. Library organization costs 0; paper/library reads cost 1, evidence
+queries and snapshots cost 2, discovery and citation mapping cost 3, and a
+multi-paper comparison costs 5. Units are reserved atomically before a public
+v2 tool call and restored if that call fails. The planned API Scale launch
+price is ฿999/month for 50,000 units, with 10,000-unit blocks targeted at ฿199;
+it is not purchasable while the service remains on non-commercial Hobby hosting.
+
 Deep Research and Research Workspace batch execution require Founder Pro. Workspace runs charge the selected model weight once per selected paper and remain capped at six papers by six columns per request; there is no unlimited or unattended background-agent quota.
 
 Supabase Auth remains the identity source. Google OAuth and email/password are the primary sign-in paths, with email recovery links for forgotten passwords. Billing uses Stripe-hosted Checkout and Customer Portal; entitlement and credit checks are always enforced on the server.
