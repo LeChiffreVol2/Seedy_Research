@@ -535,7 +535,19 @@ function deriveSummary(sections: SectionRow[], chunks: ChunkRow[] = []): string 
   const sectionCandidate = sections.find((section) => cleanText(section.content, 180).length >= 90);
   const chunkCandidate = chunks.find((chunk) => cleanText(chunk.content, 220).length >= 120);
   const candidate = abstractSection?.content ?? sectionCandidate?.content ?? chunkCandidate?.content ?? sections[0]?.content;
-  const summary = cleanText(candidate ?? "", 520);
+  const lines = (candidate ?? "")
+    .replace(/\r/g, "\n")
+    .split("\n")
+    .map((line) => repairThaiText(line).replace(/^#{1,6}\s*/, "").trim())
+    .filter((line) => {
+      if (line.length < 24) return false;
+      if (/^(?:page|หน้า)\s*\d+|^(?:doi|e-?mail|email|corresponding author)\b/i.test(line)) return false;
+      if (/^(?:the )?\d+(?:st|nd|rd|th)?\s+(?:national|international).*conference/i.test(line)) return false;
+      if (/^(?:มหาวิทยาลัย|คณะ|ภาควิชา|สาขาวิชา|department|faculty|university)\b/i.test(line)) return false;
+      if (/^[\d\s*†‡,.;()\-–—A-Z.]{24,}$/.test(line)) return false;
+      return true;
+    });
+  const summary = cleanText(lines.slice(0, 4).join(" ") || candidate || "", 520);
   return summary || "ยังไม่มี summary ที่อ่านได้จากเอกสารนี้ แต่สามารถเปิดรายละเอียดเพื่อดู outline และ evidence ที่ index แล้วได้";
 }
 
@@ -582,7 +594,7 @@ function disciplineLabel(value: string | null | undefined): string {
     geotechnical: "Geotechnical",
     construction_mgmt: "Construction Mgmt",
     water_resources: "Water Resources",
-    surveying_gis: "Surveying & GIS",
+    surveying_gis: "Surveying, GIS & Geospatial",
     environmental: "Environmental",
     infrastructure: "Infrastructure",
     civil_education: "Civil Education",
@@ -604,6 +616,9 @@ function deriveTags(doc: DocumentRow, title: string, summary: string): string[] 
   const summaryHaystack = summary;
   const keywordMap: Array<[RegExp, string]> = [
     [/คอนกรีต|concrete|cement|reinforced/i, "Concrete"],
+    [/แผ่นดินไหว|earthquake|seismic|liquefaction|การเหลว/i, "Earthquake risk"],
+    [/น้ำท่วม|flood|drainage|ระบายน้ำ/i, "Flood resilience"],
+    [/อุบัติเหตุ|accident|crash|road safety/i, "Road safety"],
     [/วิธี|method|experiment|model|แบบจำลอง/i, "Method"],
   ];
   for (const [pattern, tag] of keywordMap) {
@@ -1484,4 +1499,23 @@ export async function getPaperDetail(
     related,
     generatedAt: new Date().toISOString(),
   };
+}
+
+export async function listPublicPaperRecordsForSitemap(): Promise<Array<{ source: string; updatedAt: string | null }>> {
+  const supabase = getSupabaseAdmin() as any;
+  const records: Array<{ source: string; updatedAt: string | null }> = [];
+  for (let offset = 0; offset < 2_000; offset += 1_000) {
+    const { data, error } = await supabase
+      .from("civil_documents_v2")
+      .select("source,updated_at")
+      .order("source", { ascending: true })
+      .range(offset, offset + 999);
+    if (error) throw new Error(`Failed to build public paper sitemap: ${error.message}`);
+    const rows = (data ?? []) as Array<{ source?: unknown; updated_at?: unknown }>;
+    records.push(...rows.flatMap((row) => typeof row.source === "string" && row.source.trim()
+      ? [{ source: row.source, updatedAt: typeof row.updated_at === "string" ? row.updated_at : null }]
+      : []));
+    if (rows.length < 1_000) break;
+  }
+  return records;
 }

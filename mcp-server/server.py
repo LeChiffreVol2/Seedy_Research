@@ -19,8 +19,14 @@ import os
 import re
 import time
 import uuid
+import urllib.error
+import urllib.parse
+import urllib.request
 from collections import defaultdict, deque
+from concurrent.futures import ThreadPoolExecutor
+from contextvars import ContextVar
 from dataclasses import dataclass, field
+from datetime import datetime, timezone
 from pathlib import Path
 from threading import Lock
 from typing import Any
@@ -55,6 +61,9 @@ OPENAI_TIMEOUT_SECONDS = float(os.getenv("OPENAI_TIMEOUT_SECONDS", "20"))
 OPENAI_MAX_RETRIES = max(0, min(int(os.getenv("OPENAI_MAX_RETRIES", "1")), 3))
 EMBEDDING_CIRCUIT_SECONDS = max(5, min(int(os.getenv("EMBEDDING_CIRCUIT_SECONDS", "300")), 3600))
 TOOL_TIMEOUT_SECONDS = float(os.getenv("TOOL_TIMEOUT_SECONDS", "20"))
+OPENALEX_API_KEY = os.getenv("OPENALEX_API_KEY", "").strip()
+FEDERATED_DISCOVERY_ENABLED = os.getenv("FEDERATED_DISCOVERY_ENABLED", "true").lower() != "false"
+OPENALEX_TIMEOUT_SECONDS = max(2.0, min(float(os.getenv("OPENALEX_TIMEOUT_SECONDS", "8")), 12.0))
 
 RATE_LIMIT_WINDOW_SECONDS = int(os.getenv("RATE_LIMIT_WINDOW_SECONDS", "60"))
 RATE_LIMIT_MAX_CALLS = int(os.getenv("RATE_LIMIT_MAX_CALLS", "240"))
@@ -147,6 +156,7 @@ if REQUIRE_TOOL_AUTH:
 oa = OpenAI(api_key=OPENAI_API_KEY, timeout=OPENAI_TIMEOUT_SECONDS, max_retries=OPENAI_MAX_RETRIES)
 sb = create_client(SUPABASE_URL, SUPABASE_SERVICE_KEY)
 mcp = FastMCP("civil-engineering-mcp")
+MCP_CALLER_CONTEXT: ContextVar[str] = ContextVar("civilmcp_caller", default="")
 
 VALID_DISCIPLINES = {
     "",
@@ -179,6 +189,18 @@ READ_ONLY_ANNOTATIONS = {
     "readOnlyHint": True,
     "openWorldHint": False,
     "destructiveHint": False,
+}
+
+WRITE_ANNOTATIONS = {
+    "readOnlyHint": False,
+    "openWorldHint": False,
+    "destructiveHint": False,
+}
+
+DELETE_ANNOTATIONS = {
+    "readOnlyHint": False,
+    "openWorldHint": False,
+    "destructiveHint": True,
 }
 
 TOOL_DEFINITIONS: dict[str, dict[str, Any]] = {
@@ -224,6 +246,38 @@ TOOL_DEFINITIONS: dict[str, dict[str, Any]] = {
     },
     "list_source_providers": {
         "description": "List CivilMCP source providers with indexed, extracted, and metadata-only record counts.",
+        "annotations": READ_ONLY_ANNOTATIONS,
+    },
+    "search_global_research": {
+        "description": "Search bounded OpenAlex discovery metadata. Results are not CivilMCP evidence and are never citable.",
+        "annotations": READ_ONLY_ANNOTATIONS,
+    },
+    "map_citation_network": {
+        "description": "Map a bounded OpenAlex citation neighborhood around a paper title or DOI. Results are metadata-only.",
+        "annotations": READ_ONLY_ANNOTATIONS,
+    },
+    "get_evidence_snapshot": {
+        "description": "Build a deterministic methods, findings, limitations, and Thai-applicability snapshot from exact-page CivilMCP evidence.",
+        "annotations": READ_ONLY_ANNOTATIONS,
+    },
+    "list_library_items": {
+        "description": "List papers saved to the authenticated CivilMCP user's private research library.",
+        "annotations": READ_ONLY_ANNOTATIONS,
+    },
+    "save_library_item": {
+        "description": "Save or update an indexed CivilMCP paper in the authenticated user's private library.",
+        "annotations": WRITE_ANNOTATIONS,
+    },
+    "remove_library_item": {
+        "description": "Remove an indexed paper from the authenticated user's private library.",
+        "annotations": DELETE_ANNOTATIONS,
+    },
+    "list_private_sources": {
+        "description": "List PDF and citation records in the authenticated user's private project library.",
+        "annotations": READ_ONLY_ANNOTATIONS,
+    },
+    "fetch_private_source_pages": {
+        "description": "Fetch bounded page text from a private PDF owned by the authenticated user.",
         "annotations": READ_ONLY_ANNOTATIONS,
     },
 }
@@ -525,6 +579,25 @@ def authenticate_mcp_request(request: Request, surface: str = "mcp") -> str:
         legacy = MCP_SERVER_API_KEY.strip()
         if legacy and legacy.lower() not in PLACEHOLDER_MCP_KEYS and hmac.compare_digest(provided, legacy):
             return "legacy"
+        if provided.startswith("cvmcp_"):
+            try:
+                rows = (
+                    sb.table("civil_mcp_access_keys")
+                    .select("key_id,owner_id")
+                    .eq("token_hash", provided_hash)
+                    .is_("revoked_at", "null")
+                    .limit(1)
+                    .execute()
+                    .data
+                    or []
+                )
+                if rows and rows[0].get("owner_id"):
+                    sb.table("civil_mcp_access_keys").update(
+                        {"last_used_at": datetime.now(timezone.utc).isoformat()}
+                    ).eq("key_id", rows[0]["key_id"]).execute()
+                    return f"user:{rows[0]['owner_id']}"
+            except Exception as exc:  # noqa: BLE001
+                log_event(logging.WARNING, "personal_mcp_key_lookup_failed", error=type(exc).__name__)
     raise UnauthorizedToolCall(f"Missing or invalid API key for {surface}")
 
 
@@ -1648,6 +1721,387 @@ def _list_source_providers_impl() -> ToolExecutionResult:
     )
 
 
+def _clean_discovery_query(value: str) -> str:
+    cleaned = re.sub(r"[\x00-\x1f\x7f]+", " ", value)
+    cleaned = re.sub(r"\s+", " ", cleaned).strip()[:280]
+    if len(cleaned) < 3:
+        raise InputValidationError("query must contain at least 3 searchable characters")
+    return cleaned
+
+
+def _openalex_search_url(query: str) -> str:
+    return "https://openalex.org/works?search=" + urllib.parse.quote(query)
+
+
+def _openalex_json(path: str, params: dict[str, str]) -> dict[str, Any]:
+    if not OPENALEX_API_KEY:
+        raise UnauthorizedToolCall("OpenAlex API access is not configured; use the returned search URL")
+    query = urllib.parse.urlencode({**params, "api_key": OPENALEX_API_KEY})
+    request = urllib.request.Request(
+        f"https://api.openalex.org{path}?{query}",
+        headers={"User-Agent": "CivilMCP/1.0 (research discovery)"},
+    )
+    try:
+        with urllib.request.urlopen(request, timeout=OPENALEX_TIMEOUT_SECONDS) as response:  # noqa: S310
+            payload = json.loads(response.read(1_000_000).decode("utf-8"))
+    except urllib.error.HTTPError as exc:
+        if exc.code == 429:
+            raise RateLimitedToolCall("OpenAlex is rate limited. Please retry later.", 60) from exc
+        raise UpstreamToolCallError("OpenAlex discovery is temporarily unavailable") from exc
+    except (urllib.error.URLError, TimeoutError, json.JSONDecodeError) as exc:
+        raise UpstreamToolCallError("OpenAlex discovery is temporarily unavailable") from exc
+    return payload if isinstance(payload, dict) else {}
+
+
+def _openalex_work(row: dict[str, Any], relation: str = "result") -> dict[str, Any] | None:
+    work_id = str(row.get("id") or "").strip()
+    title = re.sub(r"\s+", " ", str(row.get("display_name") or "")).strip()[:320]
+    if not work_id or not title:
+        return None
+    doi = str(row.get("doi") or "").strip() or None
+    topic = row.get("primary_topic")
+    return {
+        "id": work_id,
+        "doi": doi,
+        "title": title,
+        "year": row.get("publication_year") if isinstance(row.get("publication_year"), int) else None,
+        "cited_by_count": max(0, int(row.get("cited_by_count") or 0)),
+        "topic": str(topic.get("display_name") or "")[:160] if isinstance(topic, dict) else None,
+        "url": doi or work_id,
+        "relation": relation,
+        "citable": False,
+        "evidence_status": "metadata_only",
+    }
+
+
+def _search_global_research_impl(query: str, max_results: int = 6) -> ToolExecutionResult:
+    cleaned = _clean_discovery_query(query)
+    safe_limit = max(1, min(int(max_results), 6))
+    search_url = _openalex_search_url(cleaned)
+    if not FEDERATED_DISCOVERY_ENABLED or not OPENALEX_API_KEY:
+        status = "disabled" if not FEDERATED_DISCOVERY_ENABLED else "link_only"
+        return ToolExecutionResult(
+            tool="search_global_research",
+            structured_content={"status": status, "query": cleaned, "search_url": search_url, "result_count": 0, "results": [], "citable": False},
+            content_text=f"OpenAlex discovery is {status.replace('_', ' ')}. Continue at {search_url}. These records are not CivilMCP evidence.",
+            meta={"result_count": 0, "citable": False},
+        )
+    payload = _openalex_json(
+        "/works",
+        {
+            "search": cleaned,
+            "per-page": str(safe_limit),
+            "select": "id,doi,display_name,publication_year,cited_by_count,primary_topic",
+        },
+    )
+    results = [work for row in payload.get("results", []) if isinstance(row, dict) if (work := _openalex_work(row))]
+    lines = [f"- {work['title']} ({work['year'] or 'n.d.'}) · {work['url']}" for work in results]
+    return ToolExecutionResult(
+        tool="search_global_research",
+        structured_content={"status": "connected", "query": cleaned, "search_url": search_url, "result_count": len(results), "results": results, "citable": False},
+        content_text=("OpenAlex metadata only; do not cite as CivilMCP evidence.\n" + "\n".join(lines)).strip(),
+        meta={"result_count": len(results), "citable": False},
+    )
+
+
+def _map_citation_network_impl(query: str) -> ToolExecutionResult:
+    cleaned = _clean_discovery_query(query)
+    search_url = _openalex_search_url(cleaned)
+    if not FEDERATED_DISCOVERY_ENABLED or not OPENALEX_API_KEY:
+        status = "disabled" if not FEDERATED_DISCOVERY_ENABLED else "link_only"
+        return ToolExecutionResult(
+            tool="map_citation_network",
+            structured_content={"status": status, "query": cleaned, "search_url": search_url, "seed": None, "nodes": [], "citable": False},
+            content_text=f"Citation metadata is {status.replace('_', ' ')}. Continue at {search_url}.",
+            meta={"node_count": 0, "citable": False},
+        )
+    seed_payload = _openalex_json(
+        "/works",
+        {
+            "search": cleaned,
+            "per-page": "1",
+            "select": "id,doi,display_name,publication_year,cited_by_count,primary_topic,referenced_works,related_works",
+        },
+    )
+    seed_rows = seed_payload.get("results", [])
+    seed_row = seed_rows[0] if isinstance(seed_rows, list) and seed_rows and isinstance(seed_rows[0], dict) else None
+    seed = _openalex_work(seed_row, "seed") if seed_row else None
+    if not seed or not seed_row:
+        return ToolExecutionResult(
+            tool="map_citation_network",
+            structured_content={"status": "connected", "query": cleaned, "search_url": search_url, "seed": None, "nodes": [], "citable": False},
+            content_text="No OpenAlex seed work matched. Metadata-only result; no CivilMCP evidence was used.",
+            meta={"node_count": 0, "citable": False},
+        )
+    seed_id = seed["id"].removeprefix("https://openalex.org/")
+    references = [str(value).removeprefix("https://openalex.org/") for value in seed_row.get("referenced_works", [])[:4]]
+    related = [str(value).removeprefix("https://openalex.org/") for value in seed_row.get("related_works", [])[:4]]
+    relation_ids = list(dict.fromkeys(references + related))
+    with ThreadPoolExecutor(max_workers=2, thread_name_prefix="openalex-map") as executor:
+        incoming_future = executor.submit(
+            _openalex_json,
+            "/works",
+            {"filter": f"cites:{seed_id}", "sort": "-cited_by_count", "per-page": "4", "select": "id,doi,display_name,publication_year,cited_by_count,primary_topic"},
+        )
+        outward_future = executor.submit(
+            _openalex_json,
+            "/works",
+            {"filter": "openalex:" + "|".join(relation_ids or [seed_id]), "per-page": str(max(1, len(relation_ids))), "select": "id,doi,display_name,publication_year,cited_by_count,primary_topic"},
+        )
+        incoming_payload = incoming_future.result()
+        outward_payload = outward_future.result()
+    nodes: list[dict[str, Any]] = []
+    for row in incoming_payload.get("results", []):
+        if isinstance(row, dict) and (node := _openalex_work(row, "cited_by")):
+            nodes.append(node)
+    reference_set = set(references)
+    for row in outward_payload.get("results", []):
+        if not isinstance(row, dict):
+            continue
+        relation = "cites" if str(row.get("id") or "").removeprefix("https://openalex.org/") in reference_set else "related"
+        if node := _openalex_work(row, relation):
+            nodes.append(node)
+    nodes = nodes[:12]
+    return ToolExecutionResult(
+        tool="map_citation_network",
+        structured_content={"status": "connected", "query": cleaned, "search_url": search_url, "seed": seed, "nodes": nodes, "citable": False},
+        content_text=f"Mapped {len(nodes)} OpenAlex metadata relationships around {seed['title']}. These records are not CivilMCP evidence.",
+        meta={"node_count": len(nodes), "citable": False},
+    )
+
+
+def _get_evidence_snapshot_impl(source: str) -> ToolExecutionResult:
+    paper = _fetch_civil_paper_impl(source=source, include_sections=True, include_chunks=True, max_sections=40, max_chunks=24)
+    if not paper.structured_content.get("found"):
+        return ToolExecutionResult(
+            tool="get_evidence_snapshot",
+            structured_content={"source": source.strip(), "found": False, "fields": {}, "human_reviewed": False},
+            content_text=paper.content_text,
+            meta={"found": False},
+        )
+    categories = {
+        "study_design": ("study design", "research design", "experimental", "case study", "แบบการวิจัย", "การทดลอง"),
+        "sample_context": ("sample", "participants", "site", "พื้นที่ศึกษา", "กลุ่มตัวอย่าง", "กรณีศึกษา"),
+        "method": ("method", "methodology", "model", "วิธีการ", "ระเบียบวิธี", "แบบจำลอง"),
+        "reported_result": ("result", "finding", "พบว่า", "ผลการ", "สรุปผล"),
+        "limitation": ("limitation", "constraint", "ข้อจำกัด", "ข้อเสนอแนะ"),
+        "thai_applicability": ("thailand", "thai", "ประเทศไทย", "กรุงเทพ", "จังหวัด", "ประเทศไทย"),
+    }
+    fields: dict[str, list[dict[str, Any]]] = {name: [] for name in categories}
+    chunks = paper.structured_content.get("chunks", [])
+    for chunk in chunks if isinstance(chunks, list) else []:
+        content = re.sub(r"\s+", " ", str(chunk.get("content") or "")).strip()
+        lowered = content.lower()
+        if not content:
+            continue
+        for field_name, keywords in categories.items():
+            if len(fields[field_name]) >= 3 or not any(keyword in lowered for keyword in keywords):
+                continue
+            fields[field_name].append({
+                "evidence_id": chunk.get("id"),
+                "source": chunk.get("source"),
+                "page_start": chunk.get("page_start"),
+                "page_end": chunk.get("page_end"),
+                "section_title": chunk.get("section_title"),
+                "excerpt": content[:1200],
+            })
+    populated = sum(1 for value in fields.values() if value)
+    return ToolExecutionResult(
+        tool="get_evidence_snapshot",
+        structured_content={
+            "source": source.strip(),
+            "found": True,
+            "document": paper.structured_content.get("document"),
+            "fields": fields,
+            "field_coverage": populated,
+            "field_total": len(fields),
+            "human_reviewed": False,
+            "review_state": "machine_organized_needs_human_review",
+        },
+        content_text=f"Evidence snapshot organized {populated}/{len(fields)} fields from exact-page chunks. Review every excerpt before using a claim.",
+        meta={"found": True, "field_coverage": populated, "human_reviewed": False},
+    )
+
+
+def _personal_owner_id() -> str:
+    caller = MCP_CALLER_CONTEXT.get()
+    if not caller.startswith("user:") or len(caller) <= 5:
+        raise UnauthorizedToolCall("This library tool requires a personal CivilMCP MCP key")
+    return caller.removeprefix("user:")
+
+
+def _list_library_items_impl(max_results: int = 50) -> ToolExecutionResult:
+    owner_id = _personal_owner_id()
+    safe_limit = max(1, min(int(max_results), 100))
+    try:
+        rows = (
+            sb.table("civil_paper_workspace_items")
+            .select("id,document_id,source,collection,paper_code,note,labels,created_at,updated_at")
+            .eq("owner_id", owner_id)
+            .order("updated_at", desc=True)
+            .limit(safe_limit)
+            .execute()
+            .data
+            or []
+        )
+    except Exception as exc:  # noqa: BLE001
+        raise UpstreamToolCallError("Private library is temporarily unavailable") from exc
+    lines = [f"- {row.get('paper_code') or row.get('source')} · {row.get('note') or 'No note'}" for row in rows]
+    return ToolExecutionResult(
+        tool="list_library_items",
+        structured_content={"item_count": len(rows), "items": rows},
+        content_text="\n".join(lines) if lines else "The authenticated user's library is empty.",
+        meta={"item_count": len(rows)},
+    )
+
+
+def _save_library_item_impl(source: str, note: str = "", labels: list[str] | None = None) -> ToolExecutionResult:
+    owner_id = _personal_owner_id()
+    cleaned_source = source.strip()[:320]
+    if not cleaned_source:
+        raise InputValidationError("source must not be empty")
+    clean_note = re.sub(r"[\x00-\x1f]+", " ", note).strip()[:2000]
+    clean_labels = list(dict.fromkeys(
+        re.sub(r"[\x00-\x1f]+", " ", str(label)).strip()[:60]
+        for label in (labels or [])
+        if str(label).strip()
+    ))[:20]
+    try:
+        documents = (
+            sb.table("civil_documents_v2")
+            .select("id,source,collection,paper_code")
+            .eq("source", cleaned_source)
+            .limit(1)
+            .execute()
+            .data
+            or []
+        )
+        if not documents:
+            raise InputValidationError("source must identify an indexed CivilMCP paper")
+        document = documents[0]
+        item_id = hashlib.sha256(f"{owner_id}\n{cleaned_source}".encode("utf-8")).hexdigest()[:32]
+        row = {
+            "id": item_id,
+            "owner_id": owner_id,
+            "document_id": document.get("id"),
+            "source": cleaned_source,
+            "collection": document.get("collection") or "",
+            "paper_code": document.get("paper_code"),
+            "note": clean_note,
+            "labels": clean_labels,
+            "updated_at": datetime.now(timezone.utc).isoformat(),
+        }
+        saved = (
+            sb.table("civil_paper_workspace_items")
+            .upsert(row, on_conflict="owner_id,source")
+            .execute()
+            .data
+            or [row]
+        )[0]
+    except InputValidationError:
+        raise
+    except Exception as exc:  # noqa: BLE001
+        raise UpstreamToolCallError("Library item could not be saved") from exc
+    return ToolExecutionResult(
+        tool="save_library_item",
+        structured_content={"saved": True, "item": saved},
+        content_text=f"Saved {document.get('paper_code') or cleaned_source} to the authenticated user's library.",
+        meta={"saved": True},
+    )
+
+
+def _remove_library_item_impl(source: str) -> ToolExecutionResult:
+    owner_id = _personal_owner_id()
+    cleaned_source = source.strip()[:320]
+    if not cleaned_source:
+        raise InputValidationError("source must not be empty")
+    try:
+        sb.table("civil_paper_workspace_items").delete().eq("owner_id", owner_id).eq("source", cleaned_source).execute()
+    except Exception as exc:  # noqa: BLE001
+        raise UpstreamToolCallError("Library item could not be removed") from exc
+    return ToolExecutionResult(
+        tool="remove_library_item",
+        structured_content={"removed": True, "source": cleaned_source},
+        content_text=f"Removed {cleaned_source} from the authenticated user's library.",
+        meta={"removed": True},
+    )
+
+
+def _list_private_sources_impl(max_results: int = 50) -> ToolExecutionResult:
+    owner_id = _personal_owner_id()
+    safe_limit = max(1, min(int(max_results), 100))
+    try:
+        rows = (
+            sb.table("civil_private_library_items")
+            .select("item_id,source,title,authors,publication_year,doi,canonical_url,import_type,page_count,created_at,updated_at")
+            .eq("owner_id", owner_id)
+            .order("updated_at", desc=True)
+            .limit(safe_limit)
+            .execute()
+            .data
+            or []
+        )
+    except Exception as exc:  # noqa: BLE001
+        raise UpstreamToolCallError("Private project sources are temporarily unavailable") from exc
+    return ToolExecutionResult(
+        tool="list_private_sources",
+        structured_content={"item_count": len(rows), "items": rows, "private": True},
+        content_text="\n".join(f"- {row.get('title')} · {row.get('import_type')} · {row.get('page_count', 0)} pages" for row in rows) or "The authenticated user's private project library is empty.",
+        meta={"item_count": len(rows), "private": True},
+    )
+
+
+def _fetch_private_source_pages_impl(source: str, start_page: int = 1, max_pages: int = 6) -> ToolExecutionResult:
+    owner_id = _personal_owner_id()
+    cleaned_source = source.strip()[:320]
+    safe_start = max(1, int(start_page))
+    safe_max = max(1, min(int(max_pages), 10))
+    if not cleaned_source.startswith("private:"):
+        raise InputValidationError("source must identify an authenticated private source")
+    try:
+        rows = (
+            sb.table("civil_private_library_items")
+            .select("item_id,source,title,authors,publication_year,doi,canonical_url,import_type,page_count,pages")
+            .eq("owner_id", owner_id)
+            .eq("source", cleaned_source)
+            .limit(1)
+            .execute()
+            .data
+            or []
+        )
+    except Exception as exc:  # noqa: BLE001
+        raise UpstreamToolCallError("Private source is temporarily unavailable") from exc
+    if not rows:
+        return ToolExecutionResult(
+            tool="fetch_private_source_pages",
+            structured_content={"source": cleaned_source, "found": False, "pages": [], "private": True},
+            content_text="No private source owned by this user matched.",
+            meta={"found": False, "private": True},
+        )
+    row = rows[0]
+    pages = [
+        {"page": int(item.get("page")), "text": re.sub(r"\s+", " ", str(item.get("text") or "")).strip()[:20_000]}
+        for item in (row.get("pages") or [])
+        if isinstance(item, dict) and str(item.get("page", "")).isdigit() and safe_start <= int(item["page"]) < safe_start + safe_max
+    ]
+    total = 0
+    bounded_pages: list[dict[str, Any]] = []
+    for page in pages:
+        remaining = 30_000 - total
+        if remaining <= 0:
+            break
+        page["text"] = page["text"][:remaining]
+        total += len(page["text"])
+        bounded_pages.append(page)
+    metadata = {key: value for key, value in row.items() if key != "pages"}
+    return ToolExecutionResult(
+        tool="fetch_private_source_pages",
+        structured_content={"source": cleaned_source, "found": True, "document": metadata, "pages": bounded_pages, "private": True},
+        content_text="\n\n".join(f"[private · p.{page['page']}]\n{page['text']}" for page in bounded_pages) or "This private citation record has no extracted PDF pages.",
+        meta={"found": True, "page_count": len(bounded_pages), "private": True},
+    )
+
+
 def _fetch_civil_paper_impl(
     source: str,
     include_sections: bool = True,
@@ -2027,6 +2481,34 @@ def _dispatch_tool_call(name: str, arguments: dict[str, Any]) -> ToolExecutionRe
         )
     if name == "list_source_providers":
         return _list_source_providers_impl()
+    if name == "search_global_research":
+        return _search_global_research_impl(
+            query=str(arguments.get("query", "")),
+            max_results=int(arguments.get("max_results", 6)),
+        )
+    if name == "map_citation_network":
+        return _map_citation_network_impl(query=str(arguments.get("query", "")))
+    if name == "get_evidence_snapshot":
+        return _get_evidence_snapshot_impl(source=str(arguments.get("source", "")))
+    if name == "list_library_items":
+        return _list_library_items_impl(max_results=int(arguments.get("max_results", 50)))
+    if name == "save_library_item":
+        raw_labels = arguments.get("labels")
+        return _save_library_item_impl(
+            source=str(arguments.get("source", "")),
+            note=str(arguments.get("note", "")),
+            labels=raw_labels if isinstance(raw_labels, list) else [],
+        )
+    if name == "remove_library_item":
+        return _remove_library_item_impl(source=str(arguments.get("source", "")))
+    if name == "list_private_sources":
+        return _list_private_sources_impl(max_results=int(arguments.get("max_results", 50)))
+    if name == "fetch_private_source_pages":
+        return _fetch_private_source_pages_impl(
+            source=str(arguments.get("source", "")),
+            start_page=int(arguments.get("start_page", 1)),
+            max_pages=int(arguments.get("max_pages", 6)),
+        )
     raise InputValidationError(f"Unknown tool: {name}")
 
 
@@ -2192,6 +2674,52 @@ def list_source_providers() -> dict[str, Any]:
     return _execute_mcp_decorated_tool("list_source_providers", {})
 
 
+@_mcp_tool_decorator(TOOL_DEFINITIONS["search_global_research"]["annotations"])
+def search_global_research(query: str, max_results: int = 6) -> dict[str, Any]:
+    return _execute_mcp_decorated_tool("search_global_research", {"query": query, "max_results": max_results})
+
+
+@_mcp_tool_decorator(TOOL_DEFINITIONS["map_citation_network"]["annotations"])
+def map_citation_network(query: str) -> dict[str, Any]:
+    return _execute_mcp_decorated_tool("map_citation_network", {"query": query})
+
+
+@_mcp_tool_decorator(TOOL_DEFINITIONS["get_evidence_snapshot"]["annotations"])
+def get_evidence_snapshot(source: str) -> dict[str, Any]:
+    return _execute_mcp_decorated_tool("get_evidence_snapshot", {"source": source})
+
+
+@_mcp_tool_decorator(TOOL_DEFINITIONS["list_library_items"]["annotations"])
+def list_library_items(max_results: int = 50) -> dict[str, Any]:
+    return _execute_mcp_decorated_tool("list_library_items", {"max_results": max_results})
+
+
+@_mcp_tool_decorator(TOOL_DEFINITIONS["save_library_item"]["annotations"])
+def save_library_item(source: str, note: str = "", labels: list[str] | None = None) -> dict[str, Any]:
+    return _execute_mcp_decorated_tool(
+        "save_library_item",
+        {"source": source, "note": note, "labels": labels or []},
+    )
+
+
+@_mcp_tool_decorator(TOOL_DEFINITIONS["remove_library_item"]["annotations"])
+def remove_library_item(source: str) -> dict[str, Any]:
+    return _execute_mcp_decorated_tool("remove_library_item", {"source": source})
+
+
+@_mcp_tool_decorator(TOOL_DEFINITIONS["list_private_sources"]["annotations"])
+def list_private_sources(max_results: int = 50) -> dict[str, Any]:
+    return _execute_mcp_decorated_tool("list_private_sources", {"max_results": max_results})
+
+
+@_mcp_tool_decorator(TOOL_DEFINITIONS["fetch_private_source_pages"]["annotations"])
+def fetch_private_source_pages(source: str, start_page: int = 1, max_pages: int = 6) -> dict[str, Any]:
+    return _execute_mcp_decorated_tool(
+        "fetch_private_source_pages",
+        {"source": source, "start_page": start_page, "max_pages": max_pages},
+    )
+
+
 class ToolCallPayload(BaseModel):
     name: str
     arguments: dict[str, Any] = Field(default_factory=dict)
@@ -2213,6 +2741,7 @@ async def request_middleware(request: Request, call_next):
         try:
             caller = authenticate_mcp_request(request, "MCP transport")
             request.state.mcp_caller = caller
+            MCP_CALLER_CONTEXT.set(caller)
             await enforce_mcp_rate_limit(caller, "transport", client_host_for_request(request))
         except ToolCallError as exc:
             METRICS.record_transport(ok=False, error_code=exc.error_code)
@@ -2378,6 +2907,7 @@ async def tools_call(payload: ToolCallPayload, request: Request) -> dict[str, An
         caller = authenticate_tools_call(request)
         client_host = client_host_for_request(request)
         request.state.mcp_caller = caller
+        MCP_CALLER_CONTEXT.set(caller)
         await enforce_mcp_rate_limit(caller, "tools_call", client_host)
 
         started = time.perf_counter()

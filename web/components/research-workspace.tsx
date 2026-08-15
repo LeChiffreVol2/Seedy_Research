@@ -11,11 +11,15 @@ import {
   FolderOpen,
   LayoutTemplate,
   LoaderCircle,
+  Library,
   Plus,
   RefreshCw,
   Save,
   ShieldCheck,
   Sparkles,
+  Square,
+  Trash2,
+  Upload,
   X,
 } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
@@ -111,6 +115,18 @@ type RunResponse = {
   generatedAt: string;
 };
 
+type PrivateLibraryItem = {
+  itemId: string;
+  source: string;
+  title: string;
+  authors: string[];
+  publicationYear: number | null;
+  doi: string | null;
+  canonicalUrl: string | null;
+  importType: "pdf" | "doi" | "bibtex" | "ris" | "manual";
+  pageCount: number;
+};
+
 const STORAGE_KEY = "civilmcp-research-workspace-v1";
 const MODEL_OPTIONS = CHAT_MODELS;
 const DEFAULT_REVIEW_PROTOCOL: ReviewProtocol = {
@@ -142,6 +158,7 @@ const TEMPLATE_COLUMNS: Record<WorkspaceTemplate, WorkspaceColumn[]> = {
     { id: "finding", label: "Key finding", prompt: "State the strongest directly supported result without adding inference." },
     { id: "limitation", label: "Limitation", prompt: "Identify limitations stated or directly implied by the supplied evidence." },
     { id: "gap", label: "Research gap", prompt: "Name the smallest defensible unanswered question based on this paper." },
+    { id: "applicability", label: "Thai applicability", prompt: "Explain the supported Thai context and where transfer to another setting would require validation." },
   ],
   methods_audit: [
     { id: "method", label: "Method", prompt: "Describe the method and research design precisely." },
@@ -167,7 +184,7 @@ const TEMPLATE_COLUMNS: Record<WorkspaceTemplate, WorkspaceColumn[]> = {
 };
 
 const TEMPLATE_LABELS: Record<WorkspaceTemplate, string> = {
-  literature_matrix: "Literature matrix",
+  literature_matrix: "Scientific evidence snapshot",
   methods_audit: "Methods audit",
   evidence_gap: "Evidence gap map",
   prisma_scoping: "PRISMA scoping review",
@@ -239,6 +256,15 @@ async function fetchWorkspaceJson<T>(url: string, init?: RequestInit): Promise<T
   return payload;
 }
 
+function trackWorkspaceEvent(event: "workspace_started" | "workspace_run_completed" | "review_exported" | "verified_research_outcome", properties: Record<string, string | number | boolean> = {}) {
+  void fetch("/api/events", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ event, properties }),
+    keepalive: true,
+  }).catch(() => undefined);
+}
+
 export function ResearchWorkspacePanel({
   papers,
   seedSources = [],
@@ -270,10 +296,17 @@ export function ResearchWorkspacePanel({
   const [customColumnOpen, setCustomColumnOpen] = useState(false);
   const [customColumnLabel, setCustomColumnLabel] = useState("");
   const [customColumnPrompt, setCustomColumnPrompt] = useState("");
+  const [libraryOpen, setLibraryOpen] = useState(false);
+  const [privateItems, setPrivateItems] = useState<PrivateLibraryItem[]>([]);
+  const [importType, setImportType] = useState<"doi" | "bibtex" | "ris">("doi");
+  const [importValue, setImportValue] = useState("");
+  const [importBusy, setImportBusy] = useState(false);
   const [activeCell, setActiveCell] = useState<{ source: string; columnId: string } | null>(null);
-  const [status, setStatus] = useState<"idle" | "running" | "saving" | "saved" | "error">("idle");
+  const [status, setStatus] = useState<"idle" | "running" | "paused" | "saving" | "saved" | "error">("idle");
   const [statusText, setStatusText] = useState("Saved locally");
+  const [runProgress, setRunProgress] = useState({ completed: 0, total: 0, credits: 0 });
   const appliedSeedRef = useRef("");
+  const stopRunRef = useRef(false);
 
   useEffect(() => {
     try {
@@ -304,7 +337,7 @@ export function ResearchWorkspacePanel({
     const requested = seedSources.length
       ? seedSources.map((source) => papers.find((paper) => paper.source === source)).filter((paper): paper is ResearchWorkspacePaper => Boolean(paper))
       : papers.slice(0, 4);
-    const seeded = normalizeRows(requested.slice(0, 6), columns);
+    const seeded = normalizeRows(requested.slice(0, 50), columns);
     setRows(seeded);
     setSelectedSources(seeded.map((row) => row.source));
   }, [columns, papers, ready, rows.length, seedSources]);
@@ -316,15 +349,15 @@ export function ResearchWorkspacePanel({
     const requested = seedSources
       .map((source) => papers.find((paper) => paper.source === source))
       .filter((paper): paper is ResearchWorkspacePaper => Boolean(paper))
-      .slice(0, 6);
+      .slice(0, 50);
     if (!requested.length) return;
     appliedSeedRef.current = signature;
     setRows((current) => {
       const existing = new Set(current.map((row) => row.source));
       const additions = requested.filter((paper) => !existing.has(paper.source));
-      return [...current, ...normalizeRows(additions, columns)].slice(0, 12);
+      return [...current, ...normalizeRows(additions, columns)].slice(0, 50);
     });
-    setSelectedSources((current) => [...new Set([...current, ...requested.map((paper) => paper.source)])].slice(0, 12));
+    setSelectedSources((current) => [...new Set([...current, ...requested.map((paper) => paper.source)])].slice(0, 50));
     setStatusText(`${requested.length} saved papers ready to compare`);
   }, [columns, papers, ready, seedSources]);
 
@@ -373,6 +406,30 @@ export function ResearchWorkspacePanel({
     return () => { cancelled = true; };
   }, [authenticated, ready, restoredLocally]);
 
+  useEffect(() => {
+    if (!authenticated) {
+      setPrivateItems([]);
+      return;
+    }
+    void fetchWorkspaceJson<{ items: PrivateLibraryItem[] }>("/api/private-library")
+      .then((payload) => setPrivateItems(payload.items))
+      .catch(() => undefined);
+  }, [authenticated]);
+
+  const availablePapers = useMemo(() => [
+    ...privateItems.map((item): ResearchWorkspacePaper => ({
+      id: item.itemId,
+      source: item.source,
+      title: item.title,
+      paperCode: "Private",
+      collection: "",
+      discipline: "private_source",
+      pageLabel: item.pageCount ? `${item.pageCount} pages` : "Metadata only",
+      evidenceCount: item.pageCount,
+    })),
+    ...papers,
+  ], [papers, privateItems]);
+
   const selectedRows = useMemo(() => rows.filter((row) => selectedSources.includes(row.source)), [rows, selectedSources]);
   const prismaEnabled = template === "prisma_scoping";
   const runnableRows = useMemo(
@@ -397,6 +454,54 @@ export function ResearchWorkspacePanel({
   const selectedModel = CHAT_MODELS.find((item) => item.id === model) ?? CHAT_MODELS[0];
   const estimatedCredits = runnableRows.length * (selectedModel?.credits ?? 1);
 
+  const importCitation = async () => {
+    if (!importValue.trim() || importBusy) return;
+    setImportBusy(true);
+    try {
+      const payload = await fetchWorkspaceJson<{ item: PrivateLibraryItem }>("/api/private-library", {
+        method: "POST",
+        body: JSON.stringify({ importType, value: importValue }),
+      });
+      setPrivateItems((current) => [payload.item, ...current.filter((item) => item.itemId !== payload.item.itemId)]);
+      setImportValue("");
+      setStatusText("Private source imported");
+    } catch (error) {
+      setStatusText(error instanceof Error ? error.message : "Private source could not be imported.");
+    } finally {
+      setImportBusy(false);
+    }
+  };
+
+  const importPdf = async (file: File | undefined) => {
+    if (!file || importBusy) return;
+    setImportBusy(true);
+    const form = new FormData();
+    form.set("file", file);
+    try {
+      const response = await fetch("/api/private-library", { method: "POST", body: form });
+      const payload = await response.json() as { item?: PrivateLibraryItem; error?: string };
+      if (!response.ok || !payload.item) throw new Error(payload.error || "PDF could not be imported.");
+      setPrivateItems((current) => [payload.item!, ...current]);
+      setStatusText(`${payload.item.title} imported with ${payload.item.pageCount} private pages`);
+    } catch (error) {
+      setStatusText(error instanceof Error ? error.message : "PDF could not be imported.");
+    } finally {
+      setImportBusy(false);
+    }
+  };
+
+  const removePrivateItem = async (item: PrivateLibraryItem) => {
+    try {
+      await fetchWorkspaceJson(`/api/private-library?itemId=${encodeURIComponent(item.itemId)}`, { method: "DELETE" });
+      setPrivateItems((current) => current.filter((candidate) => candidate.itemId !== item.itemId));
+      setRows((current) => current.filter((row) => row.source !== item.source));
+      setSelectedSources((current) => current.filter((source) => source !== item.source));
+      setStatusText("Private source removed");
+    } catch (error) {
+      setStatusText(error instanceof Error ? error.message : "Private source could not be removed.");
+    }
+  };
+
   const applyTemplate = (nextTemplate: WorkspaceTemplate) => {
     const nextColumns = TEMPLATE_COLUMNS[nextTemplate];
     setTemplate(nextTemplate);
@@ -413,9 +518,9 @@ export function ResearchWorkspacePanel({
   const togglePaper = (paper: ResearchWorkspacePaper) => {
     setRows((current) => {
       const exists = current.some((row) => row.source === paper.source);
-      return exists ? current.filter((row) => row.source !== paper.source) : [...current, ...normalizeRows([paper], columns)].slice(0, 12);
+      return exists ? current.filter((row) => row.source !== paper.source) : [...current, ...normalizeRows([paper], columns)].slice(0, 50);
     });
-    setSelectedSources((current) => current.includes(paper.source) ? current.filter((source) => source !== paper.source) : [...current, paper.source].slice(0, 12));
+    setSelectedSources((current) => current.includes(paper.source) ? current.filter((source) => source !== paper.source) : [...current, paper.source].slice(0, 50));
   };
 
   const addCustomColumn = () => {
@@ -460,45 +565,80 @@ export function ResearchWorkspacePanel({
       return;
     }
     if (!runRows.length || !runColumns.length || status === "running") return;
-    const runSources = new Set(runRows.map((row) => row.source));
+    const boundedRows = runRows.slice(0, 50);
+    const runSources = new Set(boundedRows.map((row) => row.source));
     const runColumnIds = new Set(runColumns.map((column) => column.id));
+    stopRunRef.current = false;
+    setRunProgress({ completed: 0, total: boundedRows.length, credits: 0 });
     setStatus("running");
-    setStatusText(`Running ${runRows.length} papers × ${runColumns.length} AI columns`);
+    setStatusText(`Running ${boundedRows.length} papers in ${Math.ceil(boundedRows.length / 6)} bounded batches`);
+    trackWorkspaceEvent("workspace_started", { papers: boundedRows.length, columns: runColumns.length, template });
     setRows((current) => current.map((row) => !runSources.has(row.source) ? row : {
       ...row,
       cells: row.cells.map((cell) => runColumnIds.has(cell.columnId) ? { ...cell, status: "running", review: "unreviewed" } : cell),
     }));
+    let workingRows = rows.map((row) => !runSources.has(row.source) ? row : {
+      ...row,
+      cells: row.cells.map((cell) => runColumnIds.has(cell.columnId) ? { ...cell, status: "running" as const, review: "unreviewed" as const } : cell),
+    });
+    let creditsUsed = 0;
+    let completedPapers = 0;
     try {
-      const payload = await fetchWorkspaceJson<RunResponse>("/api/research-workspaces", {
-        method: "POST",
-        body: JSON.stringify({
-          action: "run",
-          workspaceId,
-          runId: `run-${crypto.randomUUID()}`,
-          title,
-          model,
-          rows: runRows.slice(0, 6).map(({ source, title: paperTitle, paperCode, collection }) => ({ source, title: paperTitle, paperCode, collection })),
-          columns: runColumns.slice(0, 6).map(({ id, label, prompt }) => ({ id, label, prompt })),
-        }),
-      });
-      const resultBySource = new Map(payload.rows.map((row) => [row.source, row]));
-      setRows((current) => current.map((row) => {
-        const result = resultBySource.get(row.source);
-        if (!result) return row;
-        return {
-          ...row,
-          cells: row.cells.map((cell) => {
-            const generated = result.cells.find((item) => item.columnId === cell.columnId);
-            return generated ? { ...generated, review: "unreviewed" as const } : cell;
+      for (let offset = 0; offset < boundedRows.length; offset += 6) {
+        if (stopRunRef.current) break;
+        const batch = boundedRows.slice(offset, offset + 6);
+        const payload = await fetchWorkspaceJson<RunResponse>("/api/research-workspaces", {
+          method: "POST",
+          body: JSON.stringify({
+            action: "run",
+            workspaceId,
+            runId: `run-${crypto.randomUUID()}`,
+            title,
+            model,
+            rows: batch.map(({ source, title: paperTitle, paperCode, collection }) => ({ source, title: paperTitle, paperCode, collection })),
+            columns: runColumns.slice(0, 6).map(({ id, label, prompt }) => ({ id, label, prompt })),
           }),
-        };
-      }));
-      setStatus("saved");
-      setStatusText(`Run complete · ${payload.chargedCredits} credits used · review generated cells`);
+        });
+        creditsUsed += payload.chargedCredits;
+        completedPapers += batch.length;
+        const resultBySource = new Map(payload.rows.map((row) => [row.source, row]));
+        workingRows = workingRows.map((row) => {
+          const result = resultBySource.get(row.source);
+          if (!result) return row;
+          return {
+            ...row,
+            cells: row.cells.map((cell) => {
+              const generated = result.cells.find((item) => item.columnId === cell.columnId);
+              return generated ? { ...generated, review: "unreviewed" as const } : cell;
+            }),
+          };
+        });
+        setRows(workingRows);
+        setRunProgress({ completed: completedPapers, total: boundedRows.length, credits: creditsUsed });
+        if (authenticated) {
+          const state: WorkspaceState = {
+            version: "civilmcp-research-workspace-v1", workspaceId, title, template, model,
+            rows: workingRows, columns, selectedSources, reviewProtocol, screening, updatedAt: new Date().toISOString(),
+          };
+          await fetchWorkspaceJson("/api/research-workspaces", {
+            method: "POST",
+            body: JSON.stringify({ action: "save", workspaceId, title, collection: "", paperSources: workingRows.map((row) => row.source), state }),
+          });
+        }
+      }
+      if (stopRunRef.current) {
+        workingRows = workingRows.map((row) => ({ ...row, cells: row.cells.map((cell) => cell.status === "running" ? { ...cell, status: "idle" as const } : cell) }));
+        setRows(workingRows);
+        setStatus("paused");
+        setStatusText(`Paused after ${completedPapers} of ${boundedRows.length} papers · select remaining papers and run again`);
+      } else {
+        setStatus("saved");
+        setStatusText(`Review run complete · ${creditsUsed} credits used · verify generated cells`);
+        trackWorkspaceEvent("workspace_run_completed", { papers: boundedRows.length, columns: runColumns.length, credits: creditsUsed });
+      }
     } catch (error) {
-      setRows((current) => current.map((row) => !runSources.has(row.source) ? row : {
-        ...row,
-        cells: row.cells.map((cell) => runColumnIds.has(cell.columnId) && cell.status === "running" ? { ...cell, status: "error" } : cell),
+      setRows(workingRows.map((row) => !runSources.has(row.source) ? row : {
+        ...row, cells: row.cells.map((cell) => runColumnIds.has(cell.columnId) && cell.status === "running" ? { ...cell, status: "error" as const } : cell),
       }));
       setStatus("error");
       setStatusText(error instanceof Error ? error.message : "Automated research run failed.");
@@ -564,6 +704,9 @@ export function ResearchWorkspacePanel({
     }
     downloadText(`civilmcp-research-workspace-${Date.now()}.csv`, lines.join("\n"), "text/csv;charset=utf-8");
     setStatusText("Workspace exported with source columns");
+    trackWorkspaceEvent("review_exported", { format: "csv", papers: rows.length, template });
+    const verifiedCells = rows.flatMap((row) => row.cells).filter((cell) => cell.review === "verified" && cell.evidence.some((item) => item.pageStart != null)).length;
+    if (verifiedCells) trackWorkspaceEvent("verified_research_outcome", { format: "csv", papers: rows.length, verifiedCells, template });
   };
 
   const exportPrismaReview = () => {
@@ -630,7 +773,21 @@ export function ResearchWorkspacePanel({
     ];
     downloadText(`civilmcp-prisma-scoping-review-${Date.now()}.md`, lines.join("\n"), "text/markdown;charset=utf-8");
     setStatusText("PRISMA review log exported");
+    trackWorkspaceEvent("review_exported", { format: "markdown", papers: rows.length, template });
+    const verifiedCells = rows.flatMap((row) => row.cells).filter((cell) => cell.review === "verified" && cell.evidence.some((item) => item.pageStart != null)).length;
+    if (verifiedCells) trackWorkspaceEvent("verified_research_outcome", { format: "markdown", papers: rows.length, verifiedCells, template });
   };
+
+  const extractedPapers = rows.filter((row) => row.cells.some((cell) => cell.status === "ready" || cell.status === "needs_review")).length;
+  const reviewedPapers = rows.filter((row) => row.cells.length > 0 && row.cells.every((cell) => cell.review === "verified")).length;
+  const workflowStages = [
+    { label: "Scope", complete: protocolReady },
+    { label: "Find", complete: rows.length > 0 },
+    { label: "Screen", complete: prismaEnabled ? screeningReady : selectedRows.length > 0 },
+    { label: "Extract", complete: extractedPapers > 0 },
+    { label: "Review", complete: reviewedPapers > 0 },
+    { label: "Export", complete: false },
+  ];
 
   return (
     <section className="researchWorkspace" aria-label="Research Workspace Pro">
@@ -638,12 +795,12 @@ export function ResearchWorkspacePanel({
         <header className="researchWorkspaceHeader">
           <div>
             <div className="workspaceTitleLine">
-              <span className="workspaceEyebrow">Workspace</span>
+              <span className="workspaceEyebrow">Verified Review Project</span>
               <span className="workspaceProBadge">Pro</span>
               {prismaEnabled ? <span className="workspaceStandardBadge">PRISMA-ScR</span> : null}
             </div>
             <input aria-label="Workspace title" value={title} maxLength={160} onChange={(event) => setTitle(event.target.value)} />
-            <p>{prismaEnabled ? "Screen papers, extract evidence, and keep a review log." : "Compare evidence across selected papers."}</p>
+            <p>{prismaEnabled ? "Scope, screen, extract, verify, and export one defensible review." : "Build scientific evidence snapshots with exact-page provenance."}</p>
           </div>
           <div className="workspaceHeaderStatus" aria-live="polite">
             {status === "running" || status === "saving" ? <LoaderCircle size={15} className="workspaceSpinner" aria-hidden /> : status === "saved" ? <Check size={15} aria-hidden /> : null}
@@ -673,6 +830,11 @@ export function ResearchWorkspacePanel({
             <span>Papers</span>
             <strong>{rows.length}</strong>
           </button>
+          <button type="button" onClick={() => authenticated ? setLibraryOpen((value) => !value) : onUpgrade("Sign in to import private research sources.")} aria-expanded={libraryOpen}>
+            <Library size={16} aria-hidden />
+            <span>Private sources</span>
+            {privateItems.length ? <strong>{privateItems.length}</strong> : null}
+          </button>
           <button type="button" onClick={() => setCustomColumnOpen((value) => !value)} disabled={columns.length >= 6} aria-expanded={customColumnOpen}>
             <Plus size={16} aria-hidden />
             <span>Add column</span>
@@ -685,19 +847,81 @@ export function ResearchWorkspacePanel({
             <Download size={16} aria-hidden />
             <span>{prismaEnabled ? "Export PRISMA" : "Export CSV"}</span>
           </button>
-          <button className="workspaceRunButton" type="button" onClick={() => void runResearch()} disabled={proEnabled && (!runnableRows.length || !columns.length || status === "running")}>
-            <Sparkles size={16} aria-hidden />
-            <span>{proEnabled ? (prismaEnabled ? "Run included" : "Run selected") : "Run with Pro"}</span>
+          <button
+            className="workspaceRunButton"
+            type="button"
+            onClick={() => status === "running" ? (stopRunRef.current = true) : void runResearch()}
+            disabled={proEnabled && status !== "running" && (!runnableRows.length || !columns.length)}
+          >
+            {status === "running" ? <Square size={15} aria-hidden /> : <Sparkles size={16} aria-hidden />}
+            <span>{status === "running" ? "Stop after batch" : proEnabled ? (prismaEnabled ? "Run included" : "Run selected") : "Run with Pro"}</span>
             {runnableRows.length ? <strong>{estimatedCredits} cr</strong> : null}
           </button>
         </div>
       </div>
 
+      {libraryOpen ? (
+        <section className="privateLibraryPanel" aria-label="Private project library">
+          <header>
+            <div><span className="workspaceEyebrow">Private Project Library</span><strong>Bring your own research into the same review.</strong></div>
+            <small>Visible only to your account · never added to the public corpus</small>
+          </header>
+          <div className="privateImportGrid">
+            <label className="privatePdfImport">
+              <Upload size={18} aria-hidden />
+              <span><strong>Upload PDF</strong><small>Up to 12 MB / 200 pages</small></span>
+              <input type="file" accept="application/pdf" disabled={importBusy} onChange={(event) => void importPdf(event.target.files?.[0])} />
+            </label>
+            <div className="privateCitationImport">
+              <div role="group" aria-label="Citation import type">
+                {(["doi", "bibtex", "ris"] as const).map((type) => <button key={type} type="button" className={importType === type ? "selected" : ""} onClick={() => setImportType(type)}>{type.toUpperCase()}</button>)}
+              </div>
+              <textarea value={importValue} onChange={(event) => setImportValue(event.target.value)} rows={3} maxLength={40_000} placeholder={importType === "doi" ? "10.xxxx/xxxxx" : `Paste ${importType.toUpperCase()} metadata`} />
+              <button type="button" onClick={() => void importCitation()} disabled={importBusy || importValue.trim().length < 3}>{importBusy ? "Importing…" : "Import source"}</button>
+            </div>
+          </div>
+          {privateItems.length ? (
+            <div className="privateLibraryList">
+              {privateItems.map((item) => (
+                <article key={item.itemId}>
+                  <div><span>{item.importType.toUpperCase()} · {item.pageCount ? `${item.pageCount} pages` : "metadata"}</span><strong>{item.title}</strong><small>{[item.publicationYear, item.authors.slice(0, 2).join(", ")].filter(Boolean).join(" · ") || "Private source"}</small></div>
+                  <button type="button" aria-label={`Remove ${item.title}`} onClick={() => void removePrivateItem(item)}><Trash2 size={15} aria-hidden /></button>
+                </article>
+              ))}
+            </div>
+          ) : null}
+        </section>
+      ) : null}
+
+      <section className="verifiedReviewFlow" aria-label="Verified review workflow">
+        <ol>
+          {workflowStages.map((stage, index) => (
+            <li key={stage.label} className={stage.complete ? "complete" : index === workflowStages.findIndex((item) => !item.complete) ? "active" : ""}>
+              <span>{stage.complete ? <Check size={13} aria-hidden /> : index + 1}</span>
+              {stage.label}
+            </li>
+          ))}
+        </ol>
+        <div>
+          <span>{rows.length} papers</span>
+          <span>{extractedPapers} extracted</span>
+          <span>{reviewedPapers} verified</span>
+        </div>
+      </section>
+
+      {status === "running" && runProgress.total > 0 ? (
+        <div className="workspaceRunProgress" role="status" aria-live="polite">
+          <span style={{ width: `${Math.round((runProgress.completed / runProgress.total) * 100)}%` }} />
+          <strong>{runProgress.completed}/{runProgress.total} papers</strong>
+          <small>{runProgress.credits} credits used · progress syncs after each batch</small>
+        </div>
+      ) : null}
+
       {pickerOpen ? (
         <section className="workspacePaperPicker" aria-label="Add papers to workspace">
-          <div><strong>Add papers</strong><span>Choose up to 12. Each run processes up to 6.</span></div>
+          <div><strong>Add papers</strong><span>Choose up to 50. CivilMCP processes six at a time and saves each batch.</span></div>
           <div className="workspacePaperOptions">
-            {papers.slice(0, 12).map((paper) => {
+            {availablePapers.slice(0, 50).map((paper) => {
               const included = rows.some((row) => row.source === paper.source);
               return (
                 <button key={paper.source} type="button" className={included ? "selected" : ""} aria-pressed={included} onClick={() => togglePaper(paper)}>

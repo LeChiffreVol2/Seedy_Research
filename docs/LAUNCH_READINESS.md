@@ -21,12 +21,18 @@ The launch promise is narrow and testable:
   bridge, citation export, and personal library notes/labels.
 - Chat: bounded Evidence Mission, Guided Learning, Quick Answer, and cited
   follow-ups, with a deterministic query-scope and citation-integrity audit.
-- Research Path: four-stage personalized learning path with local progress.
-- Research Workspace: Saved-to-Compare handoff, bounded evidence matrix, and
-  PRISMA-ScR guided research-pack export; Pro execution remains unavailable
-  until paid hosting and Stripe are deliberately enabled.
-- MCP: 11 authenticated, read-only tools. Metadata-only catalog results are
-  never returned as citable evidence.
+- Research Path: four-stage adaptive learning path with checkpoints, explicit
+  mastery/gap state, and local progress.
+- Research Workspace: up-to-50-paper Verified Review Project, six-paper bounded
+  server batches, Scientific Evidence Snapshot, private PDF/citation imports,
+  human review, and PRISMA-ScR guided export.
+- Living Review and citation map: explicit, bounded Thai/OpenAlex discovery
+  checks with metadata/evidence separation.
+- Public paper records: indexable metadata, canonical URL, JSON-LD, page ranges,
+  and rights-safe outline without raw full text.
+- MCP: 19 authenticated tools with explicit read/write/destructive annotations
+  and revocable owner-scoped personal keys. Metadata-only records are never
+  returned as citable evidence.
 - Trust and support: public Privacy, Terms, Support/takedown, self-service
   account deletion, and first-party activation events without raw queries.
 
@@ -42,14 +48,18 @@ All of the following must pass against the same source state:
 5. incognito Explore → evidence → chat → feedback audit;
 6. source status and citation boundary audit for NCCE, student projects, and
    ThaiJO metadata;
-7. rollback drill using the previous Vercel deployment.
+7. rollback drill using the previous Vercel deployment;
 8. semantic retrieval is healthy, or the UI and traces explicitly report the
    bounded lexical fallback; `retrieval_unavailable` must never generate an answer.
 9. support request, account deletion, privacy, and terms routes pass a clean
    incognito/authenticated audit.
 10. every cited-answer fixture resolves its evidence IDs, opens the targeted
     packet/page, and exports a provenance audit without claiming scientific
-    validation.
+    validation;
+11. private-library ownership, Living Review ownership, and personal MCP key
+    create/use/revoke/delete pass authenticated isolation tests;
+12. `npm audit --omit=dev` has no high or critical production advisory, and any
+    deferred low advisory has an owner and migration plan.
 
 ## Limited-rollout success criteria
 
@@ -71,9 +81,11 @@ The following require additional data, infrastructure, or external
 coordination and must not be represented as shipped:
 
 - unattended async Autoresearch with durable resume/cancel/retry;
-- author–institution–citation graph and alerts;
+- author–institution graph and researcher social network;
+- weekly email digest for Living Reviews;
 - real-time collaboration;
-- OAuth-based public MCP authorization;
+- standards-based OAuth 2.1 MCP authorization (personal revocable keys are the
+  current limited-rollout access path);
 - commercial full-text ingestion without provider-level rights review;
 - paid subscriptions while the deployment remains on Vercel Hobby.
 - unattended support SLA or legal-response automation; the preview queue is

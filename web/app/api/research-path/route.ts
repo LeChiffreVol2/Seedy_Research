@@ -18,6 +18,7 @@ type PathRequest = {
   level?: unknown;
   outcome?: unknown;
   collection?: unknown;
+  knowledgeGaps?: unknown;
 };
 
 const LEVELS = new Set<PathLevel>(["foundation", "applied", "research"]);
@@ -26,6 +27,11 @@ const STAGE_TITLES = ["Map the field", "Inspect the methods", "Compare the evide
 
 function compactGoal(value: unknown): string {
   return normalizeOpenAlexQuery(value);
+}
+
+function compactGaps(value: unknown): string[] {
+  if (!Array.isArray(value)) return [];
+  return [...new Set(value.map((item) => compactGoal(item)).filter((item) => item.length >= 3))].slice(0, 4);
 }
 
 function pathPaper(card: ResearchFeedCard) {
@@ -74,6 +80,7 @@ export async function POST(request: NextRequest) {
   const level = LEVELS.has(body.level as PathLevel) ? (body.level as PathLevel) : "applied";
   const outcome = OUTCOMES.has(body.outcome as PathOutcome) ? (body.outcome as PathOutcome) : "literature_review";
   const collection = body.collection === "ncce" || body.collection === "ce_project" ? body.collection : "";
+  const knowledgeGaps = compactGaps(body.knowledgeGaps);
   if (goal.length < 8) return finalize(NextResponse.json({ error: "Describe a research goal in at least 8 characters." }, { status: 422 }));
 
   const quota = await consumeChatQuota({
@@ -101,7 +108,8 @@ export async function POST(request: NextRequest) {
   }
 
   try {
-    const matched = await listResearchFeed({ filter: "evidence", collection, q: goal, limit: 12 });
+    const retrievalGoal = [goal, ...knowledgeGaps].join(" ").slice(0, 280);
+    const matched = await listResearchFeed({ filter: "evidence", collection, q: retrievalGoal, limit: 12 });
     const cards = uniqueCards(matched.cards);
     if (cards.length < 4) {
       return finalize(NextResponse.json(
@@ -145,16 +153,32 @@ export async function POST(request: NextRequest) {
         "Compare findings across papers, looking for agreement, conflict, and context-specific results.",
         `Synthesize a position for your ${outcome.replace(/_/g, " ")} and name what evidence is still missing.`,
       ];
+      const checkpointQuestions = [
+        `Can you name two themes in ${goal} and explain how their scope differs?`,
+        "Can you explain why the selected methods fit their data and where bias could enter?",
+        "Can you identify one agreement and one conflict across the selected studies, with exact-page support?",
+        `Can you state your position, its strongest supporting evidence, and the most important remaining uncertainty?`,
+      ];
+      const concepts = [
+        `field map for ${goal}`,
+        `methods and validity for ${goal}`,
+        `agreement and conflict in ${goal}`,
+        `evidence gap for ${goal}`,
+      ];
+      const adaptiveFocus = knowledgeGaps[index % Math.max(knowledgeGaps.length, 1)] || "";
       return {
         id: `stage-${index + 1}`,
         title,
-        objective: objectives[index],
+        objective: adaptiveFocus ? `${objectives[index]} Review focus: ${adaptiveFocus}.` : objectives[index],
+        checkpointQuestion: checkpointQuestions[index],
+        concepts: [concepts[index], ...(adaptiveFocus ? [adaptiveFocus] : [])],
         papers: papers.map(pathPaper),
         prompt: [
           `Research goal: ${goal}`,
           `Learning stage: ${title}. ${objectives[index]}`,
           levelInstruction,
           outcomeInstruction,
+          adaptiveFocus ? `The learner marked this gap for review: ${adaptiveFocus}.` : "",
           codes.length ? `Prioritize these papers: ${codes.join(", ")}.` : "Search the strongest matching CivilMCP papers.",
           "Use exact-page evidence, distinguish findings from inference, and finish with one checkpoint question.",
         ].join(" "),
@@ -167,6 +191,7 @@ export async function POST(request: NextRequest) {
       level,
       outcome,
       sourceCodes,
+      adaptedFromGaps: knowledgeGaps,
       stages,
       openAlex,
       generatedAt: new Date().toISOString(),

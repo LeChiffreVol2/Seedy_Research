@@ -19,12 +19,16 @@ async function expectNoInteractiveOverlap(page: Page) {
     const controls = Array.from(document.querySelectorAll<HTMLElement>("button, a, input, textarea, select")).filter((element) => {
       const rect = element.getBoundingClientRect();
       const style = getComputedStyle(element);
+      const centerX = Math.max(0, Math.min(window.innerWidth - 1, rect.left + rect.width / 2));
+      const centerY = Math.max(0, Math.min(window.innerHeight - 1, rect.top + rect.height / 2));
+      const hit = document.elementFromPoint(centerX, centerY);
       return (
         rect.width > 0 &&
         rect.height > 0 &&
         rect.bottom > 0 &&
         rect.top < window.innerHeight &&
         style.visibility !== "hidden" &&
+        Boolean(hit && (hit === element || element.contains(hit) || hit.contains(element))) &&
         element.getAttribute("aria-label") !== "Open Next.js Dev Tools"
       );
     });
@@ -201,6 +205,7 @@ test("paper detail exposes library, citation export, global comparison, and rela
   await expect(page.getByRole("button", { name: "BibTeX" })).toBeVisible();
   await expect(page.getByRole("button", { name: "RIS · Zotero" })).toBeVisible();
   await expect(page.getByRole("link", { name: "Compare globally" })).toHaveAttribute("href", /^https:\/\/openalex\.org\//);
+  await expect(page.getByRole("link", { name: "Public record" })).toHaveAttribute("href", /^\/papers\//);
   await expect(page.getByRole("heading", { name: "Library notes" })).toBeVisible();
   await expect(page.getByRole("heading", { name: "Related Thai evidence" })).toBeVisible();
 
@@ -219,6 +224,16 @@ test("paper detail exposes library, citation export, global comparison, and rela
   expect(targetedResponse.ok()).toBe(true);
   const targetedPaper = await targetedResponse.json() as { evidence?: Array<{ id?: string }> };
   expect(targetedPaper.evidence?.[0]?.id).toBe(targetEvidence?.id);
+});
+
+test("public paper record is indexable without exposing raw full text", async ({ page }) => {
+  const response = await page.goto("/papers/NCCE31_CEM-06.md");
+  expect(response?.ok()).toBe(true);
+  await expect(page.getByRole("heading", { level: 1 })).toContainText("การศึกษาการบริหารจัดการความเสี่ยง");
+  await expect(page.getByRole("heading", { name: "Evidence outline" })).toBeVisible();
+  await expect(page.getByRole("link", { name: "Inspect exact-page evidence" })).toHaveAttribute("href", /\?paper=NCCE31_CEM-06\.md/);
+  await expect(page.getByText("Source text stays inside the controlled evidence workflow.")).toBeVisible();
+  await expectNoPageOverflow(page);
 });
 
 test("personal library saves a paper and enables notes and folders", async ({ page }) => {
@@ -377,6 +392,8 @@ test("Research Path turns an explicit goal into a four-stage learning sequence",
       title,
       objective: `Objective ${index + 1} for an applied literature review.`,
       prompt: `Study stage ${index + 1} with exact-page evidence.`,
+      checkpointQuestion: `Checkpoint question ${index + 1}?`,
+      concepts: [`Concept gap ${index + 1}`],
       papers: [{
         id: `paper-${index + 1}`,
         source: `NCCE29_TRL4${index}.md`,
@@ -410,6 +427,8 @@ test("Research Path turns an explicit goal into a four-stage learning sequence",
   await expect(workspace.getByText("Global road safety research")).toBeVisible();
   await workspace.getByRole("button", { name: "Mark complete" }).first().click();
   await expect(workspace).toContainText("1 of 4 stages complete");
+  await workspace.getByRole("button", { name: "Need review" }).first().click();
+  await expect(workspace.getByRole("button", { name: "Adapt to 1 learning gap" })).toBeVisible();
   await expectNoPageOverflow(page);
   await expectNoInteractiveOverlap(page);
 });
@@ -431,7 +450,8 @@ test("Research Workspace is a separate Founder Pro surface", async ({ page }) =>
   await page.getByRole("button", { name: "Workspace" }).click();
   const workspace = page.getByLabel("Research Workspace Pro");
   await expect(workspace).toBeVisible();
-  await expect(workspace.getByText("Compare evidence across selected papers.")).toBeVisible();
+  await expect(workspace.getByText("Build scientific evidence snapshots with exact-page provenance.")).toBeVisible();
+  await expect(workspace.getByText("Verified Review Project")).toBeVisible();
   await expect(workspace.getByRole("button", { name: /Run with Pro/ })).toBeVisible();
   await workspace.getByRole("button", { name: /Run with Pro/ }).click();
   await expect(page.getByRole("heading", { name: "For larger research projects." })).toBeVisible();
@@ -555,7 +575,7 @@ test("Founder Pro can batch-run, inspect, review, and export workspace cells", a
   const workspace = page.getByLabel("Research Workspace Pro");
   await expect(workspace.locator("tbody tr")).toHaveCount(2);
   await workspace.getByRole("button", { name: /Run selected/ }).click();
-  await expect(workspace.getByText(/Run complete · 2 credits used/)).toBeVisible();
+  await expect(workspace.getByText(/Review run complete · 2 credits used/)).toBeVisible();
   await workspace.getByRole("button", { name: /Method for Thai road safety evidence 1/ }).click();
   const inspector = page.getByLabel("Cell evidence inspector");
   await expect(inspector).toContainText("method finding for paper 1");
@@ -578,7 +598,7 @@ test("Founder Pro can batch-run, inspect, review, and export workspace cells", a
   await expect(prisma.getByLabel("Included 1")).toBeVisible();
   await expect(prisma.getByLabel("Excluded 1")).toBeVisible();
   await workspace.getByRole("button", { name: /Run included/ }).click();
-  await expect(workspace.getByText(/Run complete · 1 credits used/)).toBeVisible();
+  await expect(workspace.getByText(/Review run complete · 1 credits used/)).toBeVisible();
   const prismaDownload = page.waitForEvent("download");
   await workspace.getByRole("button", { name: "Export PRISMA" }).click();
   await expect((await prismaDownload).suggestedFilename()).toMatch(/^civilmcp-prisma-scoping-review-\d+\.md$/);
@@ -588,7 +608,7 @@ test("Founder Pro can batch-run, inspect, review, and export workspace cells", a
 test("model menu supports keyboard navigation and focus return", async ({ page }) => {
   await page.setViewportSize({ width: 390, height: 844 });
   await page.goto("/");
-  const trigger = page.getByRole("button", { name: "Model" });
+  const trigger = page.locator(".modelControl").getByRole("button", { name: /^Model/ });
   await trigger.focus();
   await trigger.press("ArrowDown");
 

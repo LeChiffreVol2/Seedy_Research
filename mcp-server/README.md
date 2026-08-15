@@ -27,7 +27,7 @@ uvicorn server:app --reload --port 8000
 
 ## Tools
 
-Read-only tools exposed by the server:
+Evidence and discovery tools (read-only):
 
 - `search_civil_knowledge`
 - `search_civil_sections`
@@ -40,6 +40,17 @@ Read-only tools exposed by the server:
 - `search_source_catalog`
 - `find_related_papers`
 - `list_source_providers`
+- `search_global_research` (OpenAlex metadata, never citable)
+- `map_citation_network` (OpenAlex metadata, never citable)
+- `get_evidence_snapshot`
+- `list_library_items` (personal key required)
+- `list_private_sources` (personal key required)
+- `fetch_private_source_pages` (personal key required)
+
+Owner-scoped library mutations (personal key required):
+
+- `save_library_item` — non-destructive write
+- `remove_library_item` — destructive delete
 
 Collection-aware tools accept optional `collection`:
 
@@ -91,3 +102,9 @@ Send either header:
 
 - `Authorization: Bearer your-random-secret`
 - `x-mcp-api-key: your-random-secret`
+
+Signed-in users can create a revocable personal key in CivilMCP Account. A
+personal token begins with `cvmcp_`, is shown only once, and is stored as a
+SHA-256 hash. It unlocks owner-scoped library/private-source tools; deployment
+or CityMCP keys cannot access a user's private records. Standards-based OAuth
+2.1 discovery is not claimed in this release.

@@ -8,6 +8,7 @@ import LiquidGlass from "liquid-glass-react";
 import type { LucideIcon } from "lucide-react";
 import {
   ArrowUp,
+  Bell,
   Bookmark,
   Building2,
   Check,
@@ -25,7 +26,9 @@ import {
   FileText,
   Flame,
   Gauge,
+  GitFork,
   History,
+  KeyRound,
   Languages,
   Layers3,
   LockKeyhole,
@@ -41,6 +44,7 @@ import {
   Sparkles,
   TableProperties,
   Target,
+  Terminal,
   TriangleAlert,
   RefreshCw,
   Route,
@@ -71,6 +75,13 @@ type FeedStatus = "loading" | "ready" | "error";
 type SessionsStatus = "idle" | "loading" | "ready" | "error";
 type AuthMode = "signin" | "signup" | "forgot-password" | "recovery";
 type PaperLanguage = "th" | "en";
+type ProductEvent =
+  | "explore_search" | "paper_open" | "evidence_open" | "paper_save"
+  | "research_path_created" | "path_stage_completed"
+  | "workspace_started" | "workspace_run_completed"
+  | "session_export" | "evidence_export" | "review_exported"
+  | "first_answer" | "onboarding_completed" | "user_returned" | "upgrade_intent" | "verified_research_outcome";
+type ActivationStep = "search" | "verify" | "outcome";
 
 type CivilEvidenceItem = {
   evidenceId: string;
@@ -329,6 +340,23 @@ type GlobalDiscoveryState = {
   error: string;
 };
 
+type LivingReviewWatch = {
+  watchId: string;
+  query: string;
+  collection: CollectionFilter;
+  resultCount: number;
+  newCount: number;
+  active: boolean;
+  lastCheckedAt: string | null;
+};
+
+type CitationMapResponse = {
+  status: GlobalDiscoveryStatus;
+  searchUrl: string;
+  seed: null | { id: string; title: string; year: number | null; citedByCount: number; url: string; relation: "seed"; citable: false };
+  nodes: Array<{ id: string; title: string; year: number | null; citedByCount: number; url: string; relation: "cites" | "cited_by" | "related"; citable: false }>;
+};
+
 type PaperDetailData = {
   document: ResearchCardData;
   sections: Array<{
@@ -410,11 +438,14 @@ type ResearchPath = {
   level: PathLevel;
   outcome: PathOutcome;
   sourceCodes: string[];
+  adaptedFromGaps?: string[];
   generatedAt: string;
   stages: Array<{
     id: string;
     title: string;
     objective: string;
+    checkpointQuestion?: string;
+    concepts?: string[];
     prompt: string;
     papers: Array<{
       id: string;
@@ -523,7 +554,7 @@ const MAIN_NAV_ITEMS: NavItem[] = [
   { id: "workspace", label: "Workspace", icon: TableProperties },
   { id: "path", label: "Research Path", icon: Route },
   { id: "history", label: "History", icon: History },
-  { id: "shared", label: "Shared", icon: Share2 },
+  { id: "shared", label: "Share & export", icon: Share2 },
   { id: "settings", label: "Settings", icon: Settings },
 ];
 
@@ -540,6 +571,7 @@ const THAI_TEXT_PATTERN = /[\u0E00-\u0E7F]/;
 const TRANSLATION_CACHE_KEY = "civilmcp-paper-translations-v1";
 const PAPER_LANGUAGE_KEY = "civilmcp-paper-language-v1";
 const RESEARCH_PATH_KEY = "civilmcp-research-path-v2";
+const ACTIVATION_KEY = "civilmcp-activation-v1";
 const TRANSLATION_CACHE_TTL_MS = 7 * 24 * 60 * 60 * 1_000;
 const TRANSLATION_CACHE_MAX_PAPERS = 30;
 const TRANSLATION_BATCH_MAX_SEGMENTS = 48;
@@ -2000,7 +2032,7 @@ async function fetchJson<T>(input: RequestInfo, init?: RequestInit): Promise<T> 
 }
 
 function trackProductEvent(
-  event: "explore_search" | "paper_open" | "evidence_open" | "paper_save" | "research_path_created" | "session_export" | "evidence_export",
+  event: ProductEvent,
   properties: Record<string, string | number | boolean | null> = {},
 ) {
   void fetch("/api/events", {
@@ -2011,21 +2043,55 @@ function trackProductEvent(
   }).catch(() => undefined);
 }
 
+function ActivationGuide({
+  steps,
+  onStart,
+  onDismiss,
+}: {
+  steps: ActivationStep[];
+  onStart: () => void;
+  onDismiss: () => void;
+}) {
+  const complete = steps.length === 3;
+  const items: Array<{ id: ActivationStep; label: string }> = [
+    { id: "search", label: "Find relevant Thai papers" },
+    { id: "verify", label: "Open exact-page evidence" },
+    { id: "outcome", label: "Save or export the result" },
+  ];
+  return (
+    <section className={`activationGuide ${complete ? "complete" : ""}`} aria-label="Getting started">
+      <div>
+        <span className="workspaceEyebrow">3-minute review</span>
+        <strong>{complete ? "First verified outcome complete" : "Turn a question into verified evidence"}</strong>
+        <small>{complete ? "Your library is ready for the next review." : `${steps.length}/3 steps complete`}</small>
+      </div>
+      <ol>
+        {items.map((item) => (
+          <li key={item.id} className={steps.includes(item.id) ? "complete" : ""}>
+            {steps.includes(item.id) ? <Check size={15} aria-hidden /> : <span>{items.indexOf(item) + 1}</span>}
+            {item.label}
+          </li>
+        ))}
+      </ol>
+      <div className="activationActions">
+        {!complete ? <button type="button" className="cardAction" onClick={onStart}><Search size={15} aria-hidden /> Start with road safety</button> : null}
+        <button type="button" className="activationDismiss" onClick={onDismiss}>{complete ? "Done" : "Hide"}</button>
+      </div>
+    </section>
+  );
+}
+
 function AppSidebar({
   syncState,
   syncLabel,
   activeNav,
   authenticated,
-  onExport,
-  onShare,
   onNavigate,
 }: {
   syncState: SyncState;
   syncLabel: string;
   activeNav: MobileNavItem;
   authenticated: boolean;
-  onExport: () => void;
-  onShare: () => void;
   onNavigate: (item: MobileNavItem) => void;
 }) {
   return (
@@ -2065,14 +2131,6 @@ function AppSidebar({
       </div>
 
       <div className="sidebarBottom">
-        <button type="button" className="sidebarUtility" onClick={onExport}>
-          <Download size={19} strokeWidth={2.1} aria-hidden />
-          <span>Export</span>
-        </button>
-        <button type="button" className="sidebarUtility" onClick={onShare}>
-          <Share2 size={19} strokeWidth={2.1} aria-hidden />
-          <span>Share</span>
-        </button>
         <div className={`mcpStatus ${syncState}`}>
           <span className="syncDot" aria-hidden />
           <span>
@@ -2473,6 +2531,61 @@ function GlobalDiscoveryPanel({
   );
 }
 
+function LivingReviewPanel({
+  authenticated,
+  query,
+  collection,
+  watches,
+  busyId,
+  onWatch,
+  onCheck,
+  onDelete,
+  onSignIn,
+}: {
+  authenticated: boolean;
+  query: string;
+  collection: CollectionFilter;
+  watches: LivingReviewWatch[];
+  busyId: string;
+  onWatch: () => void;
+  onCheck: (watchId: string) => void;
+  onDelete: (watchId: string) => void;
+  onSignIn: () => void;
+}) {
+  const normalized = query.trim();
+  if (!normalized && !watches.length) return null;
+  const alreadyWatching = watches.some((watch) => watch.query.toLocaleLowerCase("en") === normalized.toLocaleLowerCase("en") && watch.collection === collection);
+  return (
+    <section className="livingReviewPanel" aria-label="Living Reviews">
+      <header>
+        <div><span><Bell size={15} aria-hidden /> Living Review</span><strong>Know what changed since your last review.</strong></div>
+        {normalized && !alreadyWatching ? (
+          <button type="button" className="cardAction" onClick={authenticated ? onWatch : onSignIn} disabled={Boolean(busyId)}>
+            <Bell size={14} aria-hidden /> {authenticated ? "Watch this search" : "Sign in to watch"}
+          </button>
+        ) : null}
+      </header>
+      {watches.length ? (
+        <div className="livingReviewList">
+          {watches.slice(0, 5).map((watch) => (
+            <article key={watch.watchId}>
+              <div>
+                <span>{watch.collection || "All sources"}{watch.newCount ? ` · ${watch.newCount} new` : " · up to date"}</span>
+                <strong>{watch.query}</strong>
+                <small>{watch.resultCount} tracked records{watch.lastCheckedAt ? ` · checked ${new Date(watch.lastCheckedAt).toLocaleDateString("en-GB")}` : ""}</small>
+              </div>
+              <div>
+                <button type="button" onClick={() => onCheck(watch.watchId)} disabled={busyId === watch.watchId}>{busyId === watch.watchId ? "Checking…" : "Check now"}</button>
+                <button type="button" onClick={() => onDelete(watch.watchId)} aria-label={`Stop watching ${watch.query}`}><X size={14} aria-hidden /></button>
+              </div>
+            </article>
+          ))}
+        </div>
+      ) : <p>Save a focused search to compare new Thai and global metadata over time.</p>}
+    </section>
+  );
+}
+
 function PreviewSvg({ variant }: { variant: ResearchCardData["preview"] }) {
   if (variant === "flood") {
     return (
@@ -2811,7 +2924,7 @@ function ResearchFeed({
         <aside className="workspaceSelectionTray" aria-label="Compare saved papers">
           <div>
             <strong>{workspaceSelection.length} selected</strong>
-            <span>Choose 2–6 saved papers to compare with exact-page evidence.</span>
+            <span>Choose 2–50 saved papers. Workspace processes six per verified batch.</span>
           </div>
           <div>
             {workspaceSelection.length ? (
@@ -2926,11 +3039,16 @@ function PaperDetailDrawer({
   const [libraryNote, setLibraryNote] = useState("");
   const [libraryLabels, setLibraryLabels] = useState("");
   const [librarySaving, setLibrarySaving] = useState(false);
+  const [citationMap, setCitationMap] = useState<{ phase: "idle" | "loading" | "ready" | "error"; response: CitationMapResponse | null; error: string }>({ phase: "idle", response: null, error: "" });
 
   useEffect(() => {
     setLibraryNote(libraryItem?.note ?? "");
     setLibraryLabels((libraryItem?.labels ?? []).join(", "));
   }, [detail?.document.source, libraryItem?.labels, libraryItem?.note]);
+
+  useEffect(() => {
+    setCitationMap({ phase: "idle", response: null, error: "" });
+  }, [detail?.document.source]);
 
   useEffect(() => {
     if (!isOpen) return;
@@ -2992,6 +3110,16 @@ function PaperDetailDrawer({
       || (!highlightedEvidence.id && highlightedEvidence.pageStart != null && item.pageStart === highlightedEvidence.pageStart)
     )
   );
+  const loadCitationMap = async () => {
+    if (!paper || citationMap.phase === "loading") return;
+    setCitationMap({ phase: "loading", response: null, error: "" });
+    try {
+      const response = await fetchJson<CitationMapResponse>("/api/citation-map", { method: "POST", body: JSON.stringify({ query: paper.doi || displayTitle(paper) }) });
+      setCitationMap({ phase: "ready", response, error: "" });
+    } catch (error) {
+      setCitationMap({ phase: "error", response: null, error: error instanceof Error ? error.message : "Citation map could not be loaded." });
+    }
+  };
 
   return (
     <div className="detailBackdrop" role="presentation" onClick={onClose}>
@@ -3082,6 +3210,14 @@ function PaperDetailDrawer({
               >
                 <ExternalLink size={17} strokeWidth={2.2} aria-hidden />
                 <span>Compare globally</span>
+              </a>
+              <button type="button" className="cardAction" onClick={() => void loadCitationMap()} disabled={citationMap.phase === "loading"}>
+                <GitFork size={17} strokeWidth={2.2} aria-hidden />
+                <span>{citationMap.phase === "loading" ? "Mapping…" : "Citation map"}</span>
+              </button>
+              <a className="cardAction" href={`/papers/${encodeURIComponent(paper.source)}`} target="_blank" rel="noreferrer">
+                <ExternalLink size={17} strokeWidth={2.2} aria-hidden />
+                <span>Public record</span>
               </a>
               {sourceRef ? (
                 <button
@@ -3206,6 +3342,31 @@ function PaperDetailDrawer({
                   );
                 })}
               </div>
+            </section>
+
+            <section className="detailSection">
+              <div className="detailSectionHeading">
+                <div><h3>Global citation map</h3><p className="detailSectionLead">OpenAlex metadata for discovery only. CivilMCP does not use these nodes as answer evidence.</p></div>
+                {citationMap.phase !== "idle" ? <button type="button" className="textAction" onClick={() => void loadCitationMap()}>Refresh</button> : null}
+              </div>
+              {citationMap.phase === "idle" ? (
+                <button type="button" className="citationMapEmpty" onClick={() => void loadCitationMap()}><GitFork size={18} aria-hidden /><span><strong>Trace citations and related work</strong><small>See what this paper cites, who cites it, and similar global research.</small></span></button>
+              ) : citationMap.phase === "loading" ? <p className="detailEmpty">Building a bounded citation map…</p>
+                : citationMap.phase === "error" ? <p className="detailError">{citationMap.error}</p>
+                  : citationMap.response?.status === "connected" && citationMap.response.seed ? (
+                    <div className="citationMap">
+                      <a href={citationMap.response.seed.url} target="_blank" rel="noreferrer" className="citationSeed"><span>Matched seed</span><strong>{citationMap.response.seed.title}</strong><small>{citationMap.response.seed.citedByCount.toLocaleString("en-US")} citations</small></a>
+                      <div className="citationNodes">
+                        {citationMap.response.nodes.map((node) => (
+                          <a key={`${node.relation}-${node.id}`} href={node.url} target="_blank" rel="noreferrer" data-relation={node.relation}>
+                            <span>{node.relation === "cites" ? "Cited by seed" : node.relation === "cited_by" ? "Cites seed" : "Related"}</span>
+                            <strong>{node.title}</strong>
+                            <small>{[node.year, `${node.citedByCount.toLocaleString("en-US")} citations`].filter(Boolean).join(" · ")}</small>
+                          </a>
+                        ))}
+                      </div>
+                    </div>
+                  ) : <p className="detailEmpty">No OpenAlex match was found. <a href={citationMap.response?.searchUrl} target="_blank" rel="noreferrer">Search OpenAlex</a>.</p>}
             </section>
 
             <section className="detailSection">
@@ -3513,9 +3674,12 @@ function PersonalizedResearchPathPanel({
   status,
   error,
   completedStages,
+  stageMastery,
   onBuild,
   onReset,
   onToggleStage,
+  onMarkMastery,
+  onAdapt,
   onStudyStage,
   onOpenPaper,
 }: {
@@ -3529,15 +3693,19 @@ function PersonalizedResearchPathPanel({
   status: SessionsStatus;
   error: string;
   completedStages: string[];
+  stageMastery: Record<string, "needs_review" | "understood">;
   onBuild: () => void;
   onReset: () => void;
   onToggleStage: (stageId: string) => void;
+  onMarkMastery: (stageId: string, state: "needs_review" | "understood") => void;
+  onAdapt: () => void;
   onStudyStage: (prompt: string) => void;
   onOpenPaper: (source: string) => void;
 }) {
   const progress = path?.stages.length
     ? Math.round((completedStages.length / path.stages.length) * 100)
     : 0;
+  const reviewCount = Object.values(stageMastery).filter((value) => value === "needs_review").length;
 
   return (
     <section className="workspacePanel pathWorkspace" aria-label="Personalized research learning path">
@@ -3552,11 +3720,19 @@ function PersonalizedResearchPathPanel({
         </header>
 
         {path ? (
-          <div className="pathProgress" aria-label={`${progress}% of research path complete`}>
-            <span><strong>{completedStages.length}</strong> of {path.stages.length} stages complete</span>
-            <progress value={completedStages.length} max={path.stages.length} />
-            <span>{progress}%</span>
-          </div>
+          <>
+            <div className="pathProgress" aria-label={`${progress}% of research path complete`}>
+              <span><strong>{completedStages.length}</strong> of {path.stages.length} stages complete</span>
+              <progress value={completedStages.length} max={path.stages.length} />
+              <span>{progress}%</span>
+            </div>
+            {reviewCount ? (
+              <button type="button" className="cardAction pathAdaptAction" onClick={onAdapt} disabled={status === "loading"}>
+                <RefreshCw size={15} aria-hidden />
+                <span>{status === "loading" ? "Adapting…" : `Adapt to ${reviewCount} learning gap${reviewCount === 1 ? "" : "s"}`}</span>
+              </button>
+            ) : null}
+          </>
         ) : null}
       </div>
 
@@ -3632,6 +3808,28 @@ function PersonalizedResearchPathPanel({
                       <MessageCircle size={15} aria-hidden />
                       <span>Study with evidence</span>
                     </button>
+                    {stage.checkpointQuestion ? (
+                      <div className="pathCheckpoint">
+                        <div>
+                          <span>Checkpoint</span>
+                          <p>{stage.checkpointQuestion}</p>
+                        </div>
+                        <div className="pathMasteryActions" aria-label={`Checkpoint status for ${stage.title}`}>
+                          <button
+                            type="button"
+                            className={stageMastery[stage.id] === "needs_review" ? "selected" : ""}
+                            aria-pressed={stageMastery[stage.id] === "needs_review"}
+                            onClick={() => onMarkMastery(stage.id, "needs_review")}
+                          >Need review</button>
+                          <button
+                            type="button"
+                            className={stageMastery[stage.id] === "understood" ? "selected understood" : ""}
+                            aria-pressed={stageMastery[stage.id] === "understood"}
+                            onClick={() => onMarkMastery(stage.id, "understood")}
+                          >Understood</button>
+                        </div>
+                      </div>
+                    ) : null}
                   </div>
                 </article>
               );
@@ -3658,6 +3856,72 @@ function PersonalizedResearchPathPanel({
           </aside>
         </>
       )}
+    </section>
+  );
+}
+
+type McpAccessKey = { key_id: string; token_prefix: string; label: string; last_used_at?: string | null; created_at?: string };
+
+function McpAccessCard() {
+  const [keys, setKeys] = useState<McpAccessKey[]>([]);
+  const [endpoint, setEndpoint] = useState("");
+  const [revealedToken, setRevealedToken] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [message, setMessage] = useState("");
+
+  const load = useCallback(async () => {
+    try {
+      const payload = await fetchJson<{ keys: McpAccessKey[]; endpoint: string }>("/api/mcp-access");
+      setKeys(payload.keys ?? []);
+      setEndpoint(payload.endpoint ?? "");
+    } catch {
+      setMessage("MCP access is temporarily unavailable.");
+    }
+  }, []);
+
+  useEffect(() => { void load(); }, [load]);
+
+  const createKey = async () => {
+    setBusy(true);
+    setMessage("");
+    try {
+      const payload = await fetchJson<{ token: string; endpoint: string }>("/api/mcp-access", { method: "POST", body: JSON.stringify({ label: "Research client" }) });
+      setRevealedToken(payload.token);
+      setEndpoint(payload.endpoint);
+      setMessage("Copy this key now. CivilMCP will not show it again.");
+      await load();
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : "MCP key could not be created.");
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const revokeKey = async (keyId: string) => {
+    setBusy(true);
+    try {
+      await fetchJson(`/api/mcp-access?keyId=${encodeURIComponent(keyId)}`, { method: "DELETE" });
+      setRevealedToken("");
+      setMessage("MCP key revoked.");
+      await load();
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : "MCP key could not be revoked.");
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <section className="mcpAccessCard" aria-label="Personal MCP access">
+      <header>
+        <div><span className="workspaceEyebrow"><Terminal size={14} aria-hidden /> API &amp; MCP</span><strong>Use your CivilMCP library from research agents.</strong><small>Personal keys are owner-scoped, rate-limited, and revocable.</small></div>
+        <button type="button" className="cardAction primary" onClick={() => void createKey()} disabled={busy || keys.length >= 5}><KeyRound size={15} aria-hidden /> Create key</button>
+      </header>
+      {endpoint ? <div className="mcpEndpoint"><span>Endpoint</span><code>{endpoint}</code><button type="button" onClick={() => void navigator.clipboard?.writeText(endpoint)}><Copy size={14} aria-hidden /> Copy</button></div> : null}
+      {revealedToken ? <div className="mcpTokenReveal" role="status"><code>{revealedToken}</code><button type="button" onClick={() => void navigator.clipboard?.writeText(revealedToken)}><Copy size={14} aria-hidden /> Copy key</button></div> : null}
+      {keys.length ? <div className="mcpKeyList">{keys.map((key) => <article key={key.key_id}><div><strong>{key.label}</strong><span>{key.token_prefix}{key.last_used_at ? ` · used ${new Date(key.last_used_at).toLocaleDateString("en-GB")}` : " · never used"}</span></div><button type="button" onClick={() => void revokeKey(key.key_id)} disabled={busy}>Revoke</button></article>)}</div> : <p>No personal MCP keys yet.</p>}
+      {message ? <small className="mcpAccessMessage">{message}</small> : null}
+      <p className="mcpAccessScope">Available tools include Thai/global discovery, page-linked evidence, citation maps, and owner-scoped library save/list/remove.</p>
     </section>
   );
 }
@@ -4024,6 +4288,7 @@ function AccountPanel({
             <p className="planFinePrint">Pro credits are added monthly. Usage is weighted by model; unused Pro credits do not roll over.</p>
           </aside>
       </div>
+      {signedIn ? <McpAccessCard /> : null}
       <nav className="accountLegalLinks" aria-label="Legal and support">
         <a href="/privacy">Privacy</a>
         <a href="/terms">Terms</a>
@@ -4041,8 +4306,6 @@ function AppShell({
   authenticated,
   activeMobileNav,
   setActiveMobileNav,
-  onExport,
-  onShare,
   onNavigate,
 }: {
   children: ReactNode;
@@ -4052,8 +4315,6 @@ function AppShell({
   authenticated: boolean;
   activeMobileNav: MobileNavItem;
   setActiveMobileNav: (item: MobileNavItem) => void;
-  onExport: () => void;
-  onShare: () => void;
   onNavigate: (item: MobileNavItem) => void;
 }) {
   return (
@@ -4063,8 +4324,6 @@ function AppShell({
         syncLabel={syncLabel}
         activeNav={activeMobileNav}
         authenticated={authenticated}
-        onExport={onExport}
-        onShare={onShare}
         onNavigate={onNavigate}
       />
       <div ref={mainRailRef} className="mainRail">{children}</div>
@@ -4095,6 +4354,7 @@ export default function Home() {
   const [researchPathStatus, setResearchPathStatus] = useState<SessionsStatus>("idle");
   const [researchPathError, setResearchPathError] = useState("");
   const [completedPathStages, setCompletedPathStages] = useState<string[]>([]);
+  const [pathStageMastery, setPathStageMastery] = useState<Record<string, "needs_review" | "understood">>({});
   const [researchPathReady, setResearchPathReady] = useState(false);
   const [userProfile, setUserProfile] = useState<ChatUserProfile | null>(null);
   const [isAuthenticated, setIsAuthenticated] = useState(false);
@@ -4123,6 +4383,8 @@ export default function Home() {
   const [translationCacheReady, setTranslationCacheReady] = useState(false);
   const [paperLanguage, setPaperLanguage] = useState<PaperLanguage>("en");
   const [paperLanguageReady, setPaperLanguageReady] = useState(false);
+  const [activationSteps, setActivationSteps] = useState<ActivationStep[]>([]);
+  const [activationVisible, setActivationVisible] = useState(false);
   const [translationRefreshNonce, setTranslationRefreshNonce] = useState(0);
   const [feedCards, setFeedCards] = useState<ResearchCardData[]>([]);
   const [feedStatus, setFeedStatus] = useState<FeedStatus>("loading");
@@ -4145,6 +4407,8 @@ export default function Home() {
     response: null,
     error: "",
   });
+  const [livingReviewWatches, setLivingReviewWatches] = useState<LivingReviewWatch[]>([]);
+  const [livingReviewBusyId, setLivingReviewBusyId] = useState("");
   const [paperDetail, setPaperDetail] = useState<PaperDetailData | null>(null);
   const [paperDetailStatus, setPaperDetailStatus] = useState<FeedStatus>("ready");
   const [paperDetailError, setPaperDetailError] = useState("");
@@ -4161,6 +4425,8 @@ export default function Home() {
   const translationInFlightRef = useRef(new Set<string>());
   const announcePaperLanguageRef = useRef(false);
   const initialEvidenceLinkOpenedRef = useRef(false);
+  const pendingHumanAnswerRef = useRef(false);
+  const activationReportedRef = useRef(false);
 
   const setAppView = useCallback((item: MobileNavItem) => {
     setActiveMobileNav(item);
@@ -4173,6 +4439,52 @@ export default function Home() {
     api: "/api/chat",
     id: "civilmcp-session",
   });
+
+  const recordActivationStep = useCallback((step: ActivationStep) => {
+    setActivationSteps((current) => {
+      if (current.includes(step)) return current;
+      const next = [...current, step];
+      try {
+        const stored = JSON.parse(window.localStorage.getItem(ACTIVATION_KEY) ?? "{}") as Record<string, unknown>;
+        window.localStorage.setItem(ACTIVATION_KEY, JSON.stringify({ ...stored, steps: next, lastVisit: Date.now() }));
+      } catch {}
+      if (next.length === 3 && !activationReportedRef.current) {
+        activationReportedRef.current = true;
+        trackProductEvent("onboarding_completed", { journey: "search_verify_outcome" });
+      }
+      return next;
+    });
+  }, []);
+
+  useEffect(() => {
+    try {
+      const stored = JSON.parse(window.localStorage.getItem(ACTIVATION_KEY) ?? "{}") as {
+        steps?: unknown;
+        dismissed?: unknown;
+        lastVisit?: unknown;
+      };
+      const steps = Array.isArray(stored.steps)
+        ? stored.steps.filter((step): step is ActivationStep => step === "search" || step === "verify" || step === "outcome")
+        : [];
+      setActivationSteps(steps);
+      activationReportedRef.current = steps.length === 3;
+      setActivationVisible(stored.dismissed !== true && steps.length < 3);
+      if (typeof stored.lastVisit === "number" && Date.now() - stored.lastVisit > 6 * 60 * 60 * 1_000) {
+        trackProductEvent("user_returned", { hoursAway: Math.floor((Date.now() - stored.lastVisit) / 3_600_000) });
+      }
+      window.localStorage.setItem(ACTIVATION_KEY, JSON.stringify({ ...stored, steps, lastVisit: Date.now() }));
+    } catch {
+      setActivationVisible(true);
+    }
+  }, []);
+
+  useEffect(() => {
+    if (isLoading || !pendingHumanAnswerRef.current) return;
+    const answer = [...messages].reverse().find((message) => message.role === "assistant");
+    if (!answer) return;
+    pendingHumanAnswerRef.current = false;
+    trackProductEvent("first_answer", { experience: selectedExperience, model: selectedModel });
+  }, [isLoading, messages, selectedExperience, selectedModel]);
   const latestMissionAnnotation = useMemo(() => {
     for (let index = messages.length - 1; index >= 0; index -= 1) {
       const annotation = getCivilMissionAnnotation(messages[index]);
@@ -4190,6 +4502,20 @@ export default function Home() {
       setBillingLoaded(true);
     }
   }, []);
+
+  const refreshLivingReviews = useCallback(async () => {
+    try {
+      const payload = await fetchJson<{ watches: LivingReviewWatch[] }>("/api/living-reviews");
+      setLivingReviewWatches(payload.watches ?? []);
+    } catch {
+      // Discovery remains available when saved watches are temporarily unavailable.
+    }
+  }, []);
+
+  useEffect(() => {
+    if (isAuthenticated) void refreshLivingReviews();
+    else setLivingReviewWatches([]);
+  }, [isAuthenticated, refreshLivingReviews]);
 
   const buildFeedParams = useCallback(
     (cursor?: string | null) => {
@@ -4261,6 +4587,7 @@ export default function Home() {
       const parsed = JSON.parse(window.localStorage.getItem(RESEARCH_PATH_KEY) ?? "null") as {
         path?: unknown;
         completedStages?: unknown;
+        stageMastery?: unknown;
       } | null;
       if (isResearchPath(parsed?.path)) {
         setResearchPath(parsed.path);
@@ -4268,11 +4595,14 @@ export default function Home() {
         setPathLevel(parsed.path.level);
         setPathOutcome(parsed.path.outcome);
         setCompletedPathStages(Array.isArray(parsed?.completedStages) ? parsed.completedStages.filter((value): value is string => typeof value === "string") : []);
+        const storedMastery = parsed?.stageMastery && typeof parsed.stageMastery === "object" ? parsed.stageMastery as Record<string, unknown> : {};
+        setPathStageMastery(Object.fromEntries(Object.entries(storedMastery).filter((entry): entry is [string, "needs_review" | "understood"] => entry[1] === "needs_review" || entry[1] === "understood")));
         setResearchPathStatus("ready");
       }
     } catch {
       setResearchPath(null);
       setCompletedPathStages([]);
+      setPathStageMastery({});
     } finally {
       setResearchPathReady(true);
     }
@@ -4282,14 +4612,14 @@ export default function Home() {
     if (!researchPathReady) return;
     try {
       if (researchPath) {
-        window.localStorage.setItem(RESEARCH_PATH_KEY, JSON.stringify({ path: researchPath, completedStages: completedPathStages }));
+        window.localStorage.setItem(RESEARCH_PATH_KEY, JSON.stringify({ path: researchPath, completedStages: completedPathStages, stageMastery: pathStageMastery }));
       } else {
         window.localStorage.removeItem(RESEARCH_PATH_KEY);
       }
     } catch {
       setResearchPathError("This browser could not save your path locally.");
     }
-  }, [completedPathStages, researchPath, researchPathReady]);
+  }, [completedPathStages, pathStageMastery, researchPath, researchPathReady]);
 
   useEffect(() => {
     let nextLanguage: PaperLanguage = "en";
@@ -4593,6 +4923,7 @@ export default function Home() {
             filter: activeFeedFilter,
             collection: selectedCollection || "all",
           });
+          recordActivationStep("search");
         }
       } catch (error) {
         if (cancelled || controller.signal.aborted) return;
@@ -4615,7 +4946,7 @@ export default function Home() {
       cancelled = true;
       controller.abort();
     };
-  }, [activeFeedFilter, activeMobileNav, buildFeedParams, feedRefreshNonce, isReady]);
+  }, [activeFeedFilter, activeMobileNav, buildFeedParams, feedRefreshNonce, isReady, recordActivationStep]);
 
   useEffect(() => {
     setShareUrl("");
@@ -4759,6 +5090,7 @@ export default function Home() {
     try {
       const writableSessionId = await ensureWritableSession();
       const requestMode = modeOverride ?? mode;
+      pendingHumanAnswerRef.current = true;
       await append(
         { role: "user", content: trimmed },
         {
@@ -4774,6 +5106,7 @@ export default function Home() {
       );
       void refreshBilling();
     } catch (error) {
+      pendingHumanAnswerRef.current = false;
       setDraft(trimmed);
       const message = error instanceof Error ? error.message : "Could not send your question.";
       if (/Founder Pro|credits/i.test(message)) setAppView("settings");
@@ -4805,7 +5138,10 @@ export default function Home() {
       return next;
     });
     setStatusText(saved ? "Removed from library" : "Saved to your research library");
-    if (!saved) trackProductEvent("paper_save", { source: card.source, collection: card.collection });
+    if (!saved) {
+      trackProductEvent("paper_save", { source: card.source, collection: card.collection });
+      recordActivationStep("outcome");
+    }
     if (saved) {
       setWorkspaceSelection((current) => current.filter((source) => source !== card.source));
       setWorkspaceItems((current) => {
@@ -4836,8 +5172,8 @@ export default function Home() {
   const toggleWorkspaceSelection = (card: ResearchCardData) => {
     setWorkspaceSelection((current) => {
       if (current.includes(card.source)) return current.filter((source) => source !== card.source);
-      if (current.length >= 6) {
-        setStatusText("Workspace comparison supports up to 6 papers per run.");
+      if (current.length >= 50) {
+        setStatusText("A Verified Review Project supports up to 50 papers.");
         return current;
       }
       return [...current, card.source];
@@ -5171,6 +5507,7 @@ export default function Home() {
 
   const openBilling = async (action: "checkout" | "portal") => {
     setBillingBusy(true);
+    if (action === "checkout") trackProductEvent("upgrade_intent", { surface: "account", plan: "founder_pro" });
     try {
       const payload = await fetchJson<{ url: string }>("/api/billing", {
         method: "POST",
@@ -5400,6 +5737,7 @@ export default function Home() {
         collection: detail.document.collection,
         exactEvidence: Boolean(evidenceTarget),
       });
+      recordActivationStep("verify");
       if (evidenceTarget) {
         const url = new URL(window.location.href);
         url.searchParams.set("paper", source);
@@ -5417,7 +5755,7 @@ export default function Home() {
       setPaperDetailStatus("error");
       setPaperDetailError(error instanceof Error ? error.message : "Failed to load paper detail.");
     }
-  }, [translatePapersToEnglish]);
+  }, [recordActivationStep, translatePapersToEnglish]);
 
   useEffect(() => {
     if (!isReady || initialEvidenceLinkOpenedRef.current) return;
@@ -5467,6 +5805,47 @@ export default function Home() {
         response: null,
         error: error instanceof Error ? error.message : "Global discovery is temporarily unavailable.",
       });
+    }
+  };
+
+  const createLivingReview = async () => {
+    const query = feedQuery.trim();
+    if (query.length < 3 || livingReviewBusyId) return;
+    setLivingReviewBusyId("new");
+    try {
+      const payload = await fetchJson<{ watch: LivingReviewWatch }>("/api/living-reviews", {
+        method: "POST",
+        body: JSON.stringify({ action: "create", query, collection: selectedCollection }),
+      });
+      setLivingReviewWatches((current) => [payload.watch, ...current.filter((watch) => watch.watchId !== payload.watch.watchId)]);
+      setStatusText("Living Review saved. Check it anytime for new records.");
+    } catch (error) {
+      setStatusText(error instanceof Error ? error.message : "Living Review could not be saved.");
+    } finally {
+      setLivingReviewBusyId("");
+    }
+  };
+
+  const checkLivingReview = async (watchId: string) => {
+    setLivingReviewBusyId(watchId);
+    try {
+      const payload = await fetchJson<{ watch: LivingReviewWatch }>("/api/living-reviews", { method: "POST", body: JSON.stringify({ action: "check", watchId }) });
+      setLivingReviewWatches((current) => current.map((watch) => watch.watchId === watchId ? payload.watch : watch));
+      setStatusText(payload.watch.newCount ? `${payload.watch.newCount} new records found.` : "Living Review is up to date.");
+    } catch (error) {
+      setStatusText(error instanceof Error ? error.message : "Living Review could not be checked.");
+    } finally {
+      setLivingReviewBusyId("");
+    }
+  };
+
+  const deleteLivingReview = async (watchId: string) => {
+    try {
+      await fetchJson(`/api/living-reviews?watchId=${encodeURIComponent(watchId)}`, { method: "DELETE" });
+      setLivingReviewWatches((current) => current.filter((watch) => watch.watchId !== watchId));
+      setStatusText("Living Review removed.");
+    } catch (error) {
+      setStatusText(error instanceof Error ? error.message : "Living Review could not be removed.");
     }
   };
 
@@ -5536,6 +5915,7 @@ export default function Home() {
     URL.revokeObjectURL(url);
     setStatusText("Session exported as JSON");
     trackProductEvent("session_export", { messageCount: messages.length, mode });
+    recordActivationStep("outcome");
   };
 
   const exportEvidenceBrief = (annotation: CivilMissionAnnotation | null = latestMissionAnnotation) => {
@@ -5558,6 +5938,7 @@ export default function Home() {
       experience: annotation.artifact.experience,
       evidenceCount: annotation.artifact.trust.evidenceCount,
     });
+    recordActivationStep("outcome");
   };
 
   const createShareLink = async (copyToClipboard: boolean) => {
@@ -5637,7 +6018,7 @@ export default function Home() {
     setStatusText("");
   };
 
-  const buildResearchPath = async () => {
+  const buildResearchPath = async (knowledgeGaps: string[] = []) => {
     const goal = pathGoal.trim();
     if (goal.length < 8 || researchPathStatus === "loading") return;
     setResearchPathStatus("loading");
@@ -5645,11 +6026,12 @@ export default function Home() {
     try {
       const path = await fetchJson<ResearchPath>("/api/research-path", {
         method: "POST",
-        body: JSON.stringify({ goal, level: pathLevel, outcome: pathOutcome, collection: selectedCollection }),
+        body: JSON.stringify({ goal, level: pathLevel, outcome: pathOutcome, collection: selectedCollection, knowledgeGaps }),
       });
       if (!isResearchPath(path)) throw new Error("CivilMCP returned an invalid research path.");
       setResearchPath(path);
       setCompletedPathStages([]);
+      setPathStageMastery({});
       setResearchPathStatus("ready");
       trackProductEvent("research_path_created", {
         level: path.level,
@@ -5666,12 +6048,34 @@ export default function Home() {
   const resetResearchPath = () => {
     setResearchPath(null);
     setCompletedPathStages([]);
+    setPathStageMastery({});
     setResearchPathError("");
     setResearchPathStatus("idle");
   };
 
   const togglePathStage = (stageId: string) => {
-    setCompletedPathStages((current) => current.includes(stageId) ? current.filter((id) => id !== stageId) : [...current, stageId]);
+    setCompletedPathStages((current) => {
+      if (current.includes(stageId)) return current.filter((id) => id !== stageId);
+      trackProductEvent("path_stage_completed", { stageId });
+      return [...current, stageId];
+    });
+  };
+
+  const markPathMastery = (stageId: string, state: "needs_review" | "understood") => {
+    setPathStageMastery((current) => ({ ...current, [stageId]: state }));
+    if (state === "understood") {
+      setCompletedPathStages((current) => current.includes(stageId) ? current : [...current, stageId]);
+      trackProductEvent("path_stage_completed", { stageId, checkpoint: true });
+    }
+  };
+
+  const adaptResearchPath = () => {
+    if (!researchPath) return;
+    const gaps = researchPath.stages
+      .filter((stage) => pathStageMastery[stage.id] === "needs_review")
+      .flatMap((stage) => stage.concepts?.length ? stage.concepts : [stage.objective])
+      .slice(0, 4);
+    if (gaps.length) void buildResearchPath(gaps);
   };
 
   const studyPathStage = (prompt: string) => {
@@ -5723,8 +6127,6 @@ export default function Home() {
         authenticated={isAuthenticated}
         activeMobileNav={activeMobileNav}
         setActiveMobileNav={navigateApp}
-        onExport={exportSession}
-        onShare={() => void copyShareLink()}
         onNavigate={navigateApp}
       >
         <div className="mobileBrandStrip" aria-label="CivilMCP status">
@@ -5784,6 +6186,22 @@ export default function Home() {
 
         {activeMobileNav === "explore" ? (
           <>
+            {activationVisible ? (
+              <ActivationGuide
+                steps={activationSteps}
+                onStart={() => {
+                  setDraft("road safety and serious crash factors in Thailand");
+                  setActiveFeedFilter("evidence");
+                }}
+                onDismiss={() => {
+                  setActivationVisible(false);
+                  try {
+                    const stored = JSON.parse(window.localStorage.getItem(ACTIVATION_KEY) ?? "{}") as Record<string, unknown>;
+                    window.localStorage.setItem(ACTIVATION_KEY, JSON.stringify({ ...stored, dismissed: true, steps: activationSteps, lastVisit: Date.now() }));
+                  } catch {}
+                }}
+              />
+            ) : null}
             <FilterBar
               activeFilter={activeFeedFilter}
               setActiveFilter={setActiveFeedFilter}
@@ -5802,6 +6220,17 @@ export default function Home() {
               query={activeFeedFilter === "saved" ? "" : feedQuery}
               state={globalDiscovery}
               onExpand={() => void expandGlobalDiscovery()}
+            />
+            <LivingReviewPanel
+              authenticated={isAuthenticated}
+              query={activeFeedFilter === "saved" ? "" : feedQuery}
+              collection={selectedCollection}
+              watches={livingReviewWatches}
+              busyId={livingReviewBusyId}
+              onWatch={() => void createLivingReview()}
+              onCheck={(watchId) => void checkLivingReview(watchId)}
+              onDelete={(watchId) => void deleteLivingReview(watchId)}
+              onSignIn={() => setAppView("settings")}
             />
           </>
         ) : null}
@@ -5841,9 +6270,12 @@ export default function Home() {
             status={researchPathStatus}
             error={researchPathError}
             completedStages={completedPathStages}
+            stageMastery={pathStageMastery}
             onBuild={() => void buildResearchPath()}
             onReset={resetResearchPath}
             onToggleStage={togglePathStage}
+            onMarkMastery={markPathMastery}
+            onAdapt={adaptResearchPath}
             onStudyStage={studyPathStage}
             onOpenPaper={(source) => void openPaperDetailBySource(source)}
           />
@@ -5936,6 +6368,7 @@ export default function Home() {
                 evidenceId: item.evidenceId,
                 page: item.pageStart ?? null,
               });
+              recordActivationStep("verify");
               void openPaperDetailBySource(item.source, undefined, item);
             }}
             onExportEvidenceBrief={exportEvidenceBrief}

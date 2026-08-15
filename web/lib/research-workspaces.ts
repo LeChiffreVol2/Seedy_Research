@@ -53,7 +53,7 @@ function normalizeRow(row: WorkspaceRow): SavedResearchWorkspace {
     ownerId: row.owner_id,
     title: row.title?.trim() || "Research workspace",
     collection: normalizeCollectionFilter(row.collection),
-    paperSources: Array.isArray(row.paper_sources) ? row.paper_sources.map(String).slice(0, 24) : [],
+    paperSources: Array.isArray(row.paper_sources) ? row.paper_sources.map(String).slice(0, 50) : [],
     state: parseState(row.notes),
     createdAt: row.created_at,
     updatedAt: row.updated_at,
@@ -95,7 +95,7 @@ export async function upsertResearchWorkspace(input: {
   const values = {
     title: input.title.trim().slice(0, 160) || "Research workspace",
     collection: normalizeCollectionFilter(input.collection),
-    paper_sources: [...new Set(input.paperSources.map((source) => source.trim()).filter(Boolean))].slice(0, 24),
+    paper_sources: [...new Set(input.paperSources.map((source) => source.trim()).filter(Boolean))].slice(0, 50),
     notes,
     updated_at: now,
   };

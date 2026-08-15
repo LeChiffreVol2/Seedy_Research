@@ -13,6 +13,7 @@ import {
   type ChatModel,
 } from "@/lib/chat-models";
 import { getPaperDetail } from "@/lib/research-feed";
+import { getPrivateLibraryItem } from "@/lib/private-library";
 import {
   deleteResearchWorkspace,
   listResearchWorkspaces,
@@ -63,7 +64,7 @@ const saveSchema = z.object({
   workspaceId: z.string().trim().min(8).max(96),
   title: z.string().trim().min(1).max(160),
   collection: z.enum(["", "ce_project", "ncce"]).default(""),
-  paperSources: z.array(z.string().trim().min(1).max(320)).max(24),
+  paperSources: z.array(z.string().trim().min(1).max(320)).max(50),
   state: z.record(z.unknown()),
 });
 const runSchema = z.object({
@@ -121,13 +122,26 @@ async function consumeWorkspaceRunQuota(request: NextRequest, userId: string) {
   });
 }
 
-async function buildWorkspaceRun(input: RunRequest) {
+async function buildWorkspaceRun(input: RunRequest, ownerId: string) {
   if (isDeepSeekChatModel(input.model) && !process.env.DEEPSEEK_API_KEY) {
     throw new Error("DeepSeek is not configured.");
   }
-  const details = (await Promise.all(input.rows.map(async (row) => ({ row, detail: await getPaperDetail(row.source) })))).filter(
-    (item): item is { row: RunRequest["rows"][number]; detail: NonNullable<Awaited<ReturnType<typeof getPaperDetail>>> } => Boolean(item.detail),
-  );
+  const details = (await Promise.all(input.rows.map(async (row) => {
+    if (row.source.startsWith("private:")) {
+      const item = await getPrivateLibraryItem(ownerId, row.source);
+      return item ? {
+        row,
+        packets: (item.pages ?? []).slice(0, 6).map((page) => ({
+          pageStart: page.page,
+          pageEnd: page.page,
+          sectionTitle: "Private PDF",
+          snippet: page.text,
+        })),
+      } : null;
+    }
+    const detail = await getPaperDetail(row.source);
+    return detail ? { row, packets: detail.evidence.slice(0, 6) } : null;
+  }))).filter((item): item is NonNullable<typeof item> => Boolean(item));
   if (!details.length) throw new Error("None of the selected papers could be loaded.");
 
   const evidence = new Map<string, {
@@ -138,8 +152,8 @@ async function buildWorkspaceRun(input: RunRequest) {
     sectionTitle?: string | null;
     snippet: string;
   }>();
-  const paperContexts = details.map(({ row, detail }, paperIndex) => {
-    const packets = detail.evidence.slice(0, 6).map((item, evidenceIndex) => {
+  const paperContexts = details.map(({ row, packets: sourcePackets }, paperIndex) => {
+    const packets = sourcePackets.map((item, evidenceIndex) => {
       const id = `P${paperIndex + 1}E${evidenceIndex + 1}`;
       evidence.set(id, {
         id,
@@ -334,7 +348,7 @@ export async function POST(request: NextRequest) {
   }
 
   try {
-    const result = await buildWorkspaceRun(parsed.data);
+    const result = await buildWorkspaceRun(parsed.data, identity.userId);
     return finalize(NextResponse.json({
       version: "civilmcp-research-workspace-run-v1",
       workspaceId: parsed.data.workspaceId,

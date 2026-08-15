@@ -106,6 +106,17 @@ Start with alerts or manual stop conditions for any fabricated citation,
 source-rights incident, account-deletion failure, support write failure,
 semantic outage without fallback, or evidence-open rate below the launch goal.
 
+Exclude automated traffic when reviewing activation:
+
+```sql
+select event_name, count(*) as events, count(distinct user_id) as users
+from public.civil_product_events
+where created_at >= now() - interval '7 days'
+  and properties->>'trafficClass' = 'human'
+group by event_name
+order by event_name;
+```
+
 ## Secrets
 Server-only keys must remain in Vercel/server env only: `OPENAI_API_KEY`, `DEEPSEEK_API_KEY`, `SUPABASE_SERVICE_KEY`, `MCP_SERVER_API_KEY`, `MCP_CLIENT_KEYS_JSON`, `MCP_WEB_API_KEY_SHA256`, `GUEST_SESSION_HMAC_KEY`, `CRON_SECRET`, `STRIPE_SECRET_KEY`, and `STRIPE_WEBHOOK_SECRET`. `MCP_WEB_API_KEY_SHA256` is additive: it authorizes only the CivilMCP web client without replacing legacy or CityMCP credentials.
 
@@ -135,6 +146,23 @@ account deletion. The API calls its service-role-only RPC first; PostgreSQL
 removes all CivilMCP-owned account rows in one transaction, then the API removes
 the Supabase Auth user. If either operation fails, treat it as a launch-blocking
 privacy incident and follow the support escalation path.
+
+Apply `20260815100000_civil_activation_events.sql`,
+`20260815110000_civil_private_library_and_watches.sql`, and
+`20260815120000_civil_personal_mcp_access.sql` before deploying the matching
+web/MCP code. Verify all three tables exist through the release readiness probe.
+Personal MCP tokens are shown once; revoke a suspected token from Account and
+confirm its hash row has `revoked_at` before rotating client configuration.
+
+Private PDF extraction is capped before persistence. Investigate unusual
+`private_library_import` quota volume, and treat any cross-owner read as a P0
+privacy incident. Living Reviews run only on an explicit create/check request;
+there is no background crawler or email delivery to monitor in this release.
+
+The production dependency audit currently has no high or critical finding.
+Five low AI SDK advisories require a breaking SDK major migration and are
+deferred; the affected file-upload whitelist is not used for the private PDF
+route, which parses and validates uploads independently with `pdfjs-dist`.
 
 Research Workspace batch runs share the Founder Pro entitlement and credit ledger. A run reserves the selected model weight once per selected paper, caps each request at six papers by six columns, and uses the separate `research_workspace_run` quota. Check `/api/research-workspaces` for `402`, `429`, or `503` responses when diagnosing access, quota, or provider failures. Failed runs attempt to restore every reservation; `creditRecovery=restored` is ledger-confirmed, while `creditRecovery=pending` requires reconciliation using the returned trace.
 

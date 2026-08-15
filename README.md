@@ -1,6 +1,6 @@
 # CivilMCP
 
-**CivilMCP is the evidence layer for Thai civil engineering education.** It is a Public Research Preview that turns a uniquely structured corpus of Thai civil-engineering research into searchable, bilingual, page-linked evidence for students, instructors, and researchers.
+**Turn Thai civil-engineering research into a defensible literature review—with every supported claim linked to the exact page.** CivilMCP is a Public Research Preview for finding local work global indexes miss, comparing methods and findings, and exporting an auditable review pack.
 
 [Open the public preview](https://civil-mcp-web.vercel.app/) · [Product thesis](docs/PRODUCT_THESIS.md) · [Deep-tech roadmap](docs/THAI_DEEP_TECH_ROADMAP.md) · [Launch readiness](docs/LAUNCH_READINESS.md) · [Data sources and rights](DATA_SOURCES.md)
 
@@ -45,9 +45,13 @@ Every cited answer also includes a deterministic Evidence Audit: it shows the in
 
 The brief is stored in the existing chat history/share transcript and exports as portable Markdown. `Guided Learning` emphasizes checkpoints; `Quick Answer` preserves the streaming answer path. Agent activity is inspectable, but private reasoning and raw tool payloads are never exposed. See [docs/AGENTIC_EVIDENCE_MISSIONS.md](docs/AGENTIC_EVIDENCE_MISSIONS.md).
 
-Explore remains the feed-first discovery surface: search, filter, inspect a paper, open its evidence, and continue into chat. It keeps page-citable evidence separate from ThaiJO discovery metadata, learns a lightweight `For you` ranking from saved papers, and syncs a personal library with notes, labels/folders, BibTeX, RIS/Zotero export, and related Thai evidence. A user can explicitly expand a query to OpenAlex global metadata; that request is bounded, rate-limited, and never runs implicitly or turns an external record into CivilMCP evidence. Paper detail and `Research Path` use the same conservative global bridge. `Deep Research` is the Founder Pro workflow for a rigorous one-question brief.
+Explore remains the feed-first discovery surface: search, filter, inspect a paper, open its evidence, and continue into chat. It keeps page-citable evidence separate from ThaiJO discovery metadata, learns a lightweight `For you` ranking from saved papers, and syncs a personal library with notes, labels/folders, BibTeX, RIS/Zotero export, and related Thai evidence. Users can explicitly expand a query to bounded OpenAlex metadata, inspect a citation neighborhood, and save the query as a Living Review that reports what changed on the next check. OpenAlex records never become CivilMCP evidence implicitly. Indexable `/papers/{source}` pages expose rights-safe metadata, page ranges, and outlines without publishing raw full text.
 
-`Research Workspace Pro` is a separate, spreadsheet-style automated-research surface rather than a chat mode. Papers are rows and bounded AI instructions are columns. Users can select two to six saved papers and continue directly from Explore into the same comparison set. A run can process up to six selected papers across six columns, attaches allow-listed exact-page evidence to every supported cell, exposes confidence and human-review states, and exports a source-bearing CSV. The PRISMA-ScR guided template also captures its search strategy, screening decisions and exclusion reasons, extraction matrix, exact-page provenance, and review state in one reproducible Markdown research pack. The browser keeps a local draft; Founder Pro adds account sync and batch execution. Models consume weighted credits per selected paper.
+`Research Workspace Pro` is a separate Verified Review Project rather than a chat mode. Papers are rows and bounded AI instructions are columns. A project accepts up to 50 CivilMCP or account-private sources and processes six papers per server request, saving the project after every completed batch. The Scientific Evidence Snapshot template extracts study design, context, method, results, limitations, and Thai applicability with allow-listed page evidence and human-review state. The PRISMA-ScR guided template captures protocol, search strategy, screening decisions, exclusion reasons, extraction matrix, provenance, and review state in a reproducible Markdown pack. PDF uploads stay account-private; DOI and BibTeX/RIS (including Zotero exports) remain metadata-only until page text is available. The current browser orchestrator supports stop-after-batch and durable saved progress, but is not an unattended background job.
+
+`Research Path` adds a different outcome: evidence-grounded learning. Each stage now has a checkpoint; learners mark a concept understood or needing review, and CivilMCP rebuilds the path around those explicit knowledge gaps while keeping the cited Thai evidence visible.
+
+Signed-in users can create revocable personal MCP keys from Account. The MCP surface exposes 19 bounded tools: Thai evidence search/read, metadata discovery, OpenAlex search/citation mapping, deterministic evidence snapshots, and owner-scoped library/private-source operations. Tokens are shown once and stored only as SHA-256 hashes.
 
 ## Model behavior
 
@@ -77,14 +81,14 @@ data-rights review is complete.
 question
   -> Next.js /api/chat
   -> DeepSeek V4 Flash retrieval plan
-  -> read-only MCP retrieval tools
+  -> MCP evidence/discovery tools
   -> bounded evidence packet with exact pages
   -> selected answer model / structured Evidence Brief
   -> cited answer + artifact + trace/feedback metadata
 ```
 
 - `web/`: Next.js research feed, chat, Research Workspace Pro, paper detail, translation, history, and feedback.
-- `mcp-server/`: FastAPI MCP service with 11 read-only evidence, catalog, related-paper, and provider tools.
+- `mcp-server/`: FastAPI MCP service with 19 bounded tools: 17 read-only evidence/discovery tools plus explicit owner-scoped save/remove operations.
 - `pipeline/`: provider registry, metadata harvesting, page-preserving PDF/OCR extraction, normalization, chunking, and indexing.
 - `supabase/`: shared schema and additive migration ledger.
 - `harness/` and `eval/`: CivilMCP release, security, retrieval, citation, and memory gates.

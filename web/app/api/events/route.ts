@@ -18,8 +18,17 @@ const eventSchema = z.object({
     "evidence_open",
     "paper_save",
     "research_path_created",
+    "path_stage_completed",
+    "workspace_started",
+    "workspace_run_completed",
     "session_export",
     "evidence_export",
+    "review_exported",
+    "verified_research_outcome",
+    "first_answer",
+    "onboarding_completed",
+    "user_returned",
+    "upgrade_intent",
   ]),
   properties: z.record(z.union([z.string().max(200), z.number().finite(), z.boolean(), z.null()])).optional(),
 }).superRefine((value, context) => {
@@ -63,11 +72,27 @@ export async function POST(request: NextRequest) {
     return finalize(NextResponse.json({ error: "Event limit reached." }, { status: 429, headers: rateLimitHeaders(quota) }));
   }
 
+  const userAgent = request.headers.get("user-agent") ?? "";
+  const automationKey = process.env.CIVILMCP_AUTOMATION_EVENT_KEY?.trim();
+  const trafficClass = /playwright|headlesschrome/i.test(userAgent)
+    ? "e2e"
+    : automationKey && request.headers.get("x-civilmcp-eval") === automationKey
+      ? "eval"
+      : automationKey && request.headers.get("x-civilmcp-smoke") === automationKey
+      ? "smoke"
+      : "human";
+  const properties = {
+    ...(parsed.data.properties ?? {}),
+    trafficClass,
+    environment: process.env.VERCEL_ENV ?? process.env.NODE_ENV ?? "unknown",
+    releaseSha: (process.env.VERCEL_GIT_COMMIT_SHA ?? process.env.NEXT_PUBLIC_RELEASE_SHA ?? "local").slice(0, 40),
+    deploymentId: (process.env.VERCEL_DEPLOYMENT_ID ?? process.env.VERCEL_URL ?? "local").slice(0, 200),
+  };
   const { error } = await getSupabaseAdmin().from("civil_product_events").insert({
     event_id: randomUUID(),
     user_id: identity.userId,
     event_name: parsed.data.event,
-    properties: parsed.data.properties ?? {},
+    properties,
   });
   if (error) return finalize(NextResponse.json({ error: "Event could not be recorded." }, { status: 503 }));
   return finalize(NextResponse.json({ ok: true }, { headers: rateLimitHeaders(quota) }));

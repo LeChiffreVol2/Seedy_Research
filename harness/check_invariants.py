@@ -44,6 +44,7 @@ SERVER_SECRET_KEYS = [
     "MCP_SERVER_API_KEY",
     "MCP_CLIENT_KEYS_JSON",
     "GUEST_SESSION_HMAC_KEY",
+    "CIVILMCP_AUTOMATION_EVENT_KEY",
 ]
 EXPECTED_TOOLS = [
     "search_civil_knowledge",
@@ -57,7 +58,17 @@ EXPECTED_TOOLS = [
     "search_source_catalog",
     "find_related_papers",
     "list_source_providers",
+    "search_global_research",
+    "map_citation_network",
+    "get_evidence_snapshot",
+    "list_library_items",
+    "list_private_sources",
+    "fetch_private_source_pages",
 ]
+EXPECTED_WRITE_TOOLS = {
+    "save_library_item": "WRITE_ANNOTATIONS",
+    "remove_library_item": "DELETE_ANNOTATIONS",
+}
 
 
 def count_generated_entries(path: Path) -> int:
@@ -121,14 +132,18 @@ def check_mcp_tool_annotations() -> Check:
         pattern = rf'"{re.escape(tool)}"\s*:\s*\{{[\s\S]*?"annotations"\s*:\s*READ_ONLY_ANNOTATIONS'
         if not re.search(pattern, text):
             annotation_missing.append(tool)
-    if missing or annotation_missing or "readOnlyHint" not in text or "destructiveHint" not in text:
+    write_annotation_missing = [
+        tool for tool, annotation in EXPECTED_WRITE_TOOLS.items()
+        if not re.search(rf'"{re.escape(tool)}"\s*:\s*\{{[\s\S]*?"annotations"\s*:\s*{annotation}', text)
+    ]
+    if missing or annotation_missing or write_annotation_missing or "readOnlyHint" not in text or "destructiveHint" not in text:
         return Check(
             "mcp_tool_annotations",
             "fail",
-            f"missing={missing}; annotation_missing={annotation_missing}",
-            "Ensure all MCP tools are listed in TOOL_DEFINITIONS with READ_ONLY_ANNOTATIONS.",
+            f"missing={missing}; annotation_missing={annotation_missing}; write_annotation_missing={write_annotation_missing}",
+            "Ensure MCP tools declare the correct read, write, or destructive annotations.",
         )
-    return Check("mcp_tool_annotations", "pass", "MCP tools have read-only annotations in TOOL_DEFINITIONS.")
+    return Check("mcp_tool_annotations", "pass", "MCP tools declare explicit read, write, and destructive annotations.")
 
 
 def check_agent_bounds_and_annotations() -> Check:
@@ -166,6 +181,9 @@ def check_backbone_guardrails() -> Check:
     translation_text = (ROOT / "web" / "app" / "api" / "paper-translation" / "route.ts").read_text(encoding="utf-8", errors="replace")
     research_path_text = (ROOT / "web" / "app" / "api" / "research-path" / "route.ts").read_text(encoding="utf-8", errors="replace")
     workspace_run_text = (ROOT / "web" / "app" / "api" / "research-workspaces" / "route.ts").read_text(encoding="utf-8", errors="replace")
+    private_library_text = (ROOT / "web" / "app" / "api" / "private-library" / "route.ts").read_text(encoding="utf-8", errors="replace")
+    living_review_text = (ROOT / "web" / "app" / "api" / "living-reviews" / "route.ts").read_text(encoding="utf-8", errors="replace")
+    mcp_access_text = (ROOT / "web" / "app" / "api" / "mcp-access" / "route.ts").read_text(encoding="utf-8", errors="replace")
     schema_text = (ROOT / "supabase" / "schema.sql").read_text(encoding="utf-8", errors="replace")
     auth_text = (ROOT / "web" / "lib" / "chat-auth.ts").read_text(encoding="utf-8", errors="replace")
     auth_route_text = (ROOT / "web" / "app" / "api" / "auth" / "route.ts").read_text(encoding="utf-8", errors="replace")
@@ -230,6 +248,24 @@ def check_backbone_guardrails() -> Check:
             and 'scope: "research_path"' in research_path_text
             and "consumeChatQuota" in research_path_text
         ),
+        "private_library_owner_boundary": (
+            "resolveChatIdentity" in private_library_text
+            and "identity.isAuthenticated" in private_library_text
+            and 'scope: "private_library_import"' in private_library_text
+            and "civil_private_library_items" in schema_text
+        ),
+        "living_review_owner_boundary": (
+            "resolveChatIdentity" in living_review_text
+            and 'scope: "living_review_check"' in living_review_text
+            and "civil_living_review_watches" in schema_text
+        ),
+        "personal_mcp_key_boundary": (
+            "randomBytes(32)" in mcp_access_text
+            and 'createHash("sha256")' in mcp_access_text
+            and "civil_mcp_access_keys" in server_text
+            and "cvmcp_" in server_text
+            and "civil_mcp_access_keys" in schema_text
+        ),
         "metadata_abstract_public_boundary": (
             "search_civil_source_catalog_public_v1" in server_text
             and "search_civil_source_catalog_public_v1" in catalog_boundary
@@ -261,7 +297,8 @@ def check_backbone_guardrails() -> Check:
         "public_support": (ROOT / "web" / "app" / "api" / "support" / "route.ts").exists()
         and "civil_support_requests" in schema_text,
         "product_events": (ROOT / "web" / "app" / "api" / "events" / "route.ts").exists()
-        and "civil_product_events" in schema_text,
+        and "civil_product_events" in schema_text
+        and '"x-civilmcp-eval"' in (ROOT / "web" / "app" / "api" / "events" / "route.ts").read_text(encoding="utf-8", errors="replace"),
         "privacy_and_account_deletion": all(
             (ROOT / "web" / "app" / route / "page.tsx").exists() for route in ("privacy", "terms", "support")
         ) and 'action: "delete-account"' in page_text,
@@ -279,6 +316,9 @@ def check_backbone_guardrails() -> Check:
             and release_text.count("20260813120000_civil_stripe_event_idempotency.sql") == 2
             and release_text.count("20260814090000_civil_luna_free_credit_ladder.sql") == 2
             and release_text.count("20260814100000_civil_terra_sol_credit_correction.sql") == 2
+            and release_text.count("20260815100000_civil_activation_events.sql") == 2
+            and release_text.count("20260815110000_civil_private_library_and_watches.sql") == 2
+            and release_text.count("20260815120000_civil_personal_mcp_access.sql") == 2
             and release_text.count('-Atqc "$CIVIL_BILLING_HARDENING_SQL"') == 2
             and "civil_apply_stripe_subscription_event" in release_text
         ),
@@ -325,6 +365,10 @@ def check_product_contract() -> Check:
     research_workspace = (ROOT / "web" / "app" / "api" / "research-workspaces" / "route.ts").read_text(encoding="utf-8", errors="replace")
     research_workspace_ui = (ROOT / "web" / "components" / "research-workspace.tsx").read_text(encoding="utf-8", errors="replace")
     feed = (ROOT / "web" / "lib" / "research-feed.ts").read_text(encoding="utf-8", errors="replace")
+    private_library = (ROOT / "web" / "app" / "api" / "private-library" / "route.ts").read_text(encoding="utf-8", errors="replace")
+    living_reviews = (ROOT / "web" / "app" / "api" / "living-reviews" / "route.ts").read_text(encoding="utf-8", errors="replace")
+    openalex = (ROOT / "web" / "lib" / "openalex.ts").read_text(encoding="utf-8", errors="replace")
+    mcp_server = (ROOT / "mcp-server" / "server.py").read_text(encoding="utf-8", errors="replace")
     ci = (ROOT / ".github" / "workflows" / "ci.yml").read_text(encoding="utf-8", errors="replace")
     release = (ROOT / ".github" / "workflows" / "preview-release.yml").read_text(encoding="utf-8", errors="replace")
     score = (ROOT / "harness" / "score_quality.py").read_text(encoding="utf-8", errors="replace")
@@ -420,8 +464,20 @@ def check_product_contract() -> Check:
         ),
         "personalized_research_path": all(
             marker in research_path
-            for marker in ("civilmcp-research-path-v2", "Map the field", "discoverOpenAlex", "readBoundedJson")
-        ) and all(marker in page for marker in ("PersonalizedResearchPathPanel", 'label: "Research Path"')),
+            for marker in ("civilmcp-research-path-v2", "Map the field", "discoverOpenAlex", "readBoundedJson", "knowledgeGaps", "checkpointQuestion")
+        ) and all(marker in page for marker in ("PersonalizedResearchPathPanel", 'label: "Research Path"', "Need review", "adaptResearchPath")),
+        "private_project_library": all(
+            marker in private_library for marker in ("extractPdf", "crossrefMetadata", 'scope: "private_library_import"', "12 * 1024 * 1024", "300_000")
+        ) and "Private Project Library" in research_workspace_ui,
+        "living_review": all(marker in living_reviews for marker in ("resultKeys", "createLivingReviewWatch", 'scope: "living_review_check"'))
+        and "LivingReviewPanel" in page,
+        "citation_map": "citationMapOpenAlex" in openalex and (ROOT / "web" / "app" / "api" / "citation-map" / "route.ts").exists()
+        and "Citation map" in page,
+        "public_paper_pages": (ROOT / "web" / "app" / "papers" / "[source]" / "page.tsx").exists(),
+        "personal_mcp_parity": all(
+            marker in mcp_server
+            for marker in ("search_global_research", "map_citation_network", "get_evidence_snapshot", "save_library_item", "list_private_sources", "fetch_private_source_pages")
+        ) and (ROOT / "web" / "app" / "api" / "mcp-access" / "route.ts").exists(),
         "deep_research_pro_gate": all(
             marker in chat
             for marker in ('experience === "research"', "getBillingState(userId)", 'billingState.plan !== "founder_pro"')

@@ -2,7 +2,7 @@
 
 ## System Shape
 CivilMCP has three production surfaces:
-- `web/`: Next.js 15 app with research feed, chat UI, bounded Agentic Context Engine orchestration in `/api/chat`, deterministic learning-path assembly in `/api/research-path`, and a bounded batch matrix in `/api/research-workspaces`.
+- `web/`: Next.js 15 app with research feed, chat UI, bounded Agentic Context Engine orchestration in `/api/chat`, adaptive learning-path assembly in `/api/research-path`, and a bounded Verified Review matrix in `/api/research-workspaces`.
 - `mcp-server/`: Python FastAPI MCP-style retrieval service exposing `/health`, `/metrics`, `/tools/list`, `/tools/call`, and MCP ASGI transport.
 - `pipeline/` + `supabase/`: provider registry, metadata harvesting, page-preserving PDF/OCR extraction, markdown/preview generation, v2 section/chunk embedding, and Supabase pgvector readiness checks.
 
@@ -32,17 +32,23 @@ Evidence actions pass the packet identity rather than only the paper source. `/a
 
 ## Research Workspace Pro
 
-`/api/research-workspaces` is the Founder Pro batch-research boundary. It accepts at most six selected CivilMCP papers and six AI columns, loads at most six page-linked packets per paper, and generates a typed matrix with the selected model. Evidence IDs use per-paper allow lists (`P1E1`, `P1E2`, and so on); the server removes any ID that belongs to another row or was not supplied. Unsupported cells are marked for review instead of receiving fabricated citations.
+`/api/research-workspaces` is the Founder Pro batch-research boundary. Each server request accepts at most six selected papers and six AI columns, loads at most six page-linked packets per paper, and generates a typed matrix with the selected model. The browser may sequence up to 50 project papers through those bounded requests and saves the owner-scoped project after every completed batch. Evidence IDs use per-paper allow lists (`P1E1`, `P1E2`, and so on); the server removes any ID that belongs to another row or was not supplied. Unsupported cells are marked for review instead of receiving fabricated citations.
 
 Entitlement, distributed run quota, and weighted credit reservation are server-enforced. Credits are reserved once per selected paper. A failed batch reports credits as restored only after the refund ledger confirms every reservation; otherwise the API returns a pending-recovery state and support trace. Explore can hand off two to six saved paper sources into Workspace; the merge preserves existing rows and reviewed cells instead of reseeding an unrelated feed set. Local browser state provides the free preview. Founder Pro workspaces serialize into the existing `civil_paper_workspaces.notes` field, and every database read, write, and delete is scoped to the authenticated owner. CSV export includes the generated value, exact-page source list, and human-review state for each AI column.
 
 The `PRISMA scoping review` template reuses this boundary instead of adding a review service or database schema. Its local/synced workspace state adds a bounded protocol and search strategy, per-paper human screening decisions and exclusion reasons, live candidate/screened/excluded/included counts, PRISMA readiness checks, and a Markdown research-pack export containing the screening log, extraction matrix, exact-page provenance, and review state. Only papers marked included are eligible for the batch evidence extraction. The product labels the workflow `PRISMA-ScR guided` and explicitly limits the claim to the selected CivilMCP candidate set; comprehensive multi-database systematic-review claims remain out of scope until external search, deduplication, and independent reviewer reconciliation exist.
 
+`/api/private-library` accepts authenticated PDF, DOI, BibTeX, RIS, or manual imports. PDFs are capped at 12 MB, 200 pages, and 300,000 extracted characters; the binary is discarded and bounded page text is stored under the owner only. Private sources never enter the public corpus. Citation-only imports remain metadata-only. `civil_private_library_items` cascades on account deletion.
+
+`/api/living-reviews` stores an owner-scoped search fingerprint and up to 200 current result keys. A check compares bounded CivilMCP results and OpenAlex metadata with the prior set and returns the new-record count. It is an in-app retention loop, not an email subscription or unattended crawler.
+
 ## Research Path and OpenAlex
 
-`/api/research-path` accepts a bounded goal, level, outcome, and optional collection. It tokenizes the goal, expands a small bilingual civil-engineering vocabulary, and ranks matching feed cards by title/source hits, discipline alignment, and section evidence. Only documents with a direct goal-token match are eligible; the route returns a recoverable specificity error instead of filling a sparse result with generic papers. It selects at most eight existing CivilMCP feed cards and distributes them across four deterministic stages; it does not create a new agent loop or store a new server-side record. Browser progress is local-first and each stage can continue into Tutor Mission with an evidence-bounded prompt.
+`/api/research-path` accepts a bounded goal, level, outcome, optional collection, and up to four explicit knowledge gaps. It ranks matching feed cards and distributes at most eight CivilMCP papers across four stages. Each stage includes a checkpoint and concepts; `Need review` rebuilds the path with those concepts in retrieval and prompts, while `Understood` advances local mastery. It does not infer mastery from private reasoning or add another agent loop.
 
 When a server-only `OPENALEX_API_KEY` is configured, the route adds up to four global work records from OpenAlex with an eight-second timeout. Explore also exposes `/api/global-discovery` only after an explicit user action; it returns at most six metadata records under its own distributed quota and stores no raw query. OpenAlex is treated as a discovery/metadata bridge, never as page-level evidence for CivilMCP answers. Missing or unavailable OpenAlex access degrades to a normal public search link.
+
+`/api/citation-map` resolves a bounded OpenAlex seed and at most 12 incoming, referenced, or related nodes. `/papers/{source}` is the indexable acquisition surface for CivilMCP papers: it emits canonical metadata and ScholarlyArticle JSON-LD while showing only record metadata, section labels, and page ranges. `/sitemap.xml` lists at most 2,000 public evidence records. Raw source text remains inside the controlled evidence workflow.
 
 ## Retrieval Substrate
 - Embeddings: `text-embedding-3-small` with `EMBEDDING_DIMENSIONS=768`.
@@ -51,13 +57,15 @@ When a server-only `OPENALEX_API_KEY` is configured, the route adds up to four g
 - Discovery catalog: `civil_source_catalog` stores Student Transport, NCCE, and metadata-only TCI/ThaiJO records. Server-side RPC search avoids loading the growing catalog into the web process. The versioned rights manifest records permitted metadata, abstract, full-text, transformation, display, redistribution, commercial, and training actions; unspecified actions default to denied. Catalog presence never makes a record citable evidence.
 - Explore feed: bounded SQL RPCs paginate evidence documents, aggregate corpus facets, and return per-document preview packets as set operations. The rolling-deploy fallback is bounded and does not issue one query per card.
 - Promotion gate: external metadata becomes evidence only after full-text rights, stable provenance, page mapping, OCR quality, deduplication, and embedding checks pass.
-- MCP tools are read-only and must keep `readOnlyHint=true`, `openWorldHint=false`, `destructiveHint=false`.
+- MCP declares 19 tools with explicit safety annotations. Seventeen evidence/discovery/private-read tools keep `readOnlyHint=true`; `save_library_item` is a non-destructive write and `remove_library_item` is destructive. Existing retrieval tools remain backward compatible and read-only for CityMCP.
 - Rollback paths: `AGENTIC_CONTEXT_ENABLED=false`, `RETRIEVAL_VERSION=v1`, or collection filtering.
 
 ## Public Product Controls
 
 - Supabase Auth owns Google and email/password identity. Its route client accepts only a valid anon/publishable key and fails closed; the service-role key is reserved for explicit server administration. Every chat, workspace, billing, feedback, and deletion operation is server-scoped to the resolved user or signed guest identity.
 - `/api/events` records an allow-listed set of activation events without raw research queries. `/api/support` stores rate-limited support, privacy, copyright, and source-takedown requests for operator review.
+- Event properties are server-stamped with `trafficClass`, environment, release SHA, and deployment ID so human activation is not mixed with E2E, smoke, or eval traffic.
+- Personal MCP tokens use the `cvmcp_` prefix, are displayed once, stored only as SHA-256 hashes, owner-scoped, revocable, rate-limited, and cascaded on account deletion.
 - Account deletion rejects active subscriptions, removes all first-party account rows through one service-role-only transactional RPC, and only then removes Supabase Auth access.
 - Privacy, Terms, and Support are public static routes. They do not imply professional engineering approval or full-text redistribution rights.
 
@@ -70,7 +78,7 @@ When a server-only `OPENALEX_API_KEY` is configured, the route adds up to four g
 
 ## Boundary Rules
 - Browser never receives service-role Supabase key, OpenAI key, DeepSeek key, OpenAlex key, or MCP server key.
-- Web app orchestrates chat/model behavior; MCP server remains retrieval-only.
+- Web app orchestrates chat/model behavior; MCP handles bounded evidence/discovery and explicit owner-scoped library operations, never billing or model generation.
 - Pipeline/indexing jobs do not run on Vercel request paths.
 - Harness scripts may call live services but must skip with `warn` when required endpoints or keys are absent.
 - OAI harvesters remain bounded, respect provider rate limits, and never scrape full-text PDFs implicitly.
