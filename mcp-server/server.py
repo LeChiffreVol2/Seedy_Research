@@ -3557,7 +3557,7 @@ def _execute_public_v2_tool(name: str, arguments: dict[str, Any]) -> CallToolRes
     return CallToolResult(
         content=[TextContent(type="text", text=result.content_text)],
         structuredContent=result.structured_content,
-        meta=meta,
+        _meta=meta,
     )
 
 

@@ -392,6 +392,8 @@ class GASecurityContracts(unittest.TestCase):
         self.assertIn('request_id = f"mcp_{uuid.uuid4()}"', server)
         self.assertIn("refund_public_mcp_units(reservation)", server)
         self.assertIn('meta["research_units"]', server)
+        self.assertIn("_meta=meta", server)
+        self.assertNotIn("        meta=meta,", server)
         self.assertIn('client.rpc("civil_get_mcp_usage"', access)
         for unchanged_weight in (
             'id: "gpt-5.6-luna", label: "GPT-5.6 Luna", provider: "openai", credits: 1',
