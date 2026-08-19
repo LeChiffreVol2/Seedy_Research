@@ -22,16 +22,20 @@ only evidence-index records.
 | NCCE31 | Indexed evidence: 356 papers | Passed paper boundary/duplicate, discipline/title, page, embedding, and strict data-quality gates on 24 July 2026 |
 | TCI / ThaiJO | Official OAI metadata only | Article/journal license or permission, stable URL, lawful full-text access, page mapping, OCR/text quality |
 
-The initial ThaiJO allowlist is intentionally narrow: research/case/technical
-sets from Geotechnical Engineering Journal and the Journal of Thailand Concrete
-Association. Broad endpoint harvesting is opt-in because ThaiJO endpoint
-families contain mixed disciplines.
+The ThaiJO allowlist stays set-level rather than endpoint-wide. It currently
+contains research/case/technical sets from Geotechnical Engineering Journal,
+the Journal of Thailand Concrete Association, Bulletin of Earth Sciences of
+Thailand, Journal of Spatial Innovation Development, and four reviewed
+multidisciplinary engineering journals. Broad endpoint harvesting remains
+opt-in because ThaiJO endpoint families contain mixed disciplines.
 
-Production snapshot, 13 August 2026: the reviewed allowlist contributes 780
-metadata-only records (689 geotechnical and 91 structural/concrete), with 780
-publisher links and 682 normalized DOI values. Missing titles and accidental
-evidence promotions are both zero. These are discovery coverage metrics, not a
-claim of full-text rights or citation coverage.
+Production snapshot, 20 August 2026: the reviewed allowlist contributes 2,380
+active metadata-only records (991 geotechnical, 91 structural/concrete, 177
+surveying/GIS, and 1,121 general engineering), with 2,380 publisher links and
+818 normalized DOI values. Active missing titles and accidental evidence
+promotions are both zero. Thirty-eight provider-deleted records remain only as
+removed audit tombstones. These are discovery coverage metrics, not a claim of
+full-text rights or citation coverage.
 
 ## Ingestion state machine
 

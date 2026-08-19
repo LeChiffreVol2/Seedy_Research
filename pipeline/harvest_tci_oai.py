@@ -129,6 +129,60 @@ def reviewed_source_scope(
     return None
 
 
+def reviewed_source_sets(
+    endpoint: str,
+    allowlist_path: Path = DEFAULT_ALLOWLIST,
+) -> list[dict[str, str]]:
+    """Return the reviewed sets for one exact endpoint in manifest order."""
+    payload = json.loads(allowlist_path.read_text(encoding="utf-8"))
+    normalized_endpoint = endpoint.rstrip("/?")
+    for source in payload.get("endpoints", []):
+        if str(source.get("endpoint", "")).rstrip("/?") != normalized_endpoint:
+            continue
+        reviewed: list[dict[str, str]] = []
+        seen: set[str] = set()
+        for item in source.get("sets", []):
+            set_spec = str(item.get("set_spec", "")).strip()
+            scope = str(item.get("scope", "")).strip()
+            if not set_spec or not scope or set_spec in seen:
+                continue
+            seen.add(set_spec)
+            reviewed.append({
+                "set_spec": set_spec,
+                "label": str(item.get("label", set_spec)).strip() or set_spec,
+                "scope": scope,
+            })
+        return reviewed
+    return []
+
+
+def load_catalog_records(path: Path, endpoint: str) -> list[dict[str, Any]]:
+    """Load one generated JSONL safely so a failed apply can resume offline."""
+    records: list[dict[str, Any]] = []
+    seen: set[str] = set()
+    normalized_endpoint = endpoint.rstrip("/?")
+    for line_number, line in enumerate(path.read_text(encoding="utf-8").splitlines(), 1):
+        if not line.strip():
+            continue
+        record = json.loads(line)
+        provider_record_id = str(record.get("provider_record_id", "")).strip()
+        raw_metadata = record.get("raw_metadata")
+        record_endpoint = (
+            str(raw_metadata.get("endpoint", "")).rstrip("/?")
+            if isinstance(raw_metadata, dict)
+            else ""
+        )
+        if record.get("provider") != "tci_thaijo" or record_endpoint != normalized_endpoint:
+            raise ValueError(f"Line {line_number} is not from the selected ThaiJO endpoint.")
+        if not provider_record_id or provider_record_id in seen:
+            raise ValueError(f"Line {line_number} has a missing or duplicate provider record ID.")
+        seen.add(provider_record_id)
+        records.append(record)
+    if not records:
+        raise ValueError("The catalog JSONL contains no records.")
+    return records
+
+
 def thaijo_metadata_rights(
     endpoint: str,
     declared_rights: list[str],
@@ -574,6 +628,11 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--endpoint", required=True, help="Official ThaiJO OAI endpoint, without query string.")
     parser.add_argument("--set-spec")
     parser.add_argument(
+        "--all-reviewed",
+        action="store_true",
+        help="Harvest every allowlisted set for the selected endpoint, with the rate limit enforced between sets.",
+    )
+    parser.add_argument(
         "--discipline",
         choices=[
             "unknown",
@@ -608,7 +667,12 @@ def parse_args() -> argparse.Namespace:
     )
     parser.add_argument("--from", dest="date_from")
     parser.add_argument("--until", dest="date_until")
-    parser.add_argument("--max-records", type=int, default=100)
+    parser.add_argument(
+        "--max-records",
+        type=int,
+        default=100,
+        help="Maximum records for one set; with --all-reviewed this cap applies per set.",
+    )
     parser.add_argument(
         "--delay-seconds",
         type=float,
@@ -618,6 +682,11 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--timeout-seconds", type=float, default=30)
     parser.add_argument("--output", type=Path, default=DEFAULT_OUTPUT)
     parser.add_argument("--apply", action="store_true", help="Upsert metadata into civil_source_catalog.")
+    parser.add_argument(
+        "--apply-existing",
+        action="store_true",
+        help="Apply the existing --output JSONL without requesting ThaiJO again; requires --apply.",
+    )
     return parser.parse_args()
 
 
@@ -631,13 +700,27 @@ def main() -> None:
     if args.delay_seconds < 6:
         raise ValueError("--delay-seconds must be at least 6 seconds for ThaiJO.")
     endpoint = args.endpoint.rstrip("?")
+    if args.apply_existing:
+        if not args.apply:
+            raise ValueError("--apply-existing requires --apply.")
+        if args.list_sets or args.set_spec or args.all_reviewed:
+            raise ValueError("--apply-existing cannot be combined with a harvest selection.")
+        records = load_catalog_records(args.output, endpoint)
+        apply_catalog(records, endpoint=endpoint, set_spec="existing_jsonl")
+        print(f"TCI/ThaiJO metadata records: {len(records)}")
+        print(f"Input: {args.output}")
+        print("Applied to catalog: True")
+        print("Full-text downloads: 0")
+        return
     if args.list_sets:
         for set_spec, set_name in parse_list_sets(
             request_xml(endpoint, {"verb": "ListSets"}, args.timeout_seconds)
         ):
             print(f"{set_spec}\t{set_name}")
         return
-    if not args.set_spec and not args.allow_unscoped:
+    if args.all_reviewed and args.set_spec:
+        raise ValueError("Choose either --set-spec or --all-reviewed, not both.")
+    if not args.set_spec and not args.all_reviewed and not args.allow_unscoped:
         raise ValueError("Choose a reviewed --set-spec, or pass --allow-unscoped explicitly.")
     reviewed_scope = reviewed_source_scope(endpoint, args.set_spec)
     if args.set_spec and not reviewed_scope and not args.allow_unreviewed_set:
@@ -650,26 +733,59 @@ def main() -> None:
             f"Allowlist scope is {reviewed_scope}; --discipline {args.discipline} would create schema drift."
         )
 
-    records = list(
-        harvest(
-            endpoint=endpoint,
-            set_spec=args.set_spec,
-            date_from=args.date_from,
-            date_until=args.date_until,
-            max_records=args.max_records,
-            delay_seconds=args.delay_seconds,
-            timeout_seconds=args.timeout_seconds,
+    if args.all_reviewed:
+        reviewed_sets = reviewed_source_sets(endpoint)
+        if not reviewed_sets:
+            raise ValueError("No reviewed sets exist for this endpoint.")
+        records_by_id: dict[str, dict[str, Any]] = {}
+        for index, reviewed_set in enumerate(reviewed_sets):
+            if index:
+                time.sleep(args.delay_seconds)
+            set_records = list(
+                harvest(
+                    endpoint=endpoint,
+                    set_spec=reviewed_set["set_spec"],
+                    date_from=args.date_from,
+                    date_until=args.date_until,
+                    max_records=args.max_records,
+                    delay_seconds=args.delay_seconds,
+                    timeout_seconds=args.timeout_seconds,
+                )
+            )
+            for record in set_records:
+                record["discipline"] = reviewed_set["scope"]
+                prior = records_by_id.get(record["provider_record_id"])
+                if prior and prior.get("discipline") != record["discipline"]:
+                    record["discipline"] = "unknown"
+                records_by_id[record["provider_record_id"]] = record
+            print(
+                f"Reviewed set {index + 1}/{len(reviewed_sets)}: "
+                f"{reviewed_set['label']} ({len(set_records)} records)"
+            )
+        records = list(records_by_id.values())
+        applied_set = f"reviewed:{len(reviewed_sets)}"
+    else:
+        records = list(
+            harvest(
+                endpoint=endpoint,
+                set_spec=args.set_spec,
+                date_from=args.date_from,
+                date_until=args.date_until,
+                max_records=args.max_records,
+                delay_seconds=args.delay_seconds,
+                timeout_seconds=args.timeout_seconds,
+            )
         )
-    )
-    for record in records:
-        record["discipline"] = reviewed_scope or args.discipline
+        for record in records:
+            record["discipline"] = reviewed_scope or args.discipline
+        applied_set = args.set_spec
     args.output.parent.mkdir(parents=True, exist_ok=True)
     args.output.write_text(
         "".join(json.dumps(record, ensure_ascii=False) + "\n" for record in records),
         encoding="utf-8",
     )
     if args.apply:
-        apply_catalog(records, endpoint=endpoint, set_spec=args.set_spec)
+        apply_catalog(records, endpoint=endpoint, set_spec=applied_set)
     print(f"TCI/ThaiJO metadata records: {len(records)}")
     print(f"Output: {args.output}")
     print(f"Applied to catalog: {args.apply}")

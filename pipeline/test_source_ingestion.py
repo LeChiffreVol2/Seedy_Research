@@ -1,6 +1,8 @@
 from __future__ import annotations
 
+import json
 import sys
+import tempfile
 import unittest
 from pathlib import Path
 
@@ -12,10 +14,12 @@ from extract import markdown_from_pages  # noqa: E402
 from harvest_tci_oai import (  # noqa: E402
     RIGHTS_ACTIONS,
     is_oai_tombstone,
+    load_catalog_records,
     parse_list_records,
     parse_list_sets,
     preserve_reviewed_catalog_state,
     reviewed_source_scope,
+    reviewed_source_sets,
     sanitize_xml_payload,
     tombstone_catalog_update,
 )
@@ -183,6 +187,37 @@ class SourceIngestionTests(unittest.TestCase):
         self.assertIsNone(reviewed_source_scope(endpoint, "unreviewed:set"))
         self.assertIsNone(
             reviewed_source_scope("https://example.invalid/oai", "SEAGS_AGSSEA_Journal:RP")
+        )
+
+    def test_tci_reviewed_batch_is_ordered_unique_and_keeps_general_engineering_explicit(self) -> None:
+        endpoint = "https://ph01.tci-thaijo.org/index.php/index/oai"
+        reviewed = reviewed_source_sets(endpoint)
+        specs = [item["set_spec"] for item in reviewed]
+
+        self.assertEqual(len(specs), len(set(specs)))
+        self.assertEqual(specs[0], "SEAGS_AGSSEA_Journal:RP")
+        self.assertIn("jsid:RS_ART", specs)
+        self.assertEqual(
+            next(item["scope"] for item in reviewed if item["set_spec"] == "EngJCMU:RES"),
+            "unknown",
+        )
+        self.assertEqual(reviewed_source_sets("https://example.invalid/oai"), [])
+
+    def test_tci_generated_catalog_can_resume_apply_without_reharvesting(self) -> None:
+        endpoint = "https://ph01.tci-thaijo.org/index.php/index/oai"
+        fixture = (PIPELINE_DIR / "fixtures" / "tci_oai_list_records.xml").read_bytes()
+        records, _ = parse_list_records(endpoint, fixture)
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "catalog.jsonl"
+            path.write_text(
+                "".join(json.dumps(record) + "\n" for record in records),
+                encoding="utf-8",
+            )
+            loaded = load_catalog_records(path, endpoint)
+
+        self.assertEqual(
+            [record["provider_record_id"] for record in loaded],
+            [record["provider_record_id"] for record in records],
         )
 
     def test_tci_oai_sanitizes_invalid_xml_control_bytes(self) -> None:

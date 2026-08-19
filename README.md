@@ -23,11 +23,13 @@ These public proof metrics intentionally exclude stale or non-page-linked rows.
 The underlying index contains 69,687 active chunk rows; the headline excludes
 1,073 legacy/non-page-linked rows that are not counted as corpus proof.
 
-The separate discovery catalog currently adds **780 ThaiJO journal records**
-from five reviewed civil-engineering sets, bringing Explore to **2,077 Thai
-research records**. All 780 have a publisher link, 682 have a DOI, and none is
-eligible for AI answers or citations until full-text rights and page provenance
-pass the evidence promotion gates.
+The separate discovery catalog currently adds **2,380 active ThaiJO journal
+records** from 11 reviewed civil-engineering and multidisciplinary-engineering
+sets, bringing Explore to **3,677 Thai research records**. All 2,380 have a
+publisher link, 818 have a DOI, and none is eligible for AI answers or citations
+until full-text rights and page provenance pass the evidence promotion gates.
+Another 38 provider-deleted records remain only as non-discoverable audit
+tombstones.
 
 The application can search this corpus, synthesize findings across papers, open the exact evidence pages, and translate Thai paper content to English. The source PDFs and extracted corpus are intentionally not redistributed through Git; see [DATA_SOURCES.md](DATA_SOURCES.md).
 

@@ -85,6 +85,21 @@ python3.10 pipeline/harvest_tci_oai.py \
   --discipline geotechnical \
   --max-records 100 \
   --output pipeline/data/catalog/tci_ph01.jsonl
+
+# Refresh every reviewed set on the endpoint. The cap applies per set.
+python3.10 pipeline/harvest_tci_oai.py \
+  --endpoint 'https://ph01.tci-thaijo.org/index.php/index/oai' \
+  --all-reviewed \
+  --max-records 2000 \
+  --output pipeline/data/catalog/tci_ph01_reviewed.jsonl \
+  --apply
+
+# Resume only the database apply if harvesting succeeded but the client failed.
+.venv310/bin/python pipeline/harvest_tci_oai.py \
+  --endpoint 'https://ph01.tci-thaijo.org/index.php/index/oai' \
+  --output pipeline/data/catalog/tci_ph01_reviewed.jsonl \
+  --apply-existing \
+  --apply
 ```
 
 Default delay 6.2 วินาทีต่อ request อยู่ใต้ published limit 10 requests/minute.
@@ -93,6 +108,10 @@ Default delay 6.2 วินาทีต่อ request อยู่ใต้ publ
 ชุดเริ่มต้นที่ตรวจชื่อและ scope แล้วอยู่ใน
 `pipeline/tci_source_allowlist.json`; การเพิ่ม set ใหม่ต้อง review ชื่อวารสาร,
 scope, duplicate behavior, และ rights policy ก่อน.
+`--all-reviewed` เว้นช่วงระหว่าง set ด้วย จึงไม่ทำให้คำขอแรกของแต่ละ set
+ทะลุ rate limit โดยไม่ตั้งใจ และ deduplicate ด้วย provider record ID ก่อน apply.
+วารสารวิศวกรรมสหสาขาเก็บ discipline เป็น `unknown` โดยตั้งใจและแสดงในผลิตภัณฑ์
+เป็น General engineering แทนการเดาสาขาจากคำบางคำในชื่อบทความ.
 ใช้ `--apply` หลัง apply migration `20260724120000_civil_source_catalog.sql`
 และ `20260813090000_civil_source_rights_manifest.sql` แล้วเท่านั้น. ตัว harvester
 จะยอมรับ endpoint/set โดยปริยายเฉพาะคู่ที่อยู่ใน allowlist; set ใหม่ต้องผ่าน

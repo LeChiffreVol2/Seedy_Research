@@ -1,5 +1,5 @@
 {
-  "version": 1,
+  "version": 2,
   "policy": "metadata_only_until_rights_and_page_provenance_are_verified",
   "endpoints": [
     {
@@ -29,6 +29,36 @@
           "set_spec": "html:TR",
           "label": "Journal of Thailand Concrete Association — Technical Reports",
           "scope": "structural"
+        },
+        {
+          "set_spec": "bestjournal:R_ART",
+          "label": "Bulletin of Earth Sciences of Thailand — Research Articles",
+          "scope": "geotechnical"
+        },
+        {
+          "set_spec": "jsid:RS_ART",
+          "label": "Journal of Spatial Innovation Development — Research Articles",
+          "scope": "surveying_gis"
+        },
+        {
+          "set_spec": "EngJCMU:RES",
+          "label": "Engineering Journal Chiang Mai University — Research Articles",
+          "scope": "unknown"
+        },
+        {
+          "set_spec": "JEET:RS_ART",
+          "label": "Journal of Energy and Environment Technology — Research Articles",
+          "scope": "unknown"
+        },
+        {
+          "set_spec": "lej:RSART",
+          "label": "Engineering and Technology Horizons — Research Articles",
+          "scope": "unknown"
+        },
+        {
+          "set_spec": "jermutt:R_ART",
+          "label": "Frontiers in Engineering Innovation Research — Research Articles",
+          "scope": "unknown"
         }
       ]
     }

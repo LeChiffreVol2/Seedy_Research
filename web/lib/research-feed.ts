@@ -589,6 +589,7 @@ function providerLabel(value: string): string {
 function disciplineLabel(value: string | null | undefined): string {
   const cleaned = (value ?? "").trim();
   const labels: Record<string, string> = {
+    unknown: "General Engineering",
     transport: "Transport",
     structural: "Structural",
     geotechnical: "Geotechnical",

@@ -47,10 +47,13 @@ eligible for the page-linked evidence index only after its article/journal
 license or written permission is verified, a stable source URL is retained, and
 full text passes page-provenance and OCR quality gates.
 
-As of 13 August 2026, five reviewed civil-engineering sets contribute 780
-metadata-only records: 689 geotechnical and 91 structural/concrete. The catalog
-stores publisher links for all 780 and DOI values for 682. A versioned,
-default-deny rights manifest records each allowed operation separately;
+As of 20 August 2026, 11 reviewed civil-engineering and
+multidisciplinary-engineering sets contribute 2,380 active metadata-only
+records: 991 geotechnical, 91 structural/concrete, 177 surveying/GIS, and 1,121
+general engineering. The catalog stores publisher links for all 2,380 and DOI
+values for 818. Another 38 provider-deleted headers remain only as removed
+audit tombstones. A versioned, default-deny rights manifest records each allowed
+operation separately;
 provider-supplied license strings are retained as provenance but do not
 automatically authorize embedding, summarization, translation, redistribution,
 commercial use, or model training.

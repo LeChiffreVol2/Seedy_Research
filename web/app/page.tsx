@@ -722,6 +722,7 @@ function intentLabel(intent?: string | null): string {
 
 function disciplineLabel(discipline?: string | null): string {
   if (!discipline) return "No discipline restriction";
+  if (discipline === "unknown") return "General engineering";
   return discipline
     .split("_")
     .map((part) => part.charAt(0).toUpperCase() + part.slice(1))

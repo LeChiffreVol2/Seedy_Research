@@ -6,11 +6,12 @@ In eight weeks, prove that CivilMCP can extend from a civil-engineering evidence
 product into a Thai-first deep-tech learning and research platform without
 weakening citation, rights, security, or rollback guarantees.
 
-## Implementation snapshot — 13 August 2026
+## Implementation snapshot — 20 August 2026
 
 - 1,297 page-citable Thai civil-engineering papers remain the evidence layer.
-- 780 allowlisted ThaiJO records are connected as non-citable discovery
-  metadata; publisher links are complete and DOI coverage is 682 records.
+- 2,380 active records from 11 allowlisted ThaiJO sets are connected as
+  non-citable discovery metadata; publisher links are complete, DOI coverage is
+  818 records, and 38 provider tombstones remain removed for audit.
 - Explore labels evidence and Thai metadata separately and expands to OpenAlex
   only after an explicit user action. Global records remain external and
   non-citable.
