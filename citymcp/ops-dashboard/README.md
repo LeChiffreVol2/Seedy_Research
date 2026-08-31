@@ -98,13 +98,15 @@ SMART_CITY_LAYER_MAX_FEATURES
 SMART_CITY_TILE_MAX_ZOOM
 ```
 
-### Near-real-time ingest on free hosting
+### Archived ingest schedule
 
 Vercel Hobby cron can only run daily, so `citymcp/ops-dashboard/vercel.json` keeps a
-daily fallback. The five-minute production refresh is handled by
-`.github/workflows/citymcp-ingest.yml`.
+daily fallback in the retained deployment configuration. The former five-minute
+GitHub refresh is paused while CityMCP is archived in maintenance-only mode.
+`.github/workflows/citymcp-ingest.yml` now permits explicit manual dispatch only.
 
-Configure the GitHub repository that owns the deployment:
+Before deliberately reactivating the CityMCP workflow, configure the GitHub
+repository that owns the deployment:
 
 ```bash
 gh secret set OPS_INGEST_SECRET --body "$OPS_INGEST_SECRET"

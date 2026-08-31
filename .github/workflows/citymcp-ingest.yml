@@ -1,8 +1,8 @@
 name: CityMCP ingest refresh
 
 on:
-  schedule:
-    - cron: "*/5 * * * *"
+  # CityMCP is archived in maintenance-only mode. Keep an explicit manual
+  # recovery path without scheduling background refreshes from this repository.
   workflow_dispatch:
 
 jobs:
