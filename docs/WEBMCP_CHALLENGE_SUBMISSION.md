@@ -8,7 +8,8 @@
 - Deadline: **September 3, 2026 at 1:00 PM PDT** (**September 4 at 3:00 AM ICT**)
 - Public source repository: **REQUIRED — add the final public URL before submission**
 - Public YouTube demo under three minutes: **REQUIRED — add the final URL before submission**
-- Candidate commit and deployment ID: **REQUIRED — freeze and record after the final gate**
+- Candidate public commit SHA: **REQUIRED — record after the GitHub push**
+- Candidate deployment IDs: recorded in the release verification below
 
 Do not submit while any `REQUIRED` field above is unresolved. The Devpost entry, video, repository, and supporting text must be public and in English. The repository must expose the MIT license in its About section and remain frozen during judging except for an organizer-approved correction.
 
@@ -18,7 +19,11 @@ Do not submit while any `REQUIRED` field above is unresolved. The Devpost entry,
 - Browser suite: pass, 31/31 serial Chromium scenarios across desktop, mobile, accessibility, research workflows, the real reader-pack route, and WebMCP.
 - Focused WebMCP contract: pass, 6/6 scenarios covering the complete Passport flow, lawful reader enrichment, non-native fail-closed access, global-provider outage, stale-context cancellation, bounded Thai-to-English rendering, and missing-page rejection.
 - Repository invariants: pass.
-- Security contracts: pass, 18/18.
+- Security contracts: pass, 19/19.
+- Local release score: 93.6/100; all functional, evidence, data, memory, and
+  latency checks pass. The remaining warning is the intentionally unrecorded
+  production-target smoke, which must run through the protected promotion
+  workflow against the exact candidate URLs.
 - Local corpus integrity: pass; 1,300 markdown paper files, 1,299 index-eligible papers, zero page-boundary violations, and zero unresolved probable duplicates. Production still serves the 1,297-document baseline until the reviewed 152-job embedding refresh and exact duplicate cleanup receive explicit approval.
 - Production dependency audit: zero high or critical advisories. Five transitive low-severity AI SDK advisories remain; the project maintainer owns an isolated post-challenge major-upgrade test rather than forcing a breaking dependency change into the candidate freeze.
 - Rights-reviewed reader slice: live for exactly 3 ThaiJO-hosted
@@ -28,7 +33,7 @@ Do not submit while any `REQUIRED` field above is unresolved. The Devpost entry,
   direct `anon`/`authenticated` table reads. Production build, rights/integrity units, repository
   invariants, and focused reader/WebMCP browser, mobile, and accessibility gates
   pass.
-- Live deployments: web `dpl_AYv5weW4KsxmdXCFwqZWdZVF8q7w` and MCP
+- Live deployments: web `dpl_9R3nJVycJSxX2hfBRmN1ETZH5mo7` and MCP
   `dpl_5XJM8JRRNrZSbUF82TqxbehptYoi` are READY production releases. The canonical
   aliases are `https://civil-mcp-web.vercel.app` and
   `https://civil-mcp-server.vercel.app`.
@@ -38,20 +43,21 @@ Judge expansion contract: [Thai Research Full-Text System](THAI_RESEARCH_FULL_TE
 ## Full-paper and national-coverage decision — 31 August 2026
 
 The winning product direction includes a rights-aware full-paper reader and a
-measured national provider graph. Current production does **not** yet provide the
-new native full-paper reader: its indexed records open a bounded evidence drawer
-and its public paper pages expose metadata, outline, page ranges, and short
-evidence previews. The repository working tree now contains a local reader
-candidate, but it has not been deployed or applied to the production database.
+measured national provider graph. Current production now provides the native
+reader for an explicitly bounded proof: exactly 3 rights-reviewed ThaiJO-hosted
+LEARN Journal papers, 3 verified assets, and 68 checksum-bound pages under the
+journal's recorded CC BY 4.0 statement. Every other paper continues through the
+fail-closed access resolver and is never presented as native full text without an
+asset-level rights decision.
 
-The repository now contains the implementation foundation:
+The repository and production release now contain:
 
 - a machine-readable provider registry covering ThaiJO, separate TCI citation
   data, TNRR, ThaiLIS/TDC, NCCE, broader Thai conferences, institutional
   repositories, OpenAlex, and Scopus;
 - a bounded, fixture-tested TNRR `ResearchOutput` metadata connector that never
   downloads full reports or stores abstracts;
-- an additive, unapplied canonical work/asset/page/rights/annotation migration;
+- the applied additive canonical work/asset/page/rights/annotation migration;
 - a deterministic, rights-reviewed CC BY 4.0 reader pack of exactly 3 ThaiJO
   papers and 68 pages, with checksum and page-count verification and no committed
   PDF binaries;
@@ -67,9 +73,9 @@ The repository now contains the implementation foundation:
 - an explicit reader and completeness contract in
   [Thai Research Full-Text System](THAI_RESEARCH_FULL_TEXT_SYSTEM.md).
 
-Do not describe the full-paper reader as **live**, or describe the database as
-**complete Thai research**, until a deployed reader pack passes all of these
-gates:
+The full-paper reader may be described as **live for this 3-paper proof only**.
+Do not describe the database as **complete Thai research**, and do not promote
+any additional asset to native reading until it passes all of these gates:
 
 1. each displayed asset has verified storage/display/transformation rights;
 2. every reader page resolves to its original asset and stable page number;
@@ -80,13 +86,12 @@ gates:
 6. desktop, mobile, accessibility, WebMCP, takedown, and rights-revocation tests
    pass on the deployed candidate.
 
-If the 3-paper pack clears these gates before freeze, add it to the demo after
-the Passport flow: discover a Thai work, open the lawful reader mode, navigate to
-an exact page, search within the paper, highlight a passage, save a local note,
-and copy its citation. A verified 3-paper proof is stronger than an unverified
-claim to host hundreds of thousands of PDFs. Do not imply that browser-local
-notes are already workspace-synced or that this small proof materially changes
-national provider coverage.
+Demo the live pack after the Passport flow: discover a Thai work, open the lawful
+reader mode, navigate to an exact page, search within the paper, highlight a
+passage, save a local note, and copy its citation. A verified 3-paper proof is
+stronger than an unverified claim to host hundreds of thousands of PDFs. Do not
+imply that browser-local notes are already workspace-synced or that this small
+proof materially changes national provider coverage.
 
 ## Submission title
 
