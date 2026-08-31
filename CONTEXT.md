@@ -51,3 +51,11 @@ _Avoid_: proven novelty, validated research gap
 **Full-Paper Access State**:
 The declared lawful way a research asset may be read, ranging from verified native reading to source-hosted, restricted, metadata-only, or unavailable access.
 _Avoid_: full text available without a rights decision
+
+**National Discovery Coverage**:
+Measured metadata visibility across named Thai research providers, reported with a provider denominator, freshness, and unresolved coverage gaps.
+_Avoid_: complete Thai research database, full-paper coverage
+
+**Evidence Coverage**:
+The subset of discovered research that has passed rights, provenance, identity, page-mapping, and quality gates and may support bounded claims.
+_Avoid_: searchable records, metadata coverage
