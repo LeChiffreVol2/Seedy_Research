@@ -170,6 +170,14 @@ class GASecurityContracts(unittest.TestCase):
         self.assertIn('const sectionsPayload = await callTool("search_civil_sections"', route)
         self.assertIn("query: focusedFallbackQuery(plan.searchQuery, plan.intent)", route)
 
+    def test_public_ci_uses_committed_data_fixtures_and_gates_preview_secrets(self) -> None:
+        ci = source(".github/workflows/ci.yml")
+        preview = source(".github/workflows/preview-release.yml")
+        self.assertNotIn("run: python harness/run_data_quality.py", ci)
+        self.assertIn("python -m unittest harness.test_data_quality_integrity", ci)
+        self.assertIn("vars.PREVIEW_RELEASE_ENABLED == 'true'", preview)
+        self.assertIn("github.event_name == 'workflow_dispatch'", preview)
+
     def test_guest_persistence_and_history_writes_are_bounded(self) -> None:
         auth = source("web/lib/chat-auth.ts")
         session = source("web/app/api/session/route.ts")

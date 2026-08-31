@@ -42,8 +42,8 @@ jobs:
           python harness/check_invariants.py
           python harness/test_ga_security.py
 
-      - name: Data quality report
-        run: python harness/run_data_quality.py
+      - name: Data quality contracts
+        run: python -m unittest harness.test_data_quality_integrity
 
       - name: Install web dependencies
         working-directory: web

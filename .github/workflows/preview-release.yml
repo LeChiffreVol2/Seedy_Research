@@ -109,7 +109,9 @@ jobs:
         run: npm ci && npm run build
 
   migrate-preview:
-    if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
+    if: >-
+      (github.event_name == 'workflow_dispatch' || vars.PREVIEW_RELEASE_ENABLED == 'true') &&
+      (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository)
     needs: source-gate
     runs-on: ubuntu-latest
     timeout-minutes: 5
