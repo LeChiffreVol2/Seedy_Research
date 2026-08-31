@@ -9,23 +9,21 @@
 - Deadline: **September 3, 2026 at 1:00 PM PDT** (**September 4 at 3:00 AM ICT**)
 - Public source repository: <https://github.com/LeChiffreVol2/Seedy_Research>
 - Public YouTube demo under three minutes: **REQUIRED — add the final URL before submission**
-- Verified application candidate commit: [`9523b7cbb6970190c5f792231769a6808dc7d209`](https://github.com/LeChiffreVol2/Seedy_Research/commit/9523b7cbb6970190c5f792231769a6808dc7d209)
+- Verified application candidate commit: [`e681d0c4362722e822784edf0ddb60cfb1a80afe`](https://github.com/LeChiffreVol2/Seedy_Research/commit/e681d0c4362722e822784edf0ddb60cfb1a80afe)
   (the following repository commit changes submission metadata only)
-- Candidate deployment IDs: recorded in the release verification below
+- Candidate deployment IDs: preview `dpl_3P4aH8ibQmgeQEqdfhaFY3BNpipr`; production `dpl_8tmCnMLRVtGEs27soKBJp6WpNhD3`
 
 Do not submit while any `REQUIRED` field above is unresolved. The Devpost entry, video, repository, and supporting text must be public and in English. The repository must expose the MIT license in its About section and remain frozen during judging except for an organizer-approved correction.
 
-## Release verification — August 31, 2026 ICT
+## Release verification — September 1, 2026 ICT
 
 - Production build: pass (all routes compiled and type-checked; 23 static pages generated).
-- Browser suite: pass, 31/31 serial Chromium scenarios across desktop, mobile, accessibility, research workflows, the real reader-pack route, and WebMCP.
-- Focused WebMCP contract: pass, 6/6 scenarios covering the complete Passport flow, lawful reader enrichment, non-native fail-closed access, global-provider outage, stale-context cancellation, bounded Thai-to-English rendering, and missing-page rejection.
+- Browser suite: pass, 36/36 serial Chromium scenarios across desktop, mobile, accessibility, research workflows, the real reader-pack route, OpenAlex identity safety, and WebMCP.
+- Focused WebMCP contract: pass, 7/7 scenarios covering the complete connection → path → Passport flow, arbitrary-ID rejection, lawful reader enrichment, non-native fail-closed access, global-provider outage, stale-context cancellation, bounded Thai-to-English rendering, and missing-page rejection. The separate OpenAlex adapter contract passes 4/4 exact-DOI, title-candidate, fuzzy-candidate, and ambiguity scenarios.
 - Repository invariants: pass.
-- Security contracts: pass, 19/19.
-- Local release score: 93.6/100; all functional, evidence, data, memory, and
-  latency checks pass. The remaining warning is the intentionally unrecorded
-  production-target smoke, which must run through the protected promotion
-  workflow against the exact candidate URLs.
+- GitHub Actions: CI run `33433688443` and Preview/source-gate run `33433688382` pass for candidate `e681d0c`; protected deploy jobs were not configured for this push, so the same clean candidate was deployed and inspected with the linked Vercel project.
+- Security contracts: pass, 21/21.
+- Supabase production data quality: pass on the clean candidate SHA; 1,297 indexed documents, zero missing document pages, zero missing chunk embeddings, and zero unknown disciplines. No schema or embedding migration is required by this release.
 - Local corpus integrity: pass; 1,300 markdown paper files, 1,299 index-eligible papers, zero page-boundary violations, and zero unresolved probable duplicates. Production still serves the 1,297-document baseline until the reviewed 152-job embedding refresh and exact duplicate cleanup receive explicit approval.
 - Production dependency audit: zero high or critical advisories. Five transitive low-severity AI SDK advisories remain; the project maintainer owns an isolated post-challenge major-upgrade test rather than forcing a breaking dependency change into the candidate freeze.
 - Rights-reviewed reader slice: live for exactly 3 ThaiJO-hosted
@@ -35,10 +33,12 @@ Do not submit while any `REQUIRED` field above is unresolved. The Devpost entry,
   direct `anon`/`authenticated` table reads. Production build, rights/integrity units, repository
   invariants, and focused reader/WebMCP browser, mobile, and accessibility gates
   pass.
-- Live deployments: web `dpl_9R3nJVycJSxX2hfBRmN1ETZH5mo7` and MCP
+- Live deployments: web `dpl_8tmCnMLRVtGEs27soKBJp6WpNhD3` and unchanged MCP
   `dpl_5XJM8JRRNrZSbUF82TqxbehptYoi` are READY production releases. The canonical
   aliases are `https://civil-mcp-web.vercel.app` and
-  `https://civil-mcp-server.vercel.app`.
+  `https://civil-mcp-server.vercel.app`. Vercel reports the web candidate at
+  Git SHA `e681d0c4362722e822784edf0ddb60cfb1a80afe`, target `production`, region
+  `sin1`; the stable web alias resolves to that deployment.
 
 Judge expansion contract: [Thai Research Full-Text System](THAI_RESEARCH_FULL_TEXT_SYSTEM.md).
 
@@ -258,7 +258,7 @@ The pre-existing product already had a Next.js research UI, a remote MCP server,
 - guarded OpenAlex seed resolution plus selected-lead carryover into a Research Path that ends in a candidate gap and Next-Study Protocol;
 - this challenge-specific public submission and demo package.
 
-Git history separates the pre-existing baseline from the Challenge work: `1179b09` is the August 20 baseline before the competition window, `e9f8ed8` is the August 31 challenge extension, and `9523b7c` is the September 1 candidate before the final SeedyMCP connection-trace release. The final submission must record the last release SHA here after promotion. Do not claim pre-existing product work as new Challenge work.
+Git history separates the pre-existing baseline from the Challenge work: `1179b09` is the August 20 baseline before the competition window, `e9f8ed8` is the August 31 challenge extension, `9523b7c` is the September 1 pre-release candidate, and `e681d0c` is the verified application candidate containing the final SeedyMCP connection trace and structured Research Path. Do not claim pre-existing product work as new Challenge work.
 
 ## Final freeze checklist
 
@@ -266,14 +266,15 @@ Git history separates the pre-existing baseline from the Challenge work: `1179b0
 - [ ] Resolve the public repository URL and display the MIT license in repository About metadata.
 - [ ] Remove secrets, private corpus files, copyrighted previews, local output, and generated harness reports from the public history.
 - [ ] Record the baseline commit and every competition-period WebMCP commit with real timestamps.
-- [ ] Run `git diff --check` and `python3.10 harness/check_invariants.py`.
+- [x] Run `git diff --check` and `python3.10 harness/check_invariants.py`.
 - [x] Run `python3.10 -m unittest pipeline.test_reader_pack`, the combined reader/feed units, and the focused `paper-reader.spec.ts` browser suite.
 - [x] Run the focused WebMCP E2E with exact-six, fail-closed connection matching, and no-full-page-text assertions.
-- [x] Run all 31 local desktop/mobile/reader/WebMCP E2E scenarios serially; rerun them against the frozen deployment candidate after deploy.
+- [x] Run all 36 local desktop/mobile/reader/OpenAlex/WebMCP E2E scenarios serially.
+- [ ] Rerun the judge flow against the frozen deployment candidate in a WebMCP-enabled browser.
 - [ ] Run the web build, security checks, strict data quality, live smoke, retrieval eval, memory eval, and quality score against one candidate fingerprint.
 - [ ] Test the deployed candidate in ChatGPT's built-in browser with Sol or Terra and record the six visible tools plus the complete connection → path → Passport review/export flow.
 - [ ] Test the deployed candidate in Chrome with WebMCP enabled.
-- [ ] Confirm the live deployment SHA matches the public candidate commit.
+- [x] Confirm the live deployment SHA matches the public candidate commit.
 - [ ] Record actual demo latency and tool-call count; do not invent a before/after number.
 - [ ] Upload a public English YouTube video shorter than three minutes.
 - [ ] Complete every Devpost text field in English, add test credentials if needed, and submit before the deadline.
