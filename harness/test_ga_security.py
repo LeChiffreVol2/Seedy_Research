@@ -159,6 +159,17 @@ class GASecurityContracts(unittest.TestCase):
         self.assertIn("metadataOnlyTraceValue", store)
         self.assertIn("alter column content_mode set default 'debug'", migration)
 
+    def test_fast_retrieval_falls_back_when_semantic_results_are_empty(self) -> None:
+        route = source("web/app/api/chat/route.ts")
+        self.assertIn("needsSectionFallback ||= chunks.length === 0", route)
+        self.assertIn("function focusedFallbackQuery(query: string, intent: Intent)", route)
+        self.assertIn(
+            "if (needsSectionFallback && toolCalls < Math.min(MAX_TOOL_CALLS, MAX_AGENT_STEPS))",
+            route,
+        )
+        self.assertIn('const sectionsPayload = await callTool("search_civil_sections"', route)
+        self.assertIn("query: focusedFallbackQuery(plan.searchQuery, plan.intent)", route)
+
     def test_guest_persistence_and_history_writes_are_bounded(self) -> None:
         auth = source("web/lib/chat-auth.ts")
         session = source("web/app/api/session/route.ts")

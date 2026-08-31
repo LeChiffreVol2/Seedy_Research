@@ -1506,6 +1506,18 @@ function queryTokens(query: string): string[] {
   );
 }
 
+function focusedFallbackQuery(query: string, intent: Intent): string {
+  if (intent !== "methodology") return query;
+  const focused = query
+    .replace(/\b(?:CE\s*Project|NCCE)\b/giu, " ")
+    .replace(/งาน(?:วิจัย)?\s*(?:ที่)?\s*เกี่ยวกับ/gu, " ")
+    .replace(/ใช้\s*methodolog(?:y|ies)\s*หรือ/giu, " ")
+    .replace(/(?:อะไร|แบบใด)(?:บ้าง)?|อย่างไร/gu, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+  return focused || query;
+}
+
 function textContainsAny(text: string, patterns: RegExp[]): boolean {
   return patterns.some((pattern) => pattern.test(text));
 }
@@ -2645,6 +2657,7 @@ async function buildAgenticContext(
 
   if (exactPaperMatches === 0) {
     if (FAST_RETRIEVAL_ENABLED) {
+      let needsSectionFallback = false;
       try {
         const knowledgePayload = await callTool("search_civil_knowledge", {
           query: queryByIntent,
@@ -2654,17 +2667,20 @@ async function buildAgenticContext(
         });
         chunks = [...chunks, ...getStructuredResults<ChunkResult>(knowledgePayload)];
       } catch {
-        // One bounded, page-linked fallback keeps the request useful without
-        // repeating the same combined semantic search under provider pressure.
-        if (toolCalls < Math.min(MAX_TOOL_CALLS, MAX_AGENT_STEPS)) {
-          const sectionsPayload = await callTool("search_civil_sections", {
-            query: queryByIntent,
-            discipline: plan.discipline,
-            max_results: Math.min(sectionTopKByIntent[plan.intent], 8),
-            collection,
-          });
-          sections = [...sections, ...getStructuredResults<SectionResult>(sectionsPayload)];
-        }
+        needsSectionFallback = true;
+      }
+      needsSectionFallback ||= chunks.length === 0;
+
+      // A successful semantic call may still return no matches. Use one bounded,
+      // page-linked section fallback for both empty results and provider errors.
+      if (needsSectionFallback && toolCalls < Math.min(MAX_TOOL_CALLS, MAX_AGENT_STEPS)) {
+        const sectionsPayload = await callTool("search_civil_sections", {
+          query: focusedFallbackQuery(plan.searchQuery, plan.intent),
+          discipline: plan.discipline,
+          max_results: Math.min(sectionTopKByIntent[plan.intent], 8),
+          collection,
+        });
+        sections = [...sections, ...getStructuredResults<SectionResult>(sectionsPayload)];
       }
     } else {
       const sectionsPayload = await callTool("search_civil_sections", {

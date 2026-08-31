@@ -267,24 +267,50 @@ def check_web_tci_boundary(web_url: str) -> Check:
             return Check("web_tci_boundary", "warn", f"Web unavailable: {exc}", "Start web app or set WEB_URL.")
         raise
     cards = payload.get("cards") if isinstance(payload, dict) else None
+
+    def respects_tci_boundary(card: object) -> bool:
+        if not isinstance(card, dict):
+            return False
+        if card.get("provider") != "tci_thaijo":
+            return False
+        if not str(card.get("canonicalUrl") or "").startswith("https://"):
+            return False
+
+        if card.get("evidenceStatus") == "metadata_only":
+            return (
+                card.get("citable") is False
+                and card.get("accessLevel") == "metadata_only"
+                and card.get("discoveryLayer") == "thai_discovery"
+            )
+
+        if card.get("evidenceStatus") == "extracted":
+            return (
+                card.get("citable") is True
+                and card.get("rightsStatus") == "open_license_verified"
+                and card.get("accessLevel") == "full_text_licensed"
+                and card.get("discoveryLayer") == "evidence"
+                and bool(card.get("licenseExpression"))
+                and str(card.get("licenseUrl") or "").startswith("https://")
+            )
+
+        return False
+
     ok = (
         200 <= status < 300
         and isinstance(cards, list)
         and bool(cards)
-        and all(
-            isinstance(card, dict)
-            and card.get("provider") == "tci_thaijo"
-            and card.get("evidenceStatus") == "metadata_only"
-            and card.get("citable") is False
-            and str(card.get("canonicalUrl") or "").startswith("https://")
-            for card in cards
-        )
+        and all(respects_tci_boundary(card) for card in cards)
     )
     return Check(
         "web_tci_boundary",
         "pass" if ok else "fail",
         f"HTTP {status}; cards={len(cards) if isinstance(cards, list) else 'missing'}",
-        "" if ok else "Render ThaiJO discovery records with canonical links and never mark them citable.",
+        ""
+        if ok
+        else (
+            "Keep ThaiJO metadata records non-citable, and promote only rights-verified, "
+            "licensed full-text records to evidence."
+        ),
         latency,
     )
 
