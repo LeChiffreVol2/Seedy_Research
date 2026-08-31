@@ -225,4 +225,7 @@ Rollback billing without affecting the free preview by removing the Stripe varia
 - Share links expire after 30 days and can be revoked with `DELETE /api/share?sessionId=<uuid>`.
 - User feedback is stored in `civil_chat_feedback` and can be exported with `python3.10 harness/export_feedback_eval.py` to seed future eval cases.
 
-CityMCP operational procedures are maintained in `citymcp/README.md` and its separate release workflow.
+CityMCP is archived in maintenance-only mode. Its retained operational and
+recovery procedures live in `citymcp/README.md`; ingest, CI, and release
+workflows require explicit manual dispatch and do not participate in Seedy
+Research release operations.

@@ -182,9 +182,9 @@ question
 - `pipeline/`: provider registry, metadata harvesting, page-preserving PDF/OCR extraction, normalization, chunking, and indexing.
 - `supabase/`: shared schema and additive migration ledger.
 - `harness/` and `eval/`: CivilMCP release, security, retrieval, citation, and memory gates.
-- `citymcp/`: separately managed CityMCP consumer; excluded from CivilMCP release gates and quality score.
+- `citymcp/`: archived / maintenance-only CityMCP consumer; excluded from Seedy Research release gates and quality score. Its ingest, CI, and preview/promotion workflows require explicit manual dispatch.
 
-CityMCP shares only the read-only MCP contract and applied Supabase migration history. Its application, harness, CI, and release live under [citymcp/](citymcp/).
+CityMCP shares only the read-only MCP contract and applied Supabase migration history. Its retained application, harness, manual workflows, and archive/recovery instructions live under [citymcp/](citymcp/).
 
 ## Quick start
 
