@@ -18,8 +18,8 @@ Do not submit while any `REQUIRED` field above is unresolved. The Devpost entry,
 ## Release verification — September 1, 2026 ICT
 
 - Production build: pass (all routes compiled and type-checked; 23 static pages generated).
-- Browser suite: pass, 39/39 serial Chromium scenarios across desktop, mobile, accessibility, research workflows, the real reader-pack route, OpenAlex identity safety, and WebMCP.
-- Focused WebMCP contract: pass, 8/8 scenarios including the production-seed three-call Passport Trust Gate, arbitrary-ID rejection, lawful reader enrichment, non-native fail-closed access, global-provider outage, stale-context cancellation, bounded Thai-to-English rendering, and missing-page rejection. The separate OpenAlex adapter contract passes 6/6 scenarios covering explicit bounded anonymous access, metadata-only discovery, exact-DOI verification, title and fuzzy candidates, and ambiguity fail-closed behavior.
+- Browser suite: pass, 40/40 serial Chromium scenarios across desktop, mobile, accessibility, research workflows, the real reader-pack route, OpenAlex identity safety, and WebMCP.
+- Focused WebMCP contract: pass, 8/8 scenarios including the production-seed three-call Passport Trust Gate, arbitrary-ID rejection, lawful reader enrichment, non-native fail-closed access, global-provider outage, stale-context cancellation, bounded Thai-to-English rendering, and missing-page rejection. The separate OpenAlex adapter contract passes 7/7 scenarios covering explicit bounded anonymous access, metadata-only discovery, exact-DOI verification, fail-soft optional relationship enrichment, title and fuzzy candidates, and ambiguity fail-closed behavior.
 - Repository invariants: pass.
 - GitHub Actions: CI run `33433688443` and Preview/source-gate run `33433688382` pass for candidate `e681d0c`; protected deploy jobs were not configured for this push, so the same clean candidate was deployed and inspected with the linked Vercel project.
 - Security contracts: pass, 21/21.
@@ -153,6 +153,7 @@ Implementation details:
 - Per-call request IDs and a research-context revision prevent late discovery, evidence, or Passport responses from replacing newer visible work; changing the query marks a completed Passport out of date.
 - The Passport snapshots its own bounded WebMCP run steps, so later tool calls cannot rewrite the displayed provenance trace.
 - Connected-zero, rate-limited, unavailable, link-only, and disabled OpenAlex states remain visibly distinct.
+- Once an exact DOI seed is verified, optional relationship timeouts no longer erase that verified identity: available metadata-only nodes remain visible, while partial or unavailable enrichment is labelled and can be refreshed.
 - Concise structured results; full evidence remains visible in the human interface rather than copied into oversized tool payloads.
 - Research Path exports preserve the structured candidate-gap and Next-Study Protocol fields, including missing validation, evidence boundary, and falsification condition; novelty is always explicitly unestablished.
 - Same-origin application APIs reuse existing identity, authorization, distributed rate limits, provider timeouts, and evidence-rights boundaries.
@@ -265,7 +266,7 @@ Git history separates the pre-existing baseline from the Challenge work: `1179b0
 - [x] Run `git diff --check` and `python3.10 harness/check_invariants.py`.
 - [x] Run `python3.10 -m unittest pipeline.test_reader_pack`, the combined reader/feed units, and the focused `paper-reader.spec.ts` browser suite.
 - [x] Run the focused WebMCP E2E with exact-six, fail-closed connection matching, and no-full-page-text assertions.
-- [x] Run all 39 local desktop/mobile/reader/OpenAlex/WebMCP E2E scenarios serially.
+- [x] Run all 40 local desktop/mobile/reader/OpenAlex/WebMCP E2E scenarios serially.
 - [ ] Rerun the judge flow against the frozen deployment candidate in a WebMCP-enabled browser.
 - [ ] Run the web build, security checks, strict data quality, live smoke, retrieval eval, memory eval, and quality score against one candidate fingerprint.
 - [ ] Test the deployed candidate in ChatGPT's built-in browser with Site tools visibly available; record the exact host/account/model configuration, all six visible tools, and the three-call Passport review/export flow.

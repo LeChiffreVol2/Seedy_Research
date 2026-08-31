@@ -139,6 +139,40 @@ test.describe("OpenAlex Thai-to-global connection contract", () => {
     }
   });
 
+  test("keeps a DOI-verified seed when optional relation enrichment is transiently unavailable", async () => {
+    const originalFetch = globalThis.fetch;
+    globalThis.fetch = async (input) => {
+      const url = new URL(typeof input === "string" ? input : input instanceof URL ? input.toString() : input.url);
+      const filter = url.searchParams.get("filter") ?? "";
+      if (filter.startsWith("cites:") || filter.startsWith("openalex:")) {
+        throw new TypeError("transient relation timeout");
+      }
+      return response([{
+        id: "https://openalex.org/W-SEED",
+        doi: "https://doi.org/10.1000/thai-road",
+        display_name: "Factors associated with severe road crashes in Thailand",
+        publication_year: 2024,
+        cited_by_count: 18,
+        referenced_works: ["https://openalex.org/W-REFERENCE"],
+        related_works: [],
+      }]);
+    };
+    try {
+      const map = await citationMapOpenAlex({
+        doi: "10.1000/thai-road",
+        title: "Factors associated with severe road crashes in Thailand",
+        year: 2024,
+      });
+      expect(map.status).toBe("connected");
+      expect(map.relationsStatus).toBe("unavailable");
+      expect(map.match).toMatchObject({ status: "verified", basis: "doi", requiresHumanReview: false });
+      expect(map.seed?.id).toBe("https://openalex.org/W-SEED");
+      expect(map.nodes).toEqual([]);
+    } finally {
+      globalThis.fetch = originalFetch;
+    }
+  });
+
   test("keeps an exact title/year match as a human-reviewed candidate when no durable ID agrees", async () => {
     const restore = installOpenAlexStub([
       {

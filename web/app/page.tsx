@@ -368,6 +368,7 @@ type LivingReviewWatch = {
 
 type CitationMapResponse = {
   status: GlobalDiscoveryStatus;
+  relationsStatus: "complete" | "partial" | "unavailable" | "not_requested";
   searchUrl: string;
   match: {
     status: "verified" | "candidate" | "unmatched";
@@ -3921,6 +3922,11 @@ function PaperDetailDrawer({
                         Verified DOI OpenAlex match
                       </p>
                       <a href={citationMap.response.seed.url} target="_blank" rel="noreferrer" className="citationSeed"><span>Matched seed</span><strong>{citationMap.response.seed.title}</strong><small>{citationMap.response.seed.citedByCount.toLocaleString("en-US")} citations</small></a>
+                      {citationMap.response.relationsStatus === "partial" ? (
+                        <p className="detailEmpty">Some OpenAlex relationships are temporarily unavailable. The metadata-only nodes shown here may be incomplete.</p>
+                      ) : citationMap.response.relationsStatus === "unavailable" ? (
+                        <p className="detailEmpty">OpenAlex verified the DOI seed, but relationship enrichment is temporarily unavailable. Refresh to retry.</p>
+                      ) : null}
                       <div className="citationNodes">
                         {citationMap.response.nodes.map((node) => (
                           <a key={`${node.relation}-${node.id}`} href={node.url} target="_blank" rel="noreferrer" data-relation={node.relation}>

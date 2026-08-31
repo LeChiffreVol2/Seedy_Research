@@ -59,6 +59,7 @@ export type OpenAlexCitationNode = {
 
 export type OpenAlexCitationMap = {
   status: OpenAlexDiscoveryStatus;
+  relationsStatus: "complete" | "partial" | "unavailable" | "not_requested";
   searchUrl: string;
   match: OpenAlexMatch;
   seed: OpenAlexCitationNode | null;
@@ -352,10 +353,10 @@ export async function citationMapOpenAlex(rawInput: unknown): Promise<OpenAlexCi
   const searchQuery = input.title || input.doi || "";
   const searchUrl = searchUrlFor(searchQuery);
   if (process.env.FEDERATED_DISCOVERY_ENABLED?.trim() === "false") {
-    return { status: "disabled", searchUrl, match: EMPTY_MATCH, seed: null, nodes: [] };
+    return { status: "disabled", relationsStatus: "not_requested", searchUrl, match: EMPTY_MATCH, seed: null, nodes: [] };
   }
   const access = openAlexAccess();
-  if (!access.allowed) return { status: "link_only", searchUrl, match: EMPTY_MATCH, seed: null, nodes: [] };
+  if (!access.allowed) return { status: "link_only", relationsStatus: "not_requested", searchUrl, match: EMPTY_MATCH, seed: null, nodes: [] };
   const fetchJson = async (url: URL) => {
     addOpenAlexAccess(url, access.apiKey);
     const response = await fetch(url, { cache: "no-store", signal: AbortSignal.timeout(OPENALEX_TIMEOUT_MS) });
@@ -382,11 +383,11 @@ export async function citationMapOpenAlex(rawInput: unknown): Promise<OpenAlexCi
       selected = matchCandidate({ ...input, doi: null }, seedCandidates);
     }
     const seedWork = selected.work;
-    if (!seedWork) return { status: "connected", searchUrl, match: selected.match, seed: null, nodes: [] };
+    if (!seedWork) return { status: "connected", relationsStatus: "not_requested", searchUrl, match: selected.match, seed: null, nodes: [] };
     const seed = citationNode(seedWork, "seed", searchUrl);
-    if (!seed) return { status: "connected", searchUrl, match: EMPTY_MATCH, seed: null, nodes: [] };
+    if (!seed) return { status: "connected", relationsStatus: "not_requested", searchUrl, match: EMPTY_MATCH, seed: null, nodes: [] };
     if (selected.match.requiresHumanReview) {
-      return { status: "connected", searchUrl, match: selected.match, seed, nodes: [] };
+      return { status: "connected", relationsStatus: "not_requested", searchUrl, match: selected.match, seed, nodes: [] };
     }
     const references = (Array.isArray(seedWork.referenced_works) ? seedWork.referenced_works : []).slice(0, 4).map(openAlexWorkId).filter(Boolean);
     const related = (Array.isArray(seedWork.related_works) ? seedWork.related_works : []).slice(0, 4).map(openAlexWorkId).filter(Boolean);
@@ -396,24 +397,34 @@ export async function citationMapOpenAlex(rawInput: unknown): Promise<OpenAlexCi
     incomingUrl.searchParams.set("per_page", "4");
     incomingUrl.searchParams.set("select", CONNECTION_SELECT);
     const relationIds = [...new Set([...references, ...related])];
-    const relationRequest = relationIds.length ? (() => {
+    const relationRequestNeeded = relationIds.length > 0;
+    const relationRequest = relationRequestNeeded ? (() => {
       const relationUrl = new URL("https://api.openalex.org/works");
       relationUrl.searchParams.set("filter", `openalex:${relationIds.join("|")}`);
       relationUrl.searchParams.set("per_page", String(relationIds.length));
       relationUrl.searchParams.set("select", CONNECTION_SELECT);
       return fetchJson(relationUrl);
     })() : Promise.resolve({ results: [] });
-    const [incomingPayload, relationPayload] = await Promise.all([fetchJson(incomingUrl), relationRequest]);
+    const [incomingResult, relationResult] = await Promise.allSettled([fetchJson(incomingUrl), relationRequest]);
+    const incomingPayload = incomingResult.status === "fulfilled" ? incomingResult.value : { results: [] };
+    const relationPayload = relationResult.status === "fulfilled" ? relationResult.value : { results: [] };
+    const expectedRequests = relationRequestNeeded ? 2 : 1;
+    const fulfilledRequests = Number(incomingResult.status === "fulfilled")
+      + Number(relationRequestNeeded && relationResult.status === "fulfilled");
+    const relationsStatus = fulfilledRequests === expectedRequests
+      ? "complete"
+      : fulfilledRequests === 0 ? "unavailable" : "partial";
     const incoming = (Array.isArray(incomingPayload.results) ? incomingPayload.results : [])
       .map((work) => citationNode(work as OpenAlexApiWork, "cited_by", searchUrl)).filter((node): node is OpenAlexCitationNode => Boolean(node));
     const referenceSet = new Set(references);
     const outward = (Array.isArray(relationPayload.results) ? relationPayload.results : [])
       .map((work) => citationNode(work as OpenAlexApiWork, referenceSet.has(openAlexWorkId((work as OpenAlexApiWork).id)) ? "cites" : "related", searchUrl))
       .filter((node): node is OpenAlexCitationNode => Boolean(node));
-    return { status: "connected", searchUrl, match: selected.match, seed, nodes: [...incoming, ...outward].slice(0, 12) };
+    return { status: "connected", relationsStatus, searchUrl, match: selected.match, seed, nodes: [...incoming, ...outward].slice(0, 12) };
   } catch (error) {
     return {
       status: error instanceof Error && error.message === "rate_limited" ? "rate_limited" : "unavailable",
+      relationsStatus: "not_requested",
       searchUrl,
       match: EMPTY_MATCH,
       seed: null,
