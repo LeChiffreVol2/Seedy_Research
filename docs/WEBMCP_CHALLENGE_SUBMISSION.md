@@ -6,9 +6,10 @@
 - Technical substrate: **CivilMCP evidence engine**
 - Working app: <https://civil-mcp-web.vercel.app/>
 - Deadline: **September 3, 2026 at 1:00 PM PDT** (**September 4 at 3:00 AM ICT**)
-- Public source repository: **REQUIRED — add the final public URL before submission**
+- Public source repository: <https://github.com/LeChiffreVol2/Seedy_Research>
 - Public YouTube demo under three minutes: **REQUIRED — add the final URL before submission**
-- Candidate public commit SHA: **REQUIRED — record after the GitHub push**
+- Verified application candidate commit: [`9523b7cbb6970190c5f792231769a6808dc7d209`](https://github.com/LeChiffreVol2/Seedy_Research/commit/9523b7cbb6970190c5f792231769a6808dc7d209)
+  (the following repository commit changes submission metadata only)
 - Candidate deployment IDs: recorded in the release verification below
 
 Do not submit while any `REQUIRED` field above is unresolved. The Devpost entry, video, repository, and supporting text must be public and in English. The repository must expose the MIT license in its About section and remain frozen during judging except for an organizer-approved correction.
