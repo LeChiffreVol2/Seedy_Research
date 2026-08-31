@@ -9,9 +9,9 @@
 - Deadline: **September 3, 2026 at 1:00 PM PDT** (**September 4 at 3:00 AM ICT**)
 - Public source repository: <https://github.com/LeChiffreVol2/Seedy_Research>
 - Public YouTube demo under three minutes: **REQUIRED — add the final URL before submission**
-- Verified application candidate commit: [`e1ce67b278bd8cd8222c6e2e3bea376877df1b1a`](https://github.com/LeChiffreVol2/Seedy_Research/commit/e1ce67b278bd8cd8222c6e2e3bea376877df1b1a)
+- Verified application candidate commit: [`169c30554168754bb7e82b392a5852c3ed1eb9e3`](https://github.com/LeChiffreVol2/Seedy_Research/commit/169c30554168754bb7e82b392a5852c3ed1eb9e3)
   (the following repository commit changes submission metadata only)
-- Candidate production deployment ID: `dpl_HvkwM3pcJ4DbjGvRsQT8ZQb28eQt`
+- Candidate production deployment ID: `dpl_4Hdt7BVN6qhFVTxdo7SEx3tW9tYs`
 
 Do not submit while any `REQUIRED` field above is unresolved. The Devpost entry, video, repository, and supporting text must be public and in English. The repository must expose the MIT license in its About section and remain frozen during judging except for an organizer-approved correction.
 
@@ -21,7 +21,7 @@ Do not submit while any `REQUIRED` field above is unresolved. The Devpost entry,
 - Browser suite: pass, 40/40 serial Chromium scenarios across desktop, mobile, accessibility, research workflows, the real reader-pack route, OpenAlex identity safety, and WebMCP.
 - Focused WebMCP contract: pass, 8/8 scenarios including the production-seed three-call Passport Trust Gate, arbitrary-ID rejection, lawful reader enrichment, non-native fail-closed access, global-provider outage, stale-context cancellation, bounded Thai-to-English rendering, and missing-page rejection. The separate OpenAlex adapter contract passes 7/7 scenarios covering explicit bounded anonymous access, metadata-only discovery, exact-DOI verification, fail-soft optional relationship enrichment, title and fuzzy candidates, and ambiguity fail-closed behavior.
 - Repository invariants: pass.
-- GitHub Actions: CI run `33443321183` and Preview/source-gate run `33443321583` pass for candidate `e1ce67b`; the same clean candidate was deployed and inspected with the linked Vercel project.
+- GitHub Actions: CI run `33447038030` and Preview/source-gate run `33447037987` pass for candidate `169c305`; the same clean candidate was deployed and inspected with the linked Vercel project.
 - Security contracts: pass, 21/21.
 - Strict cross-service production smoke: pass against the canonical web and MCP aliases. The 15-question production retrieval/evidence eval passes with 100% citation coverage/correctness, intent accuracy, and collection accuracy; p95 latency is 18.47 seconds. The memory-continuity gate passes on the same candidate after one transient network-timeout rerun.
 - Quality score: 93.6/100 with six passes, no failures, and one local-only warning because the system Python lacks `psycopg`; this release does not change the Supabase schema or indexed corpus.
@@ -35,11 +35,11 @@ Do not submit while any `REQUIRED` field above is unresolved. The Devpost entry,
   direct `anon`/`authenticated` table reads. Production build, rights/integrity units, repository
   invariants, and focused reader/WebMCP browser, mobile, and accessibility gates
   pass.
-- Live deployments: web `dpl_HvkwM3pcJ4DbjGvRsQT8ZQb28eQt` and unchanged MCP
-  `dpl_5XJM8JRRNrZSbUF82TqxbehptYoi` are READY production releases. The canonical
+- Live deployments: web `dpl_4Hdt7BVN6qhFVTxdo7SEx3tW9tYs` and MCP
+  `dpl_GXE63yQfqtQDfxZMXqpGHEx3SVmE` are READY production releases. The canonical
   aliases are `https://seedresearch.vercel.app` and
   `https://civil-mcp-server.vercel.app`. Vercel reports the web candidate at
-  Git SHA `e1ce67b278bd8cd8222c6e2e3bea376877df1b1a`, target `production`, region
+  Git SHA `169c30554168754bb7e82b392a5852c3ed1eb9e3`, target `production`, region
   `sin1`; the stable web alias resolves to that deployment.
 
 Judge expansion contract: [Thai Research Full-Text System](THAI_RESEARCH_FULL_TEXT_SYSTEM.md).
