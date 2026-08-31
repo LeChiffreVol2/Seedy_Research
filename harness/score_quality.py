@@ -5,7 +5,7 @@ from datetime import datetime, timezone
 
 from common import ROOT, Check, latest_report, make_report, print_report, report_provenance, write_report
 
-PRODUCTION_WEB_URL = "https://civil-mcp-web.vercel.app"
+PRODUCTION_WEB_URL = "https://seedresearch.vercel.app"
 PRODUCTION_MCP_URL = "https://civil-mcp-server.vercel.app"
 
 
@@ -233,7 +233,7 @@ def deploy_readiness_check() -> Check:
         "Preview/promote CI is present, but latest smoke report is not a strict preview or production pass.",
         (
             "Run MCP_URL=https://civil-mcp-server.vercel.app "
-            "WEB_URL=https://civil-mcp-web.vercel.app python3.10 harness/run_smoke.py --strict"
+            "WEB_URL=https://seedresearch.vercel.app python3.10 harness/run_smoke.py --strict"
         ),
         metrics=metrics or {},
     )

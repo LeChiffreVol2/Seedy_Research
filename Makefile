@@ -1,6 +1,6 @@
 PYTHON ?= $(shell if [ -x .venv310/bin/python ]; then printf .venv310/bin/python; else printf python3.10; fi)
 PROD_MCP_URL ?= https://civil-mcp-server.vercel.app
-PROD_WEB_URL ?= https://civil-mcp-web.vercel.app
+PROD_WEB_URL ?= https://seedresearch.vercel.app
 
 .PHONY: local-gate prod-smoke release-gate
 

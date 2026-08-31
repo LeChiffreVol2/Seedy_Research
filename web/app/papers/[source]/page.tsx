@@ -13,7 +13,7 @@ export const dynamic = "force-dynamic";
 type PageProps = { params: Promise<{ source: string }> };
 
 function appUrl(): string {
-  return (process.env.NEXT_PUBLIC_APP_URL || "https://civil-mcp-web.vercel.app").replace(/\/+$/, "");
+  return (process.env.NEXT_PUBLIC_APP_URL || "https://seedresearch.vercel.app").replace(/\/+$/, "");
 }
 
 function pageRange(start?: number | null, end?: number | null): string {

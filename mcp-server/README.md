@@ -139,7 +139,7 @@ permissions. Personal keys remain the fallback for CLI and automation clients.
 ```bash
 MCP_PUBLIC_URL=https://civil-mcp-server.vercel.app/v2/mcp
 MCP_OAUTH_AUDIENCE=https://civil-mcp-server.vercel.app/v2/mcp
-MCP_DOCUMENTATION_URL=https://civil-mcp-web.vercel.app/developers
+MCP_DOCUMENTATION_URL=https://seedresearch.vercel.app/developers
 MCP_OAUTH_ENABLED=true
 ```
 

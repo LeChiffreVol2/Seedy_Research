@@ -12,7 +12,7 @@ Do not commit local runtime data:
 - root QA screenshots and ZIP handoff bundles
 
 ## Current Production State
-- CivilMCP web: `https://civil-mcp-web.vercel.app`
+- Seedy Research web: `https://seedresearch.vercel.app`
 - CivilMCP MCP server: `https://civil-mcp-server.vercel.app`
 - Retrieval substrate: Supabase pgvector v2
 - Embedding: `text-embedding-3-small`, `EMBEDDING_DIMENSIONS=768`
@@ -63,7 +63,7 @@ Keep these in Vercel/Supabase/GitHub secrets only, never in source:
 ## GitHub Preview And Promotion
 Set these after the private repo exists:
 - Repository variable `PRODUCTION_MCP_URL=https://civil-mcp-server.vercel.app`
-- Repository variable `PRODUCTION_WEB_URL=https://civil-mcp-web.vercel.app`
+- Repository variable `PRODUCTION_WEB_URL=https://seedresearch.vercel.app`
 - Repository variable `CORPUS_FINGERPRINT`
 - Repository variable `GA_PROMOTION_ENABLED=true` only after all GA gates pass
 - Repository secrets for Vercel org/project IDs and `MCP_HARNESS_API_KEY`

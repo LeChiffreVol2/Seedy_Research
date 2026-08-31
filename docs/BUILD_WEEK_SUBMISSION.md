@@ -6,7 +6,7 @@
 
 - Track: Education.
 - Product label: Public Research Preview.
-- Public app: `https://civil-mcp-web.vercel.app/`.
+- Public app: `https://seedresearch.vercel.app/`.
 - Source repository: private; target not yet selected.
 - Required judge collaborators: `testing@devpost.com`, `build-week-event@openai.com`.
 - License: MIT for code; dataset rights excluded.

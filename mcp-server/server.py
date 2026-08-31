@@ -85,7 +85,7 @@ MCP_OAUTH_AUDIENCE = os.getenv("MCP_OAUTH_AUDIENCE", MCP_PUBLIC_URL).strip().rst
 MCP_OAUTH_ENABLED = os.getenv("MCP_OAUTH_ENABLED", "false").lower() == "true"
 MCP_DOCUMENTATION_URL = os.getenv(
     "MCP_DOCUMENTATION_URL",
-    "https://civil-mcp-web.vercel.app/developers",
+    "https://seedresearch.vercel.app/developers",
 ).strip()
 PLACEHOLDER_MCP_KEYS = {
     "replace-with-random-secret",

@@ -2,7 +2,7 @@
 
 **Seedy Research turns overlooked Thai research into a traceable path from exact-page evidence to global connections and a testable next study.** SeedyMCP is the shared human-agent layer. The existing CivilMCP identifiers remain as a compatibility substrate, while the Civil Research Pack is the first rights-reviewed proof vertical—not the product boundary.
 
-[Open the public preview](https://civil-mcp-web.vercel.app/) · [WebMCP Challenge package](docs/WEBMCP_CHALLENGE_SUBMISSION.md) · [Connect an AI agent](https://civil-mcp-web.vercel.app/developers) · [Product thesis](docs/PRODUCT_THESIS.md) · [Full-text and national coverage system](docs/THAI_RESEARCH_FULL_TEXT_SYSTEM.md) · [Launch readiness](docs/LAUNCH_READINESS.md) · [Data sources and rights](DATA_SOURCES.md)
+[Open the public preview](https://seedresearch.vercel.app/) · [WebMCP Challenge package](docs/WEBMCP_CHALLENGE_SUBMISSION.md) · [Connect an AI agent](https://seedresearch.vercel.app/developers) · [Product thesis](docs/PRODUCT_THESIS.md) · [Full-text and national coverage system](docs/THAI_RESEARCH_FULL_TEXT_SYSTEM.md) · [Launch readiness](docs/LAUNCH_READINESS.md) · [Data sources and rights](DATA_SOURCES.md)
 
 > Research evidence, not professional engineering advice.
 

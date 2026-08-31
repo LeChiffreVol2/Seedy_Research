@@ -5,7 +5,7 @@
 - Product: **Seedy Research**
 - Browser-agent layer: **SeedyMCP**
 - Compatibility substrate / first proof vertical: **CivilMCP / Civil Research Pack**
-- Working app: <https://civil-mcp-web.vercel.app/>
+- Working app: <https://seedresearch.vercel.app/>
 - Deadline: **September 3, 2026 at 1:00 PM PDT** (**September 4 at 3:00 AM ICT**)
 - Public source repository: <https://github.com/LeChiffreVol2/Seedy_Research>
 - Public YouTube demo under three minutes: **REQUIRED — add the final URL before submission**
@@ -37,7 +37,7 @@ Do not submit while any `REQUIRED` field above is unresolved. The Devpost entry,
   pass.
 - Live deployments: web `dpl_HvkwM3pcJ4DbjGvRsQT8ZQb28eQt` and unchanged MCP
   `dpl_5XJM8JRRNrZSbUF82TqxbehptYoi` are READY production releases. The canonical
-  aliases are `https://civil-mcp-web.vercel.app` and
+  aliases are `https://seedresearch.vercel.app` and
   `https://civil-mcp-server.vercel.app`. Vercel reports the web candidate at
   Git SHA `e1ce67b278bd8cd8222c6e2e3bea376877df1b1a`, target `production`, region
   `sin1`; the stable web alias resolves to that deployment.
@@ -167,7 +167,7 @@ Implementation details:
 
 1. Update the ChatGPT desktop app to the latest version.
 2. Use a current account/model configuration where the **Site tools** control is visibly available; record the exact app build, account class, and selected model rather than treating a locally observed model label as an official requirement.
-3. Open <https://civil-mcp-web.vercel.app/?view=explore> in the built-in browser.
+3. Open <https://seedresearch.vercel.app/?view=explore> in the built-in browser.
 4. Open **Site tools** in the address bar and confirm these six tools:
    - `discover_research`
    - `inspect_paper_evidence`

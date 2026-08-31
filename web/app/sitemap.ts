@@ -5,7 +5,7 @@ import { listPublicPaperRecordsForSitemap } from "@/lib/research-feed";
 export const dynamic = "force-dynamic";
 
 function origin(): string {
-  return (process.env.NEXT_PUBLIC_APP_URL || "https://civil-mcp-web.vercel.app").replace(/\/+$/, "");
+  return (process.env.NEXT_PUBLIC_APP_URL || "https://seedresearch.vercel.app").replace(/\/+$/, "");
 }
 
 export default async function sitemap(): Promise<MetadataRoute.Sitemap> {

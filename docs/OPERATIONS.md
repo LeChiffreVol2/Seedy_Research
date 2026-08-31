@@ -7,7 +7,7 @@ cd web && npm run dev -- --port 3000
 ```
 
 ## Production URLs
-- Web: `https://civil-mcp-web.vercel.app`
+- Web: `https://seedresearch.vercel.app`
 - MCP: `https://civil-mcp-server.vercel.app`
 
 Run the local release gate before promotion:
@@ -145,10 +145,10 @@ fails closed when that key is absent or malformed and never falls back to
 Open Access is the production default. Keep `CIVILMCP_OPEN_ACCESS=true` and `NEXT_PUBLIC_CIVILMCP_OPEN_ACCESS=true`; checkout returns a closed response and answer/MCP credit reservation is a no-op. Keep `NEXT_PUBLIC_CIVILMCP_REQUIRE_AUTH=true` for the demo and verify every per-feature `enabled`/`requiresAuth` flag from `.env.example` before release. Open Access removes payment gates, while Supabase authentication remains required for product features. The steps below apply only if product policy explicitly re-enables billing later.
 
 1. Apply the billing migration chain through `20260725205900_civil_founder_pro_500_credits.sql`, then apply `20260813120000_civil_stripe_event_idempotency.sql`, `20260814090000_civil_luna_free_credit_ladder.sql`, and `20260814100000_civil_terra_sol_credit_correction.sql` before deploying Stripe-enabled web code. The additive migrations preserve existing accounts and credit history.
-2. In Supabase Auth, enable Google and allow `https://civil-mcp-web.vercel.app/auth/callback` plus the local callback.
+2. In Supabase Auth, enable Google and allow `https://seedresearch.vercel.app/auth/callback` plus the local callback. Keep the former CivilMCP alias during the migration window.
 3. Create a recurring THB 299/month Stripe Price for the 500-credit monthly Pro top-up and set `STRIPE_FOUNDER_PRO_PRICE_ID`.
 4. Point a Stripe webhook at `/api/webhooks/stripe` for `customer.subscription.created`, `customer.subscription.updated`, and `customer.subscription.deleted`; set its signing secret as `STRIPE_WEBHOOK_SECRET`.
-5. Set `NEXT_PUBLIC_APP_URL=https://civil-mcp-web.vercel.app` and the three server-only Stripe variables in Vercel.
+5. Set `NEXT_PUBLIC_APP_URL=https://seedresearch.vercel.app` and the three server-only Stripe variables in Vercel.
 6. Use a Vercel Pro (or higher) project before accepting payment; Hobby is for non-commercial use.
 
 Apply `20260812160000_civil_lexical_retrieval_fallback.sql`,
