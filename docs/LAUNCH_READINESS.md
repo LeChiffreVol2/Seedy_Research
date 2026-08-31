@@ -1,8 +1,8 @@
-# CivilMCP Launch Readiness
+# Seedy Research Launch Readiness
 
 ## Decision
 
-CivilMCP may launch as a **free Public Research Preview for a limited user
+Seedy Research may launch as a **free Public Research Preview for a limited user
 rollout** after the release gates in this document pass. It is not approved as
 global GA or as a paid product on Vercel Hobby.
 
@@ -71,7 +71,7 @@ All of the following must pass against the same source state:
     initialize/list/call pass authenticated isolation tests;
 12. `npm audit --omit=dev` has no high or critical production advisory, and any
     deferred low advisory has an owner and migration plan.
-13. the focused WebMCP browser test executes all five tools and verifies visible
+13. the focused WebMCP browser test executes all six tools and verifies visible
     Explore, evidence-drawer, Research Passport, Research Path, and progress
     state; Passport page-review acknowledgment remains locked until every selected exact-page anchor is reopened, export remains locked until that acknowledgment, and OpenAlex leads
     remain non-citable. The deployed candidate is also checked manually in
@@ -97,7 +97,7 @@ Review after the first 10–20 researchers or students have completed real tasks
 - median time-to-first exact-page evidence under 10 minutes;
 - zero confirmed fabricated citations;
 - zero unresolved source-rights or takedown incidents;
-- qualitative evidence that CivilMCP surfaced local work users could not find
+- qualitative evidence that Seedy Research surfaced local work users could not find
   through their usual global search tools.
 
 ## Explicitly not launch-complete

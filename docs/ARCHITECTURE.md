@@ -1,27 +1,37 @@
-# CivilMCP Architecture
+# Seedy Research Architecture
 
 ## System Shape
-CivilMCP has three production surfaces:
-- `web/`: Next.js 15 app with research feed, chat UI, bounded Agentic Context Engine orchestration in `/api/chat`, adaptive learning-path assembly in `/api/research-path`, a bounded Verified Review matrix in `/api/research-workspaces`, and five browser-native WebMCP tools registered from the top-level page.
+Seedy Research has three production surfaces. Existing CivilMCP identifiers remain as compatibility contracts through the Challenge release:
+- `web/`: Next.js 15 app with research feed, chat UI, bounded Agentic Context Engine orchestration in `/api/chat`, adaptive Thai-to-global path assembly in `/api/research-path`, a bounded Verified Review matrix in `/api/research-workspaces`, and six browser-native SeedyMCP tools registered from the top-level page.
 - `mcp-server/`: Python FastAPI service exposing the public stateless MCP v2 endpoint at `/v2/mcp`, OAuth protected-resource metadata, and the existing `/tools/list`, `/tools/call`, and legacy MCP transport used by first-party consumers.
 - `pipeline/` + `supabase/`: provider registry, metadata harvesting, page-preserving PDF/OCR extraction, markdown/preview generation, v2 section/chunk embedding, and Supabase pgvector readiness checks.
 
 ## Browser-native WebMCP surface
 
-`web/lib/webmcp.ts` registers `discover_research`, `inspect_paper_evidence`, `draft_research_passport`, `build_research_path`, and `inspect_learning_progress` through the imperative `document.modelContext.registerTool(...)` API after the page session is ready. This surface is distinct from the remote MCP server: remote MCP can operate independently of an open webpage, while WebMCP lets an agent and person share the live page, identity, and UI state.
+`web/lib/webmcp.ts` registers `discover_research`, `inspect_paper_evidence`, `trace_research_connections`, `draft_research_passport`, `build_research_path`, and `inspect_learning_progress` through the imperative `document.modelContext.registerTool(...)` API after the page session is ready. This SeedyMCP surface is distinct from the remote MCP server: remote MCP can operate independently of an open webpage, while SeedyMCP lets an agent and person share the live page, identity, and UI state.
 
 The browser tools call only existing same-origin APIs and reuse their authorization, distributed quota, provider timeout, bounded retrieval, and evidence-rights controls. Schemas are narrow and validated again in application code. Paper text and external metadata carry `untrustedContentHint`; discovery/evidence/progress declare `readOnlyHint`; Research Passport drafting and Research Path creation declare state changes. Registration uses `AbortController`, and network handlers honor execution cancellation.
 
 ```text
-person + browser agent on the same Seed Research page
--> WebMCP discovers a bounded site tool
+person + browser agent on the same Seedy Research page
+-> SeedyMCP discovers a bounded site tool
 -> existing same-origin API and server guardrails
 -> concise structured tool result
--> visible Explore / evidence drawer / Research Passport / Research Path state
+-> visible Explore / evidence drawer / connection map / Research Path / Research Passport state
 -> person verifies, answers, corrects, or continues
 ```
 
-### Evidence-bounded Research Passport
+### Thai-to-Global Research Path
+
+The hero journey uses the browser tools as one stateful chain: bounded Thai
+discovery, exact-page or lawful full-paper inspection, an exact-DOI OpenAlex
+connection trace, selected metadata-only global leads, a four-stage Research
+Path ending in a candidate gap and falsifiable Next-Study Protocol, and the
+Research Passport review/export checkpoint. Title-only and title/year OpenAlex
+matches remain candidates and return no relationship graph; an incompatible or
+unresolved DOI never falls through to automatic identity promotion.
+
+### Evidence-bounded Research Passport trust checkpoint
 
 `draft_research_passport` is stateful by design. It accepts an active indexed
 Thai paper source, an 8–180 character focus, one to three evidence IDs already
@@ -83,11 +93,11 @@ The `PRISMA scoping review` template reuses this boundary instead of adding a re
 
 ## Research Path and OpenAlex
 
-`/api/research-path` accepts a bounded goal, level, outcome, optional collection, and up to four assessed knowledge gaps. Corpus search and OpenAlex discovery start in parallel, and the internal feed call skips unused facet aggregation. It ranks at most eight matching papers, loads bounded page-linked excerpts, and asks GPT-5.6 Luna for a typed four-stage plan whose paper identifiers are validated against that retrieved allow list; provider failure falls back to a deterministic retrieval-based plan. One to three directly relevant papers produce an explicit limited-coverage path instead of unrelated filler. A checkpoint action loads at most two stage papers and six page-linked packets, asks GPT-5.6 Luna for typed formative feedback, filters all proposed evidence IDs through the supplied allow list, and derives mastery deterministically from the score. Provider failure returns a conservative ungraded evidence packet instead of fabricating mastery. Editing a mastered answer invalidates its stale assessment. Only `understood` completes a stage; adaptive rebuilds preserve mastered stages and replace weak ones around assessed gaps. Progress remains local-first and can be exported as Markdown or handed into a final Evidence Review.
+`/api/research-path` accepts a bounded goal, level, outcome, optional collection, up to four assessed knowledge gaps, and at most four validated OpenAlex work records selected from the active exact-DOI connection map. Selected global records enter the planner only as untrusted metadata comparison targets; they never enter the Thai evidence allow list. Corpus search and OpenAlex discovery start in parallel, and the internal feed call skips unused facet aggregation. It ranks at most eight matching papers, loads bounded page-linked excerpts, and asks GPT-5.6 Luna for a typed four-stage plan: map the Thai field and coverage limit; inspect methods and findings on exact pages or rights-cleared full text; connect Thai evidence to metadata-only global leads; then frame one candidate gap and a falsifiable Next-Study Protocol. The typed result contains a `candidate_unvalidated` gap with `noveltyEstablished: false` and a `draft_framework` protocol with question, context/population, data, method, validation, falsification, and evidence boundary. Paper identifiers are validated against the retrieved allow list; provider failure returns both artifacts from a conservative deterministic fallback rather than dropping them. One to three directly relevant papers produce an explicit limited-coverage path instead of unrelated filler. Checkpoint evidence is allow-listed, global records never enter the evidence set, and candidate gaps are never represented as proven novelty. Adaptive rebuilds preserve mastered stages and selected connection leads.
 
 When a server-only `OPENALEX_API_KEY` is configured, Research Path adds up to four global work records with a 2.5-second path-specific budget while Explore discovery retains the general eight-second timeout. Explore exposes `/api/global-discovery` only after an explicit user action; it returns at most six metadata records under its own distributed quota and stores no raw query. OpenAlex is treated as a discovery/metadata bridge, never as page-level evidence for CivilMCP answers. Missing or unavailable OpenAlex access degrades to a normal public search link.
 
-`/api/citation-map` resolves a bounded OpenAlex seed and at most 12 incoming, referenced, or related nodes. `/papers/{source}` is the indexable acquisition surface for CivilMCP papers: it emits canonical metadata and ScholarlyArticle JSON-LD while showing only record metadata, section labels, and page ranges. `/sitemap.xml` lists at most 2,000 public evidence records. Raw source text remains inside the controlled evidence workflow.
+`/api/citation-map` accepts structured DOI/title/year input and resolves a bounded OpenAlex seed plus at most 12 incoming, referenced, or related nodes. Only exact DOI matches are automatically verified. Exact title/year, fuzzy, ambiguous, and DOI-fallback matches remain candidates or unmatched and return no graph until richer bibliographic identity is reviewed. Every node is metadata-only. `/papers/{source}` is the indexable acquisition surface for CivilMCP papers: it emits canonical metadata and ScholarlyArticle JSON-LD while showing only record metadata, section labels, and page ranges. `/sitemap.xml` lists at most 2,000 public evidence records. Raw source text remains inside the controlled evidence workflow.
 
 ## Retrieval Substrate
 - Embeddings: `text-embedding-3-small` with `EMBEDDING_DIMENSIONS=768`.

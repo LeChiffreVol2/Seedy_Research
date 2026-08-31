@@ -60,9 +60,9 @@ test("desktop feed keeps the approved research hierarchy", async ({ page }) => {
   await page.goto("/");
   await page.getByRole("button", { name: "Explore" }).click();
   await expect(page.getByRole("heading", { name: "Thai research, with sources." })).toBeVisible();
-  await expect(page.getByLabel("Seed Research corpus coverage")).toContainText("papers");
-  await expect(page.getByLabel("Seed Research corpus coverage")).toContainText("page-linked sections");
-  await expect(page.getByLabel("Seed Research corpus coverage")).toContainText("Exact-page citations");
+  await expect(page.getByLabel("Seedy Research corpus coverage")).toContainText("papers");
+  await expect(page.getByLabel("Seedy Research corpus coverage")).toContainText("page-linked sections");
+  await expect(page.getByLabel("Seedy Research corpus coverage")).toContainText("Exact-page citations");
   await expect(page.getByText("Thai-first corpus · Multidisciplinary discovery · Page-linked sources")).toBeVisible();
   await expect(page.getByLabel("Thai-to-global research passport")).toHaveCount(0);
   const runControl = page.getByRole("button", { name: /Quick Answer/ });
@@ -75,7 +75,7 @@ test("desktop feed keeps the approved research hierarchy", async ({ page }) => {
   await expect(page.getByRole("menuitemradio", { name: /Quick Answer/ })).toBeVisible();
   await expect(page.getByRole("button", { name: "Workspace" })).toBeVisible();
   await page.keyboard.press("Escape");
-  await expect(page.getByRole("region", { name: "Seed Research feed", exact: true })).toBeVisible({ timeout: 45_000 });
+  await expect(page.getByRole("region", { name: "Seedy Research feed", exact: true })).toBeVisible({ timeout: 45_000 });
   await expect.poll(() => page.locator(".researchCard").count()).toBeGreaterThan(0);
   await expect(page.locator(".researchCard .paperMeta span", { hasText: /^Indexed\b/i })).toHaveCount(0);
   await expect
@@ -98,7 +98,7 @@ test("Explore separates ThaiJO discovery metadata from citable evidence", async 
   await page.getByRole("button", { name: "Explore" }).click();
 
   await page.getByRole("button", { name: /^Thai discovery/ }).click();
-  const feed = page.getByRole("region", { name: "Seed Research feed" });
+  const feed = page.getByRole("region", { name: "Seedy Research feed" });
   await expect(feed.getByText("Discovery metadata", { exact: true }).first()).toBeVisible({ timeout: 15_000 });
   await expect(feed.getByText("Not used for AI answers or citations", { exact: true }).first()).toBeVisible();
   await expect(feed.getByRole("link", { name: "Open source record" }).first()).toHaveAttribute("href", /^https:\/\//);
@@ -218,8 +218,8 @@ test("developer setup and OAuth consent stay clear on desktop and mobile", async
   await page.goto("/developers");
   await expect(page.getByRole("heading", { name: "Thai research evidence for people and agents." })).toBeVisible();
   await expect(page.getByRole("heading", { name: "Share the page, or work remotely." })).toBeVisible();
-  await expect(page.getByRole("heading", { name: "WebMCP · shared browser" })).toBeVisible();
-  await expect(page.getByRole("link", { name: "Open the WebMCP research surface" })).toHaveAttribute("href", "/?view=explore");
+  await expect(page.getByRole("heading", { name: "SeedyMCP · shared browser" })).toBeVisible();
+  await expect(page.getByRole("link", { name: "Open the SeedyMCP research surface" })).toHaveAttribute("href", "/?view=explore");
   await expect(page.getByText("https://civil-mcp-server.vercel.app/v2/mcp").first()).toBeVisible();
   await expect(page.getByRole("heading", { name: "One endpoint, two secure paths." })).toBeVisible();
   await expect(page.getByText("Evidence and metadata never blur together.")).toBeVisible();
@@ -435,8 +435,25 @@ test("Research Path turns an explicit goal into a four-stage learning sequence",
     coverage: { status: "strong", paperCount: 4, message: "Enough matching papers." },
     planningMode: "model",
     model: "gpt-5.6-luna",
+    candidateGap: {
+      status: "candidate_unvalidated",
+      statement: "Whether the observed Thai road-safety pattern transfers remains unvalidated.",
+      basis: "Bounded Thai evidence only; global records remain discovery metadata.",
+      missingValidation: ["Review relevant global full text.", "Validate in another context."],
+      noveltyEstablished: false,
+    },
+    nextStudyProtocol: {
+      status: "draft_framework",
+      researchQuestion: "Does the observed factor pattern recur in a second Thai urban context?",
+      contextOrPopulation: "A bounded second Thai urban road network.",
+      dataNeeded: ["Crash records", "Road-environment observations"],
+      method: "Run a pre-registered observational comparison.",
+      validationPlan: "Compare held-out locations and review global full text.",
+      falsificationCondition: "The factor pattern does not recur under the same definitions.",
+      evidenceBoundary: "Thai page-linked packets support local claims; OpenAlex records are metadata-only leads.",
+    },
     generatedAt: new Date().toISOString(),
-    stages: ["Map the field", "Inspect the methods", "Compare the evidence", "Build your position"].map((title, index) => ({
+    stages: ["Map the Thai field", "Inspect full-paper evidence", "Connect Thai and global leads", "Frame the gap and next study"].map((title, index) => ({
       id: `stage-${index + 1}`,
       title,
       objective: `Objective ${index + 1} for an applied literature review.`,
@@ -510,29 +527,31 @@ test("Research Path turns an explicit goal into a four-stage learning sequence",
   await expect(workspace.getByRole("heading", { name: "Urban road safety in Thailand" })).toBeVisible();
   await expect(workspace.locator(".pathStage")).toHaveCount(4);
   await expect(workspace.getByText("Global road safety research")).toBeVisible();
+  await expect(workspace.getByRole("heading", { name: "Candidate gap · not proven novel" })).toBeVisible();
+  await expect(workspace.getByRole("heading", { name: "Next-Study Protocol" })).toBeVisible();
   await expect(workspace.getByText("Path planned with GPT‑5.6 Luna from the retrieved evidence set.")).toBeVisible();
-  await expect(workspace.getByRole("button", { name: "Stage 1: Map the field · Current" })).toBeVisible();
-  await expect(workspace.getByRole("button", { name: "Stage 2: Inspect the methods · Upcoming" })).toBeVisible();
+  await expect(workspace.getByRole("button", { name: "Stage 1: Map the Thai field · Current" })).toBeVisible();
+  await expect(workspace.getByRole("button", { name: "Stage 2: Inspect full-paper evidence · Upcoming" })).toBeVisible();
   const firstStage = workspace.locator(".pathStage").first();
-  await expect(firstStage.getByText("Learning checkpoint")).toBeVisible();
+  await expect(firstStage.getByText("Research checkpoint")).toBeVisible();
   await expect(firstStage.getByText("Read", { exact: true })).toBeVisible();
   await expect(firstStage.getByRole("button", { name: "Open paper evidence: Thai road safety paper 1" })).toBeVisible();
-  await expect(workspace.getByText(/p\.1-8/)).toHaveCount(0);
-  await expect(workspace.getByText(/packets/i)).toHaveCount(0);
+  await expect(firstStage.getByText(/p\.1-8/)).toHaveCount(0);
+  await expect(firstStage.getByText(/packets/i)).toHaveCount(0);
   await firstStage.getByRole("button", { name: "Load demo answer" }).click();
   await expect(firstStage.getByLabel("Your reasoning")).toHaveValue(/Demo learning claim:/);
   await expect(firstStage.getByLabel("Your reasoning")).toBeFocused();
-  await expect(workspace.getByRole("button", { name: "Stage 1: Map the field · Draft" })).toBeVisible();
+  await expect(workspace.getByRole("button", { name: "Stage 1: Map the Thai field · Draft" })).toBeVisible();
   await firstStage.getByRole("button", { name: "Complete task" }).click();
   await expect(workspace.getByText("84/100")).toBeVisible();
   await expect(workspace).toContainText("1 of 4 stages mastered");
-  await expect(workspace.getByRole("button", { name: "Stage 1: Map the field · Mastered" })).toBeVisible();
-  await expect(workspace.getByRole("button", { name: "Stage 2: Inspect the methods · Current" })).toBeVisible();
+  await expect(workspace.getByRole("button", { name: "Stage 1: Map the Thai field · Mastered" })).toBeVisible();
+  await expect(workspace.getByRole("button", { name: "Stage 2: Inspect full-paper evidence · Current" })).toBeVisible();
   const secondStage = workspace.locator(".pathStage").nth(1);
   await secondStage.getByLabel("Your reasoning").fill("The methods are different, but the supplied answer does not yet explain why or connect the claim to a page.");
   await secondStage.getByRole("button", { name: "Check understanding" }).click();
   await expect(workspace.getByText("58/100")).toBeVisible();
-  await expect(workspace.getByRole("button", { name: "Stage 2: Inspect the methods · Review" })).toBeVisible();
+  await expect(workspace.getByRole("button", { name: "Stage 2: Inspect full-paper evidence · Review" })).toBeVisible();
   const adaptButton = workspace.getByRole("button", { name: "Adapt to 1 learning gap" });
   await expect(adaptButton).toBeVisible();
   await adaptButton.click();
@@ -680,7 +699,7 @@ test("Open Access can batch-run, inspect, review, and export workspace cells", a
   await page.goto("/");
   await page.getByRole("button", { name: "Explore" }).click();
   await page.getByRole("button", { name: /^Saved/ }).click();
-  const savedFeed = page.getByRole("region", { name: "Seed Research feed" });
+  const savedFeed = page.getByRole("region", { name: "Seedy Research feed" });
   await savedFeed.getByRole("button", { name: "Compare", exact: true }).nth(0).click();
   await savedFeed.getByRole("button", { name: "Compare", exact: true }).nth(0).click();
   await expect(page.getByLabel("Compare saved papers")).toContainText("2 selected");

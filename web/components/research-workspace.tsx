@@ -131,7 +131,7 @@ const STORAGE_KEY = "civilmcp-research-workspace-v1";
 const MODEL_OPTIONS = CHAT_MODELS;
 const DEFAULT_REVIEW_PROTOCOL: ReviewProtocol = {
   question: "What does this evidence show, where does it disagree, and what remains uncertain?",
-  searchStrategy: "Search Thai and English research terms in Seed Research, then screen the bounded candidate set.",
+  searchStrategy: "Search Thai and English research terms in Seedy Research, then screen the bounded candidate set.",
   inclusion: "Relevant studies with page-level evidence.",
   exclusion: "Out of scope, duplicate, or insufficient evidence.",
 };
@@ -733,21 +733,21 @@ export function ResearchWorkspacePanel({
     const lines = [
       `# ${title}`,
       "",
-      "> PRISMA-guided scoping review of a bounded Seed Research candidate set. Human verification is required; this export does not imply PRISMA endorsement or certification.",
+      "> PRISMA-guided scoping review of a bounded Seedy Research candidate set. Human verification is required; this export does not imply PRISMA endorsement or certification.",
       "",
       "## Protocol",
       `- Review question: ${reviewProtocol.question.trim()}`,
       `- Search strategy: ${reviewProtocol.searchStrategy.trim()}`,
       `- Inclusion criteria: ${reviewProtocol.inclusion.trim()}`,
       `- Exclusion criteria: ${reviewProtocol.exclusion.trim()}`,
-      "- Database: Seed Research Thai-first evidence corpus",
+      "- Database: Seedy Research Thai-first evidence corpus",
       `- Workspace ID: ${workspaceId}`,
       `- Extraction model: ${model}`,
       `- Exported: ${new Date().toISOString()}`,
       "",
       "## Flow",
       `- Candidate records: ${prismaFlow.identified}`,
-      "- Duplicates removed: 0 (candidate sources are unique within Seed Research)",
+      "- Duplicates removed: 0 (candidate sources are unique within Seedy Research)",
       `- Screened: ${prismaFlow.screened}`,
       `- Excluded: ${prismaFlow.excluded}`,
       `- Included for extraction: ${prismaFlow.included}`,
@@ -922,7 +922,7 @@ export function ResearchWorkspacePanel({
 
       {pickerOpen ? (
         <section className="workspacePaperPicker" aria-label="Add papers to workspace">
-          <div><strong>Add papers</strong><span>Choose up to 50. Seed Research processes six at a time and saves each batch.</span></div>
+          <div><strong>Add papers</strong><span>Choose up to 50. Seedy Research processes six at a time and saves each batch.</span></div>
           <div className="workspacePaperOptions">
             {availablePapers.slice(0, 50).map((paper) => {
               const included = rows.some((row) => row.source === paper.source);
@@ -953,7 +953,7 @@ export function ResearchWorkspacePanel({
               <span><BookOpenCheck size={16} aria-hidden /> Review protocol</span>
               <strong>Screen first. Extract included studies.</strong>
             </div>
-            <small>PRISMA-ScR · Seed Research corpus</small>
+            <small>PRISMA-ScR · Seedy Research corpus</small>
           </header>
 
           <div className="prismaOverview">
@@ -990,7 +990,7 @@ export function ResearchWorkspacePanel({
                 <span className={screeningReady ? "complete" : ""}>{screeningReady ? <Check size={14} aria-hidden /> : <Circle size={14} aria-hidden />}Screening complete</span>
                 <span className={prismaFlow.included > 0 ? "complete" : ""}>{prismaFlow.included > 0 ? <Check size={14} aria-hidden /> : <Circle size={14} aria-hidden />}Studies selected</span>
               </div>
-              <p>Scope: selected Seed Research papers. Add external databases before treating this as a comprehensive systematic review.</p>
+              <p>Scope: selected Seedy Research papers. Add external databases before treating this as a comprehensive systematic review.</p>
             </div>
           </div>
 

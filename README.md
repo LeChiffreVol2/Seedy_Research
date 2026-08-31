@@ -1,6 +1,6 @@
-# Seed Research by SEEDY
+# Seedy Research
 
-**Seed Research turns overlooked Thai research into exact-page evidence that people and AI agents can verify, learn from, and connect to global work.** It is a Public Research Preview powered by the CivilMCP evidence engine, with civil engineering as the first rights-reviewed vertical.
+**Seedy Research turns overlooked Thai research into a traceable path from exact-page evidence to global connections and a testable next study.** SeedyMCP is the shared human-agent layer. The existing CivilMCP identifiers remain as a compatibility substrate, while the Civil Research Pack is the first rights-reviewed proof vertical—not the product boundary.
 
 [Open the public preview](https://civil-mcp-web.vercel.app/) · [WebMCP Challenge package](docs/WEBMCP_CHALLENGE_SUBMISSION.md) · [Connect an AI agent](https://civil-mcp-web.vercel.app/developers) · [Product thesis](docs/PRODUCT_THESIS.md) · [Full-text and national coverage system](docs/THAI_RESEARCH_FULL_TEXT_SYSTEM.md) · [Launch readiness](docs/LAUNCH_READINESS.md) · [Data sources and rights](DATA_SOURCES.md)
 
@@ -68,29 +68,39 @@ licensed, checksum-bound page text and rights manifest, not PDF binaries; see
 
 ## WebMCP: research with a shared human-agent view
 
-Seed Research exposes five browser-native site tools from the top-level page with `document.modelContext.registerTool(...)`. The tools reuse the same application APIs, signed-in session, validation, evidence boundary, and visible UI that a person uses:
+Seedy Research exposes six browser-native SeedyMCP site tools from the top-level page with `document.modelContext.registerTool(...)`. The tools reuse the same application APIs, signed-in session, validation, evidence boundary, and visible UI that a person uses:
 
 | Site tool | Shared result |
 | --- | --- |
 | `discover_research` | Searches Thai evidence and optional OpenAlex metadata, then updates Explore without confusing discovery records with citable evidence. |
 | `inspect_paper_evidence` | Opens the paper drawer and highlights bounded evidence with its original page for human verification. For a rights-verified reader paper it also reports the lawful access mode and a reopenable verified page anchor, but never returns full page text through WebMCP. |
+| `trace_research_connections` | Matches the active Thai paper to OpenAlex by exact DOI, exposes cites/cited-by/related leads on the shared page, and keeps title-based matches as review-only candidates with no graph. Every returned relation remains metadata-only and non-citable. |
 | `draft_research_passport` | Turns one to three exact-page anchors already opened in the active Thai paper into a visible Thai → Global Research Passport with bounded English renderings when needed, at most four non-citable OpenAlex leads, and one candidate validation gap. Every selected page must be reopened before the person can acknowledge page review and export Markdown. |
-| `build_research_path` | Creates or adapts a visible four-stage learning path from allow-listed Thai evidence. |
+| `build_research_path` | Creates or adapts a visible Thai-to-global path: map the Thai field, inspect full-paper/page evidence, connect selected metadata-only global leads, then frame a candidate gap and falsifiable Next-Study Protocol. |
 | `inspect_learning_progress` | Reads checkpoint status and reviewed learning gaps without returning the learner's private free-text answers. |
 
 This is complementary to the remote MCP service: remote MCP works without an open page, while WebMCP lets a browser agent and a person collaborate in the same live research workspace. Inputs are validated again in application code; paper and external metadata outputs are marked as untrusted content; read-only tools are annotated explicitly; registration and in-flight work support cancellation.
 
-### Hero flow: Evidence-bounded Research Passport
+### Hero flow: Thai-to-Global Research Path
 
 The Challenge hero flow begins with an indexed Thai paper, not a generated
-summary. The agent first opens page-linked evidence with
-`inspect_paper_evidence`, then calls `draft_research_passport` with the active
-paper, a bounded focus, one to three visible evidence IDs, and one gap lens.
-The shared page renders three deliberately separate layers:
+summary. A browser agent and the person share the same visible state while they:
+
+1. discover bounded Thai evidence;
+2. open an exact page or a rights-cleared full paper;
+3. trace an exact-DOI OpenAlex match and select metadata-only
+   global comparison leads;
+4. build a four-stage Research Path that ends in a candidate gap and a
+   Next-Study Protocol;
+5. draft a Research Passport from one to three visible page anchors; and
+6. reopen every selected page before acknowledging review and exporting.
+
+The Passport is the trust checkpoint inside that end-to-end path. It renders
+three deliberately separate layers:
 
 1. page-linked Thai evidence with exact original pages, retaining the source excerpt and adding a bounded English rendering when translation is available;
 2. up to four OpenAlex discovery leads labelled `metadata only` and never used
-   as CivilMCP evidence; and
+   as Seedy Research evidence; and
 3. one candidate validation gap labelled as inference, with novelty and
    transferability explicitly not established.
 
@@ -101,7 +111,7 @@ metadata, and inference boundaries. The Passport audits provenance and frames
 a next verification step; it does not prove scientific correctness, novelty,
 global transferability, or a comprehensive literature gap.
 
-In ChatGPT's built-in browser, use GPT-5.6 Sol or Terra for site-tool invocation. GPT-5.6 Luna remains the bounded default inside Seed Research for path planning, checkpoint assessment, and other server-side product workflows.
+In ChatGPT's built-in browser, use GPT-5.6 Sol or Terra for site-tool invocation. GPT-5.6 Luna remains the bounded default inside Seedy Research for path planning, checkpoint assessment, and other server-side product workflows.
 
 Run the browser contract test with:
 
@@ -128,7 +138,7 @@ Explore remains the feed-first discovery surface: search, filter, inspect a pape
 
 `Research Workspace` is a separate Verified Review Project rather than a chat mode. Papers are rows and bounded AI instructions are columns. Open Access unlocks batch extraction and every model without answer credits or a plan gate; authentication is required so every run has a durable owner. A project accepts up to 50 CivilMCP or account-private sources and processes six papers per server request, saving account-scoped progress after every completed batch. The Scientific Evidence Snapshot template extracts study design, context, method, results, limitations, and Thai applicability with allow-listed page evidence and human-review state. The PRISMA-ScR guided template captures protocol, search strategy, screening decisions, exclusion reasons, extraction matrix, provenance, and review state in a reproducible Markdown pack. PDF uploads stay account-private; DOI and BibTeX/RIS (including Zotero exports) remain metadata-only until page text is available. The current browser orchestrator supports stop-after-batch and durable saved progress, but is not an unattended background job.
 
-`Research Path` is the primary evidence-grounded learning loop. GPT-5.6 Luna builds each stage from allow-listed retrieved papers and bounded page-linked excerpts, while a deterministic retrieval plan remains available if the provider is unavailable. Each evidence task gives the learner source links and a claim/evidence/boundary response structure; Luna then evaluates that reasoning only against allow-listed page-linked packets, returns a deterministic mastery status and score, and links the feedback back to the exact source pages. Adaptive rebuilds preserve mastered work, sparse topics expose limited coverage without unrelated filler, provider pressure degrades to an ungraded evidence view, and completed paths can be exported or synthesized into a cited outcome.
+`Research Path` is the primary end-to-end research loop. GPT-5.6 Luna builds each stage from allow-listed retrieved papers and bounded page-linked excerpts, while a deterministic retrieval plan remains available if the provider is unavailable. The stages map the Thai field and coverage limit, inspect methods against exact pages or rights-cleared full text, connect selected OpenAlex relations as non-citable comparison leads, and frame one explicitly provisional gap as a Next-Study Protocol with a bounded question, context, data, method, validation step, and falsification condition. Luna evaluates learner reasoning only against allow-listed page packets and links feedback back to the source pages. Adaptive rebuilds preserve mastered work and selected global leads; sparse topics expose limited coverage without unrelated filler.
 
 Signed-in users can create revocable personal MCP keys from Account or authorize an OAuth-capable client. The public stateless endpoint at `https://civil-mcp-server.vercel.app/v2/mcp` exposes 14 high-level tools for discovery, exact-page reading, selected-paper queries, comparison, citation mapping, private PDFs, and folder-based library workflows. The existing 19-tool low-level contract remains available for CivilMCP web and CityMCP compatibility. Personal tokens are shown once and stored only as SHA-256 hashes.
 

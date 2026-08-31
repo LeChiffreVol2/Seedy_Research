@@ -3,8 +3,8 @@ import type { Metadata } from "next";
 import { LegalShell } from "@/components/legal-shell";
 
 export const metadata: Metadata = {
-  title: "Terms | Seed Research by SEEDY",
-  description: "Terms for the Seed Research public research preview.",
+  title: "Terms | Seedy Research",
+  description: "Terms for the Seedy Research public research preview.",
 };
 
 export default function TermsPage() {
@@ -12,11 +12,11 @@ export default function TermsPage() {
     <LegalShell
       eyebrow="Terms"
       title="Research evidence, not professional approval."
-      intro="Effective August 12, 2026. By using Seed Research by SEEDY, you agree to these terms."
+      intro="Effective August 12, 2026. By using Seedy Research, you agree to these terms."
     >
       <section>
         <h2>Preview service</h2>
-        <p>Seed Research helps users discover, compare, learn from, and inspect Thai research evidence, then connect it to global scholarly metadata and related work. Features, indexed sources, operational safety limits, and availability may change during the preview. Open Access has no answer-credit, Research Unit, model, or research-workflow plan gates. The service is provided as available and may be suspended to protect users, data, or infrastructure.</p>
+        <p>Seedy Research helps users discover, compare, learn from, and inspect Thai research evidence, then connect it to global scholarly metadata and related work. Features, indexed sources, operational safety limits, and availability may change during the preview. Open Access has no answer-credit, Research Unit, model, or research-workflow plan gates. The service is provided as available and may be suspended to protect users, data, or infrastructure.</p>
       </section>
       <section>
         <h2>No professional advice</h2>
@@ -28,7 +28,7 @@ export default function TermsPage() {
       </section>
       <section>
         <h2>Sources and intellectual property</h2>
-        <p>Seed Research source code and third-party research content have separate rights. Paper copyright remains with authors or publishers. Public availability does not itself grant redistribution or commercial reuse rights. Metadata-only records are not presented as citable full-text evidence.</p>
+        <p>Seedy Research source code and third-party research content have separate rights. Paper copyright remains with authors or publishers. Public availability does not itself grant redistribution or commercial reuse rights. Metadata-only records are not presented as citable full-text evidence.</p>
       </section>
       <section>
         <h2>Accounts and access</h2>

@@ -24,11 +24,11 @@ function pageRange(start?: number | null, end?: number | null): string {
 export async function generateMetadata({ params }: PageProps): Promise<Metadata> {
   const { source } = await params;
   const detail = await getPaperDetail(source).catch(() => null);
-  if (!detail) return { title: "Paper not found | Seed Research", robots: { index: false, follow: false } };
+  if (!detail) return { title: "Paper not found | Seedy Research", robots: { index: false, follow: false } };
   const canonical = `${appUrl()}/papers/${encodeURIComponent(detail.document.source)}`;
-  const description = `${detail.document.sourceLabel}. ${detail.counts.sections} indexed sections and ${detail.counts.chunks} exact-page evidence chunks in Seed Research.`;
+  const description = `${detail.document.sourceLabel}. ${detail.counts.sections} indexed sections and ${detail.counts.chunks} exact-page evidence chunks in Seedy Research.`;
   return {
-    title: `${detail.document.title} | Seed Research`,
+    title: `${detail.document.title} | Seedy Research`,
     description,
     alternates: { canonical },
     openGraph: { title: detail.document.title, description, type: "article", url: canonical },

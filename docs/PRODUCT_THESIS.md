@@ -1,12 +1,11 @@
-# CivilMCP Product Thesis
+# Seedy Research Product Thesis
 
 ## Thesis
 
-CivilMCP is the first vertical of a Thai-first, globally connected research
-evidence and learning platform. It should win first in civil engineering,
-where it already has page-linked Thai evidence and bounded research workflows,
-then expand through reviewed domain packs rather than becoming a generic paper
-search engine.
+Seedy Research is a Thai-first, globally connected research evidence and
+learning platform. It begins with the Civil Research Pack, where it already has
+page-linked Thai evidence and bounded research workflows, then expands through
+reviewed domain packs rather than becoming a generic paper search engine.
 
 The product promise is:
 
@@ -15,9 +14,10 @@ The product promise is:
 > the user, and turn verified findings into research and deep-tech project
 > decisions.
 
-CivilMCP remains the product and proof vertical during this phase. A broader
-parent brand is a later decision, after a second domain and a university pilot
-show repeatable use.
+Seedy Research is the user-facing product; SeedyMCP is its shared human-agent
+layer; the Civil Research Pack is the first proof vertical. Existing CivilMCP
+domains, routes, database objects, and storage identifiers remain compatibility
+contracts until an additive migration can be rolled out and reversed safely.
 
 ## Users and jobs
 
@@ -29,22 +29,22 @@ show repeatable use.
 | University innovation or industry R&D team | Map a problem to credible research capability | Produces a source-bearing research-to-project brief and identifies evidence gaps |
 
 The first three users are the initial product focus. Innovation and R&D teams
-enter through bounded pilots; CivilMCP must not infer technology readiness,
+enter through bounded pilots; Seedy Research must not infer technology readiness,
 intellectual-property status, or commercial viability without attributed data.
 
 ## Product layers
 
 | Layer | User promise | Existing foundation | Next proof |
 | --- | --- | --- | --- |
-| **Explore** | Search Thai and global research without confusing discovery with evidence | `civil_source_catalog`, indexed CivilMCP evidence, ThaiJO metadata, OpenAlex bridge | Unified result ranking with visible provider, rights, and citable status |
+| **Explore** | Search Thai and global research without confusing discovery with evidence | `civil_source_catalog`, indexed Civil Research Pack evidence, ThaiJO metadata, OpenAlex bridge | Unified result ranking with visible provider, rights, and citable status |
 | **Read** | Open the best lawful full-text manifestation without hiding access or reuse limits | Exact-page evidence drawer, source links, page provenance, private PDF extraction | Rights-aware native/source-hosted/institution-mediated reader with stable annotations |
 | **Learn** | Build prerequisites and understanding from inspectable evidence | Four-stage Research Path and Tutor Mission | Diagnostic entry point, checkpoints, and a paper-to-project exercise |
 | **Research** | Compare papers and export an auditable research artifact | Evidence Mission, Research Workspace, PRISMA-ScR guided pack | Living review updates, clearer coverage limits, and pilot templates |
 | **Translate** | Move from findings to a testable deep-tech project question | Evidence matrices, Thailand-to-world transfer checks, and the Research Path `Project brief` outcome | Validate the brief with a named university or lab cohort and one bounded partner problem |
 
 All four layers use one evidence contract. Global metadata can broaden discovery,
-but only rights-reviewed, page-linked CivilMCP packets can support a CivilMCP
-citation.
+but only rights-reviewed, page-linked Seedy Research packets can support a
+Seedy Research citation.
 
 ## The database is the product advantage
 
@@ -110,7 +110,7 @@ distribution. Models remain replaceable behind the bounded evidence contract.
 
 ## Policy posture
 
-CivilMCP is **policy-aligned, not government-endorsed**. It can support Thai
+Seedy Research is **policy-aligned, not government-endorsed**. It can support Thai
 priorities around research utilization, deep-tech capability, AI talent, and
 university-industry collaboration, while remaining useful across policy cycles.
 Product copy and partnership material must not imply ministry approval,

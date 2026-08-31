@@ -759,7 +759,7 @@ function preferredAsset(assets: NormalizedAsset[], requestedAssetId: string | nu
 }
 
 function statusLabel(mode: ReaderMode): string {
-  if (mode === "native_verified") return "Read in CivilMCP";
+  if (mode === "native_verified") return "Read in Seedy Research";
   if (mode === "source_hosted") return "Open at official source";
   if (mode === "restricted") return "Institutional access required";
   if (mode === "metadata_only") return "Metadata only";
@@ -768,9 +768,9 @@ function statusLabel(mode: ReaderMode): string {
 
 function accessInstructions(mode: ReaderMode, custom: string | null): string {
   if (custom) return custom;
-  if (mode === "native_verified") return "Read the rights-verified page text in CivilMCP and retain the page anchor with every citation.";
-  if (mode === "source_hosted") return "Open the official source record. CivilMCP does not proxy or copy this full text.";
-  if (mode === "restricted") return "Use the official institutional or account access path. CivilMCP does not bypass authentication or retain credentials.";
+  if (mode === "native_verified") return "Read the rights-verified page text in Seedy Research and retain the page anchor with every citation.";
+  if (mode === "source_hosted") return "Open the official source record. Seedy Research does not proxy or copy this full text.";
+  if (mode === "restricted") return "Use the official institutional or account access path. Seedy Research does not bypass authentication or retain credentials.";
   if (mode === "metadata_only") return "No asset-level display and extraction permission has been verified. This record is a discovery lead, not page-citable evidence.";
   return "No active verified full-text asset is available. Use the source resolver or library request workflow.";
 }

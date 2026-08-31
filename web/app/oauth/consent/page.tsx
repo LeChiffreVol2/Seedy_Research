@@ -128,7 +128,7 @@ export default function OAuthConsentPage() {
         <a className={styles.back} href="/"><ArrowLeft size={15} aria-hidden /> SEEDY</a>
         <header className={styles.header}>
           <div className={styles.mark}><ShieldCheck size={24} aria-hidden /></div>
-          <div><span>Secure connection</span><h1 id="consent-title">Connect to Seed Research</h1></div>
+          <div><span>Secure connection</span><h1 id="consent-title">Connect to Seedy Research</h1></div>
         </header>
 
         {state === "loading" ? <p className={styles.status}>Checking authorization…</p> : null}
@@ -156,7 +156,7 @@ export default function OAuthConsentPage() {
             <p>This client will be able to:</p>
             <ul className={styles.permissions}>
               <li><Check size={16} aria-hidden /><span>Search Thai and global research metadata</span></li>
-              <li><Check size={16} aria-hidden /><span>Read exact-page Seed Research evidence and your private PDFs</span></li>
+              <li><Check size={16} aria-hidden /><span>Read exact-page Seedy Research evidence and your private PDFs</span></li>
               <li><Check size={16} aria-hidden /><span>Organize papers in your private library</span></li>
             </ul>
             <div className={styles.trust}><ShieldCheck size={16} aria-hidden /><span>The client never receives your Google password or SEEDY service keys. You can revoke access from Account.</span></div>

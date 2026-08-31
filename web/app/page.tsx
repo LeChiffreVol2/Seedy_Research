@@ -369,9 +369,49 @@ type LivingReviewWatch = {
 type CitationMapResponse = {
   status: GlobalDiscoveryStatus;
   searchUrl: string;
-  seed: null | { id: string; title: string; year: number | null; citedByCount: number; url: string; relation: "seed"; citable: false };
-  nodes: Array<{ id: string; title: string; year: number | null; citedByCount: number; url: string; relation: "cites" | "cited_by" | "related"; citable: false }>;
+  match: {
+    status: "verified" | "candidate" | "unmatched";
+    basis: "doi" | "title_year" | "title" | "none";
+    requiresHumanReview: boolean;
+    titleSimilarity: number | null;
+    yearDelta: number | null;
+    matchedOpenAlexId: string | null;
+  };
+  seed: null | {
+    id: string;
+    title: string;
+    year: number | null;
+    citedByCount: number;
+    url: string;
+    relation: "seed";
+    topic?: string | null;
+    authors?: string[];
+    institutions?: string[];
+    citable: false;
+  };
+  nodes: Array<{
+    id: string;
+    title: string;
+    year: number | null;
+    citedByCount: number;
+    url: string;
+    relation: "cites" | "cited_by" | "related";
+    topic?: string | null;
+    authors?: string[];
+    institutions?: string[];
+    citable: false;
+  }>;
 };
+
+type CitationMapState = {
+  phase: "idle" | "loading" | "ready" | "error";
+  response: CitationMapResponse | null;
+  error: string;
+};
+
+function isTraceableOpenAlexMatch(match: CitationMapResponse["match"] | null | undefined): boolean {
+  return match?.status === "verified" && match.basis === "doi" && match.requiresHumanReview === false;
+}
 
 type PaperDetailData = {
   document: ResearchCardData;
@@ -529,6 +569,23 @@ type ResearchPath = {
   };
   planningMode?: "model" | "retrieval_fallback";
   model?: "gpt-5.6-luna" | null;
+  candidateGap: {
+    status: "candidate_unvalidated";
+    statement: string;
+    basis: string;
+    missingValidation: string[];
+    noveltyEstablished: false;
+  };
+  nextStudyProtocol: {
+    status: "draft_framework";
+    researchQuestion: string;
+    contextOrPopulation: string;
+    dataNeeded: string[];
+    method: string;
+    validationPlan: string;
+    falsificationCondition: string;
+    evidenceBoundary: string;
+  };
   timings?: { totalMs: number };
   generatedAt: string;
   stages: Array<{
@@ -561,6 +618,12 @@ type ResearchPath = {
       topic?: string | null;
       url: string;
     }>;
+  };
+  globalConnections?: {
+    match: CitationMapResponse["match"];
+    source: string;
+    evidenceBoundary: string;
+    leads: CitationMapResponse["nodes"];
   };
 };
 
@@ -823,6 +886,14 @@ function boundedToolText(value: unknown, maximum: number): string {
   return typeof value === "string" ? value.replace(/\s+/g, " ").trim().slice(0, maximum) : "";
 }
 
+function researchCardYear(card: ResearchCardData): number | null {
+  if (Number.isInteger(card.proceedingYear) && Number(card.proceedingYear) > 0) return Number(card.proceedingYear);
+  const publishedYear = card.publishedAt ? Number.parseInt(card.publishedAt.slice(0, 4), 10) : Number.NaN;
+  if (Number.isInteger(publishedYear) && publishedYear > 0) return publishedYear;
+  const dateYear = card.date.match(/(?:19|20)\d{2}/)?.[0];
+  return dateYear ? Number.parseInt(dateYear, 10) : null;
+}
+
 function safeReaderSourceUrl(value: unknown): string | null {
   if (typeof value !== "string") return null;
   try {
@@ -871,7 +942,7 @@ function summarizePaperReaderAccess(
       ? sourceUrl
       : null;
   const fallbackLabel: Record<PaperReaderAccessMode, string> = {
-    native_verified: "Read in Seed Research",
+    native_verified: "Read in Seedy Research",
     source_hosted: "Open at official source",
     restricted: "Institutional access required",
     metadata_only: "Metadata only",
@@ -1050,7 +1121,7 @@ function citationAuditMarkdown(
   const citedIds = citedEvidenceIds(markdown);
   const claims = citationAuditClaims(markdown);
   const lines = [
-    "# Seed Research evidence audit",
+    "# Seedy Research evidence audit",
     "",
     `- Question: ${question?.trim() || "Not available"}`,
     `- Interpreted query: ${annotation.searchQuery?.trim() || question?.trim() || "Not available"}`,
@@ -1169,7 +1240,7 @@ function evidenceBriefMarkdown(annotation: CivilMissionAnnotation, evidenceItems
     "",
     ...(evidenceItems.length
       ? evidenceItems.map((item) => `- [${item.evidenceId}] ${item.source}${pageLabel(item) ? ` · ${pageLabel(item)}` : ""}${item.sectionTitle ? ` · ${item.sectionTitle}` : ""}`)
-      : ["- See the linked Seed Research session for source packets and exact-page evidence."]),
+      : ["- See the linked Seedy Research session for source packets and exact-page evidence."]),
     "",
     "_For research use. Not professional advice._",
   ];
@@ -1188,7 +1259,16 @@ function isResearchCardData(value: unknown): value is ResearchCardData {
 function isResearchPath(value: unknown): value is ResearchPath {
   if (!value || typeof value !== "object") return false;
   const candidate = value as Partial<ResearchPath>;
-  return candidate.version === "civilmcp-research-path-v2" && typeof candidate.goal === "string" && Array.isArray(candidate.stages);
+  return candidate.version === "civilmcp-research-path-v2"
+    && typeof candidate.goal === "string"
+    && Array.isArray(candidate.stages)
+    && candidate.candidateGap?.status === "candidate_unvalidated"
+    && candidate.candidateGap.noveltyEstablished === false
+    && typeof candidate.candidateGap.statement === "string"
+    && Array.isArray(candidate.candidateGap.missingValidation)
+    && candidate.nextStudyProtocol?.status === "draft_framework"
+    && typeof candidate.nextStudyProtocol.researchQuestion === "string"
+    && Array.isArray(candidate.nextStudyProtocol.dataNeeded);
 }
 
 function isResearchPathCheckpointAssessment(value: unknown): value is ResearchPathCheckpointAssessment {
@@ -2158,7 +2238,7 @@ function MemoryNotice({ annotation }: { annotation: CivilMemoryAnnotation | null
       </summary>
       <div className="memoryDetails">
         <p>
-          Seed Research summarizes older conversation context to preserve continuity while controlling context cost
+          Seedy Research summarizes older conversation context to preserve continuity while controlling context cost
           {annotation.compactedMessageCount ? ` across ${annotation.compactedMessageCount} compacted messages` : ""}.
         </p>
         {annotation.runningSummary ? <p className="memorySummary">{annotation.runningSummary}</p> : null}
@@ -2385,7 +2465,7 @@ function AppSidebar({
               <p className="brandName">SEEDY</p>
               <span className="brandBadge">Research Preview</span>
             </div>
-            <p className="brandSubline">Seed Research</p>
+            <p className="brandSubline">Seedy Research</p>
           </div>
         </div>
 
@@ -2583,7 +2663,7 @@ function SearchComposer({
           type="submit"
           className="sendButtonWrap"
           disabled={!isReady || isLoading || !draft.trim()}
-          aria-label={isLoading ? "Seed Research is answering" : "Send message"}
+          aria-label={isLoading ? "Seedy Research is answering" : "Send message"}
         >
           <ArrowUp size={22} strokeWidth={2.5} aria-hidden />
         </GlassButton>
@@ -2663,7 +2743,7 @@ function FilterBar({
             <small>{activeFilter === "saved" ? syncText : `updated ${syncText}`}</small>
           </div>
           {activeFilter === "saved" ? (
-            <div className="refreshChipStatic" aria-label="Saved papers are kept in the Seed Research library">
+            <div className="refreshChipStatic" aria-label="Saved papers are kept in the Seedy Research library">
               <Bookmark className="chipIcon" aria-hidden />
               <span>Library synced</span>
             </div>
@@ -2858,7 +2938,7 @@ function ResearchPassportPanel({
               ? "Page anchors reviewed · inference remains candidate"
               : artifact
                 ? allEvidenceOpened ? "Ready for page-review acknowledgment" : `Open exact pages · ${artifact.openedEvidenceIds.length}/${artifact.evidence.length}`
-                : "5 site tools ready"}
+                : "6 site tools ready"}
         </span>
       </header>
 
@@ -3330,7 +3410,7 @@ function ResearchFeed({
 
   if (status === "loading") {
     return (
-      <section className="feedStack" aria-label="Seed Research feed loading" aria-busy="true">
+      <section className="feedStack" aria-label="Seedy Research feed loading" aria-busy="true">
         <p className="srOnly" role="status">
           Loading research feed
         </p>
@@ -3351,10 +3431,10 @@ function ResearchFeed({
 
   if (status === "error") {
     return (
-      <section className="feedStack" aria-label="Seed Research feed error">
+      <section className="feedStack" aria-label="Seedy Research feed error">
         <article className="feedStateCard" role="alert">
           <h2>Research feed unavailable</h2>
-          <p>{error || "Seed Research could not load the indexed paper collection."}</p>
+          <p>{error || "Seedy Research could not load the indexed paper collection."}</p>
           <button type="button" className="cardAction primary" onClick={onRetry}>
             Retry
           </button>
@@ -3365,7 +3445,7 @@ function ResearchFeed({
 
   if (!cards.length) {
     return (
-      <section className="feedStack" aria-label="Seed Research feed empty">
+      <section className="feedStack" aria-label="Seedy Research feed empty">
         <article className="feedStateCard">
           <h2>{isSavedFilter ? (savedCount ? "No saved papers match this search" : "No saved papers yet") : "No papers match these filters"}</h2>
           <p>
@@ -3388,7 +3468,7 @@ function ResearchFeed({
   }
 
   return (
-    <section className="feedStack" aria-label="Seed Research feed">
+    <section className="feedStack" aria-label="Seedy Research feed">
       {isSavedFilter ? (
         <aside className="workspaceSelectionTray" aria-label="Compare saved papers">
           <div>
@@ -3451,14 +3531,14 @@ function downloadCitation(card: ResearchCardData, format: "bibtex" | "ris") {
         `@${card.collection === "ncce" ? "inproceedings" : "techreport"}{${key},`,
         `  title = {${title}},`,
         year ? `  year = {${year}},` : "",
-        `  note = {Seed Research source: ${source}; page-linked evidence available},`,
+        `  note = {Seedy Research source: ${source}; page-linked evidence available},`,
         "}",
       ].filter(Boolean).join("\n")
     : [
         `TY  - ${card.collection === "ncce" ? "CPAPER" : "RPRT"}`,
         `TI  - ${title}`,
         year ? `PY  - ${year}` : "",
-        `N1  - Seed Research source: ${source}; page-linked evidence available`,
+        `N1  - Seedy Research source: ${source}; page-linked evidence available`,
         "ER  -",
       ].filter(Boolean).join("\n");
   const blob = new Blob([content], { type: format === "bibtex" ? "application/x-bibtex;charset=utf-8" : "application/x-research-info-systems;charset=utf-8" });
@@ -3474,6 +3554,7 @@ function PaperDetailDrawer({
   detail,
   status,
   error,
+  citationMap,
   translation,
   paperLanguage,
   highlightedEvidence,
@@ -3484,11 +3565,13 @@ function PaperDetailDrawer({
   onOpenRelated,
   onToggleBookmark,
   onSaveLibrary,
+  onLoadCitationMap,
   onPaperLanguageChange,
 }: {
   detail: PaperDetailData | null;
   status: FeedStatus;
   error: string;
+  citationMap: CitationMapState;
   translation?: PaperTranslationState;
   paperLanguage: PaperLanguage;
   highlightedEvidence: CivilEvidenceItem | null;
@@ -3499,6 +3582,7 @@ function PaperDetailDrawer({
   onOpenRelated: (card: ResearchCardData) => void;
   onToggleBookmark: (card: ResearchCardData) => void;
   onSaveLibrary: (card: ResearchCardData, note: string, labels: string[]) => Promise<void>;
+  onLoadCitationMap: () => void;
   onPaperLanguageChange: (language: PaperLanguage) => void;
 }) {
   const drawerRef = useRef<HTMLElement | null>(null);
@@ -3508,16 +3592,11 @@ function PaperDetailDrawer({
   const [libraryNote, setLibraryNote] = useState("");
   const [libraryLabels, setLibraryLabels] = useState("");
   const [librarySaving, setLibrarySaving] = useState(false);
-  const [citationMap, setCitationMap] = useState<{ phase: "idle" | "loading" | "ready" | "error"; response: CitationMapResponse | null; error: string }>({ phase: "idle", response: null, error: "" });
 
   useEffect(() => {
     setLibraryNote(libraryItem?.note ?? "");
     setLibraryLabels((libraryItem?.labels ?? []).join(", "));
   }, [detail?.document.source, libraryItem?.labels, libraryItem?.note]);
-
-  useEffect(() => {
-    setCitationMap({ phase: "idle", response: null, error: "" });
-  }, [detail?.document.source]);
 
   useEffect(() => {
     if (!isOpen) return;
@@ -3594,17 +3673,6 @@ function PaperDetailDrawer({
       || (!highlightedEvidence.id && highlightedEvidence.pageStart != null && item.pageStart === highlightedEvidence.pageStart)
     )
   );
-  const loadCitationMap = async () => {
-    if (!paper || citationMap.phase === "loading") return;
-    setCitationMap({ phase: "loading", response: null, error: "" });
-    try {
-      const response = await fetchJson<CitationMapResponse>("/api/citation-map", { method: "POST", body: JSON.stringify({ query: paper.doi || displayTitle(paper) }) });
-      setCitationMap({ phase: "ready", response, error: "" });
-    } catch (error) {
-      setCitationMap({ phase: "error", response: null, error: error instanceof Error ? error.message : "Citation map could not be loaded." });
-    }
-  };
-
   return (
     <div className="detailBackdrop" role="presentation" onClick={onClose}>
       <aside
@@ -3695,7 +3763,7 @@ function PaperDetailDrawer({
                 <ExternalLink size={17} strokeWidth={2.2} aria-hidden />
                 <span>Compare globally</span>
               </a>
-              <button type="button" className="cardAction" onClick={() => void loadCitationMap()} disabled={citationMap.phase === "loading"}>
+              <button type="button" className="cardAction" onClick={onLoadCitationMap} disabled={citationMap.phase === "loading"}>
                 <GitFork size={17} strokeWidth={2.2} aria-hidden />
                 <span>{citationMap.phase === "loading" ? "Mapping…" : "Citation map"}</span>
               </button>
@@ -3838,15 +3906,20 @@ function PaperDetailDrawer({
 
             <section className="detailSection">
               <div className="detailSectionHeading">
-                <div><h3>Global citation map</h3><p className="detailSectionLead">OpenAlex metadata for discovery only. Seed Research does not use these nodes as answer evidence.</p></div>
-                {citationMap.phase !== "idle" ? <button type="button" className="textAction" onClick={() => void loadCitationMap()}>Refresh</button> : null}
+                <div><h3>Thai-to-global connection map</h3><p className="detailSectionLead">OpenAlex metadata for discovery only. Seedy Research does not use these nodes as answer evidence.</p></div>
+                {citationMap.phase !== "idle" ? <button type="button" className="textAction" onClick={onLoadCitationMap}>Refresh</button> : null}
               </div>
               {citationMap.phase === "idle" ? (
-                <button type="button" className="citationMapEmpty" onClick={() => void loadCitationMap()}><GitFork size={18} aria-hidden /><span><strong>Trace citations and related work</strong><small>See what this paper cites, who cites it, and similar global research.</small></span></button>
+                <button type="button" className="citationMapEmpty" onClick={onLoadCitationMap}><GitFork size={18} aria-hidden /><span><strong>Trace citations and related work</strong><small>See what this paper cites, who cites it, and similar global research.</small></span></button>
               ) : citationMap.phase === "loading" ? <p className="detailEmpty">Building a bounded citation map…</p>
                 : citationMap.phase === "error" ? <p className="detailError">{citationMap.error}</p>
-                  : citationMap.response?.status === "connected" && citationMap.response.seed ? (
+                  : citationMap.response?.status === "connected"
+                    && citationMap.response.seed
+                    && isTraceableOpenAlexMatch(citationMap.response.match) ? (
                     <div className="citationMap">
+                      <p className={`citationMatch ${citationMap.response.match.status}`}>
+                        Verified DOI OpenAlex match
+                      </p>
                       <a href={citationMap.response.seed.url} target="_blank" rel="noreferrer" className="citationSeed"><span>Matched seed</span><strong>{citationMap.response.seed.title}</strong><small>{citationMap.response.seed.citedByCount.toLocaleString("en-US")} citations</small></a>
                       <div className="citationNodes">
                         {citationMap.response.nodes.map((node) => (
@@ -3858,6 +3931,8 @@ function PaperDetailDrawer({
                         ))}
                       </div>
                     </div>
+                  ) : citationMap.response?.match.status === "candidate" ? (
+                    <p className="detailEmpty">A candidate OpenAlex match needs human confirmation before SeedyMCP can trace its relationships. <a href={citationMap.response.searchUrl} target="_blank" rel="noreferrer">Review in OpenAlex</a>.</p>
                   ) : <p className="detailEmpty">No OpenAlex match was found. <a href={citationMap.response?.searchUrl} target="_blank" rel="noreferrer">Search OpenAlex</a>.</p>}
             </section>
 
@@ -3911,7 +3986,7 @@ function ConversationFeed({
             <div className="conversationHeader">
               <span className="conversationRole">
                 {isUser ? <Search size={16} strokeWidth={2.2} aria-hidden /> : <Gauge size={16} strokeWidth={2.2} aria-hidden />}
-                {isUser ? "Your question" : "Seed Research answer"}
+                {isUser ? "Your question" : "Seedy Research answer"}
               </span>
             </div>
             <MessageRenderer
@@ -3975,7 +4050,7 @@ function ChatWorkspace({
       ) : (
         <article className="feedStateCard chatEmptyState">
           <h2>Ask your first question</h2>
-          <p>Seed Research searches the selected collection and cites the pages it uses.</p>
+          <p>Seedy Research searches the selected collection and cites the pages it uses.</p>
         </article>
       )}
       {error ? (
@@ -4238,7 +4313,7 @@ function PersonalizedResearchPathPanel({
           <div>
             <p className="workspaceEyebrow"><Route size={14} aria-hidden /> Research Path</p>
             <h2>{path ? path.goal : "Turn a topic into a research plan"}</h2>
-            <p>{path ? "Learn, answer, and get evidence-grounded feedback across four focused stages." : "Set a goal. Seed Research organizes relevant studies into a focused four-stage path."}</p>
+            <p>{path ? "Move from Thai evidence to global comparison leads, a candidate gap, and a testable next study." : "Set a goal. Seedy Research builds a bounded Thai-to-global path from page-linked evidence."}</p>
           </div>
           {path ? (
             <div className="pathHeaderActions">
@@ -4342,12 +4417,20 @@ function PersonalizedResearchPathPanel({
               const assessing = assessingStageId === stage.id;
               const answerReady = answer.trim().length >= 40;
               const checkpointHelpId = `${stage.id}-checkpoint-help`;
-              const responseTemplate = [
+              const responseTemplate = (index === 3 ? [
+                "Candidate gap — not yet proven novel:",
+                "Evidence boundary:",
+                "Bounded research question:",
+                "Population or context:",
+                "Data and method:",
+                "Validation step:",
+                "What would falsify this premise:",
+              ] : [
                 "Claim:",
                 `What I learned from ${stage.papers.map((paper) => paper.title).join(" and ")}:`,
                 "Comparison or limitation:",
                 "What remains uncertain:",
-              ].join("\n\n");
+              ]).join("\n\n");
               const primaryPaper = stage.papers[0];
               const comparisonPaper = stage.papers[1];
               const evidenceReference = primaryPaper
@@ -4421,14 +4504,14 @@ function PersonalizedResearchPathPanel({
                           <header className="pathCheckpointHeader">
                             <FileText size={17} aria-hidden />
                             <div>
-                              <span>Learning checkpoint</span>
+                              <span>{index === 3 ? "Next-Study Protocol" : "Research checkpoint"}</span>
                               <p>{stage.checkpointQuestion}</p>
                             </div>
                           </header>
                           <ol className="pathCheckpointSteps">
-                            <li><strong>Read</strong><span>Open the paper evidence and note the main concept, method, and study context.</span></li>
-                            <li><strong>Clarify</strong><span>Use Chat separately when a term, method, or limitation is unclear.</span></li>
-                            <li><strong>Reflect</strong><span>Answer in your own words and identify what you still need to research.</span></li>
+                            <li><strong>Read</strong><span>Open the exact-page evidence or rights-cleared full paper and record the method, finding, and study context.</span></li>
+                            <li><strong>Connect</strong><span>Treat OpenAlex relationships as metadata-only leads until their underlying papers are reviewed.</span></li>
+                            <li><strong>{index === 3 ? "Test" : "Reflect"}</strong><span>{index === 3 ? "Keep the gap provisional and name the data, validation, and falsification condition for the next study." : "Answer in your own words and identify what you still need to research."}</span></li>
                           </ol>
                           <div className="pathDraftHeader">
                             <div><strong>Example use case</strong><span>Prefilled from the selected paper summaries; edit freely for a real task.</span></div>
@@ -4509,12 +4592,36 @@ function PersonalizedResearchPathPanel({
               );
             })}
           </div>
+          <aside className="pathResearchArtifacts" aria-label="Candidate gap and Next-Study Protocol">
+            <article className="pathCandidateGap">
+              <p className="workspaceEyebrow">Candidate · human validation required</p>
+              <h3>Candidate gap · not proven novel</h3>
+              <p>{path.candidateGap.statement}</p>
+              <dl>
+                <div><dt>Basis</dt><dd>{path.candidateGap.basis}</dd></div>
+                <div><dt>Missing validation</dt><dd><ul>{path.candidateGap.missingValidation.map((item) => <li key={item}>{item}</li>)}</ul></dd></div>
+              </dl>
+            </article>
+            <article className="pathNextStudyProtocol">
+              <p className="workspaceEyebrow">Draft framework · not a completed study design</p>
+              <h3>Next-Study Protocol</h3>
+              <dl>
+                <div><dt>Question</dt><dd>{path.nextStudyProtocol.researchQuestion}</dd></div>
+                <div><dt>Context / population</dt><dd>{path.nextStudyProtocol.contextOrPopulation}</dd></div>
+                <div><dt>Data needed</dt><dd><ul>{path.nextStudyProtocol.dataNeeded.map((item) => <li key={item}>{item}</li>)}</ul></dd></div>
+                <div><dt>Method</dt><dd>{path.nextStudyProtocol.method}</dd></div>
+                <div><dt>Validation</dt><dd>{path.nextStudyProtocol.validationPlan}</dd></div>
+                <div><dt>Falsification</dt><dd>{path.nextStudyProtocol.falsificationCondition}</dd></div>
+              </dl>
+              <p className="pathProtocolBoundary">{path.nextStudyProtocol.evidenceBoundary}</p>
+            </article>
+          </aside>
           {completedStages.length === path.stages.length ? (
             <aside className="pathCompletion" aria-label="Research path complete">
               <div>
                 <p className="workspaceEyebrow">Path complete</p>
-                <h3>Turn the four checkpoints into a cited outcome</h3>
-                <p>Seed Research will carry the selected papers and your assessed gaps into one final Evidence Review.</p>
+                <h3>Export an auditable next-study package</h3>
+                <p>Seedy Research carries the Thai evidence, metadata-only global leads, candidate gap, and Next-Study Protocol into one cited artifact.</p>
               </div>
               <button type="button" className="primaryAction" onClick={onExport}>
                 <Download size={16} aria-hidden />
@@ -4524,11 +4631,27 @@ function PersonalizedResearchPathPanel({
           ) : null}
           <aside className="openAlexBridge" aria-label="Global research discovery with OpenAlex">
             <div>
-              <p className="workspaceEyebrow">OpenAlex</p>
-              <h3>Compare with global research</h3>
-              <p>Explore related work, authors, and citation paths outside the Seed Research corpus.</p>
+              <p className="workspaceEyebrow">OpenAlex · metadata only</p>
+              <h3>{path.globalConnections?.leads.length ? "Global comparison leads" : "Compare with global research"}</h3>
+              <p>{path.globalConnections?.leads.length
+                ? "Selected cited, citing, or related works travel with this path as discovery leads—not evidence."
+                : "Explore related work, authors, and citation paths outside the Seedy Research corpus."}</p>
             </div>
-            {path.openAlex.works.length ? (
+            {path.globalConnections?.leads.length ? (
+              <div className="openAlexWorks">
+                {path.globalConnections.leads.map((work) => (
+                  <a key={work.id} href={work.url} target="_blank" rel="noreferrer">
+                    <span>{work.title}</span>
+                    <small>{[
+                      work.relation === "cites" ? "Cited by Thai seed" : work.relation === "cited_by" ? "Cites Thai seed" : "Related work",
+                      work.year,
+                      work.topic,
+                      "not evidence",
+                    ].filter(Boolean).join(" · ")}</small>
+                  </a>
+                ))}
+              </div>
+            ) : path.openAlex.works.length ? (
               <div className="openAlexWorks">
                 {path.openAlex.works.map((work) => (
                   <a key={work.id || work.url} href={work.url} target="_blank" rel="noreferrer">
@@ -4626,7 +4749,7 @@ function McpAccessCard() {
   return (
     <section className="mcpAccessCard" aria-label="Personal MCP access">
       <header>
-        <div><span className="workspaceEyebrow"><Terminal size={14} aria-hidden /> API &amp; MCP</span><strong>Use your Seed Research library from research agents.</strong><small>Personal keys are owner-scoped, rate-limited, and revocable.</small></div>
+        <div><span className="workspaceEyebrow"><Terminal size={14} aria-hidden /> API &amp; MCP</span><strong>Use your Seedy Research library from research agents.</strong><small>Personal keys are owner-scoped, rate-limited, and revocable.</small></div>
         <button type="button" className="cardAction primary" onClick={() => void createKey()} disabled={busy || keys.length >= 5}><KeyRound size={15} aria-hidden /> Create key</button>
       </header>
       {endpoint ? <div className="mcpEndpoint"><span>MCP v2 endpoint</span><code>{endpoint}</code><button type="button" onClick={() => void navigator.clipboard?.writeText(endpoint)}><Copy size={14} aria-hidden /> Copy</button></div> : null}
@@ -5217,6 +5340,7 @@ export default function Home() {
   const [paperDetailStatus, setPaperDetailStatus] = useState<FeedStatus>("ready");
   const [paperDetailError, setPaperDetailError] = useState("");
   const [paperEvidenceTarget, setPaperEvidenceTarget] = useState<CivilEvidenceItem | null>(null);
+  const [citationMap, setCitationMap] = useState<CitationMapState>({ phase: "idle", response: null, error: "" });
   const mainRailRef = useRef<HTMLDivElement | null>(null);
   const saveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const saveControllerRef = useRef<AbortController | null>(null);
@@ -5230,11 +5354,14 @@ export default function Home() {
   const researchPassportRequestIdRef = useRef(0);
   const webMcpDiscoveryRequestIdRef = useRef(0);
   const webMcpEvidenceRequestIdRef = useRef(0);
+  const citationMapRequestIdRef = useRef(0);
   const researchContextRevisionRef = useRef(0);
   const feedResearchContextKeyRef = useRef("");
   const researchPassportRef = useRef(researchPassport);
   const webMcpActivityRef = useRef<WebMcpActivity[]>([]);
   const webMcpEvidenceContextRef = useRef<PaperDetailData | null>(null);
+  const citationMapRef = useRef(citationMap);
+  const citationMapSourceRef = useRef("");
   const paperLanguageRef = useRef<PaperLanguage>("en");
   const paperTranslationsRef = useRef<Record<string, PaperTranslationState>>({});
   const translationInFlightRef = useRef(new Set<string>());
@@ -5259,6 +5386,11 @@ export default function Home() {
   const invalidateResearchContext = useCallback(() => {
     researchContextRevisionRef.current += 1;
     researchPassportRequestIdRef.current += 1;
+    citationMapRequestIdRef.current += 1;
+    const emptyCitationMap: CitationMapState = { phase: "idle", response: null, error: "" };
+    citationMapRef.current = emptyCitationMap;
+    citationMapSourceRef.current = "";
+    setCitationMap(emptyCitationMap);
     setResearchPassport((current) => {
       if (current.artifact) {
         const next = { ...current, artifact: { ...current.artifact, stale: true } };
@@ -5277,6 +5409,10 @@ export default function Home() {
   useEffect(() => {
     researchPassportRef.current = researchPassport;
   }, [researchPassport]);
+
+  useEffect(() => {
+    citationMapRef.current = citationMap;
+  }, [citationMap]);
 
   useEffect(() => {
     const contextKey = `${feedQuery}\u0000${selectedCollection || "all"}\u0000${activeFeedFilter}`;
@@ -6689,6 +6825,47 @@ export default function Home() {
     }
   }, [invalidateResearchContext, recordActivationStep, translatePapersToEnglish]);
 
+  const loadCitationMapForPaper = useCallback(async (
+    paper: ResearchCardData,
+    signal?: AbortSignal,
+  ): Promise<CitationMapResponse> => {
+    const requestId = citationMapRequestIdRef.current + 1;
+    citationMapRequestIdRef.current = requestId;
+    const loadingState: CitationMapState = { phase: "loading", response: null, error: "" };
+    citationMapRef.current = loadingState;
+    citationMapSourceRef.current = paper.source;
+    setCitationMap(loadingState);
+    try {
+      const response = await fetchJson<CitationMapResponse>("/api/citation-map", {
+        method: "POST",
+        signal,
+        body: JSON.stringify({
+          doi: paper.doi ?? null,
+          title: displayTitle(paper),
+          year: researchCardYear(paper),
+        }),
+      });
+      if (signal?.aborted || citationMapRequestIdRef.current !== requestId) {
+        throw new DOMException("The research connection trace was cancelled or superseded.", "AbortError");
+      }
+      const readyState: CitationMapState = { phase: "ready", response, error: "" };
+      citationMapRef.current = readyState;
+      setCitationMap(readyState);
+      return response;
+    } catch (error) {
+      if (citationMapRequestIdRef.current === requestId && !signal?.aborted) {
+        const errorState: CitationMapState = {
+          phase: "error",
+          response: null,
+          error: error instanceof Error ? error.message : "Research connections could not be traced.",
+        };
+        citationMapRef.current = errorState;
+        setCitationMap(errorState);
+      }
+      throw error;
+    }
+  }, []);
+
   useEffect(() => {
     if (!isReady || initialEvidenceLinkOpenedRef.current) return;
     initialEvidenceLinkOpenedRef.current = true;
@@ -7041,21 +7218,31 @@ export default function Home() {
     if (goal.length < 8 || researchPathStatus === "loading") return;
     const requestId = ++pathBuildRequestIdRef.current;
     const previousPath = researchPath;
+    const preservedGlobalLeads = preserveMastered
+      ? previousPath?.globalConnections?.leads.map((lead) => ({
+          id: lead.id,
+          title: lead.title,
+          year: lead.year,
+          relation: lead.relation,
+          topic: lead.topic ?? null,
+          citable: false as const,
+        })) ?? []
+      : [];
     const masteredStageIds = new Set(completedPathStages);
     setResearchPathStatus("loading");
     setResearchPathError("");
     try {
       const path = await fetchJson<ResearchPath>("/api/research-path", {
         method: "POST",
-        body: JSON.stringify({ goal, level: pathLevel, outcome: pathOutcome, collection: selectedCollection, knowledgeGaps }),
+        body: JSON.stringify({ goal, level: pathLevel, outcome: pathOutcome, collection: selectedCollection, knowledgeGaps, globalLeads: preservedGlobalLeads }),
       });
-      if (!isResearchPath(path)) throw new Error("Seed Research returned an invalid research path.");
+      if (!isResearchPath(path)) throw new Error("Seedy Research returned an invalid research path.");
       if (pathBuildRequestIdRef.current !== requestId) return;
       if (preserveMastered && previousPath) {
         const priorStages = new Map(previousPath.stages.map((stage) => [stage.id, stage]));
         const stages = path.stages.map((stage) => masteredStageIds.has(stage.id) ? priorStages.get(stage.id) ?? stage : stage);
         const validMasteredIds = stages.map((stage) => stage.id).filter((stageId) => masteredStageIds.has(stageId));
-        setResearchPath({ ...path, stages });
+        setResearchPath({ ...path, stages, globalConnections: previousPath.globalConnections ?? path.globalConnections });
         setCompletedPathStages(validMasteredIds);
         setPathStageMastery((current) => Object.fromEntries(
           Object.entries(current).filter(([stageId, status]) => validMasteredIds.includes(stageId) && status === "understood"),
@@ -7143,7 +7330,7 @@ export default function Home() {
           answer,
         }),
       });
-      if (!isResearchPathCheckpointAssessment(assessment)) throw new Error("Seed Research returned an invalid checkpoint assessment.");
+      if (!isResearchPathCheckpointAssessment(assessment)) throw new Error("Seedy Research returned an invalid checkpoint assessment.");
       if (pathCheckpointRequestIdRef.current !== requestId) return;
       setPathCheckpointAssessments((current) => ({ ...current, [stageId]: assessment }));
       setPathStageMastery((current) => ({ ...current, [stageId]: assessment.status }));
@@ -7206,8 +7393,38 @@ export default function Home() {
           "",
         ];
       }),
+      "## Candidate gap — not proven novel",
+      "",
+      researchPath.candidateGap.statement,
+      "",
+      `Basis: ${researchPath.candidateGap.basis}`,
+      "",
+      "### Missing validation",
+      ...researchPath.candidateGap.missingValidation.map((item) => `- ${item}`),
+      "",
+      "Novelty established: no",
+      "",
+      "## Next-Study Protocol — draft framework",
+      "",
+      `- Research question: ${researchPath.nextStudyProtocol.researchQuestion}`,
+      `- Context / population: ${researchPath.nextStudyProtocol.contextOrPopulation}`,
+      `- Data needed: ${researchPath.nextStudyProtocol.dataNeeded.join("; ")}`,
+      `- Method: ${researchPath.nextStudyProtocol.method}`,
+      `- Validation: ${researchPath.nextStudyProtocol.validationPlan}`,
+      `- Falsification condition: ${researchPath.nextStudyProtocol.falsificationCondition}`,
+      "",
+      researchPath.nextStudyProtocol.evidenceBoundary,
+      "",
+      ...(researchPath.globalConnections?.leads.length ? [
+        "## Global comparison leads — metadata only",
+        "",
+        ...researchPath.globalConnections.leads.map((lead) => `- [${lead.title}](${lead.url}) — ${lead.relation}; not used as evidence`),
+        "",
+        researchPath.globalConnections.evidenceBoundary,
+        "",
+      ] : []),
       "---",
-      "Generated from a bounded Seed Research learning path. Evidence still requires human review and is not professional approval.",
+      "Generated from a bounded Seedy Research Path. Thai page-linked evidence still requires human review; global leads are metadata only.",
     ].filter(Boolean);
     const blob = new Blob([lines.join("\n")], { type: "text/markdown;charset=utf-8" });
     const url = URL.createObjectURL(blob);
@@ -7423,6 +7640,70 @@ export default function Home() {
           throw new Error(message);
         }
       },
+      traceResearchConnections: async (input, signal) => {
+        const activeDetail = webMcpEvidenceContextRef.current;
+        if (!activeDetail || activeDetail.document.source !== input.source) {
+          throw new Error("Open this paper and its evidence before tracing global research connections.");
+        }
+        if (activeDetail.document.citable !== true || activeDetail.document.discoveryLayer === "thai_discovery") {
+          throw new Error("Discovery-only records cannot anchor a Thai-to-global research connection trace.");
+        }
+        const map = await loadCitationMapForPaper(activeDetail.document, signal);
+        const traceable = isTraceableOpenAlexMatch(map.match);
+        const relations = traceable ? map.nodes : [];
+        const relationCounts = relations.reduce<Record<string, number>>((counts, node) => {
+          counts[node.relation] = (counts[node.relation] ?? 0) + 1;
+          return counts;
+        }, {});
+        recordWebMcpActivity(
+          "trace_research_connections",
+          `${map.match.status} ${map.match.basis} match · ${relations.length} metadata-only relations`,
+        );
+        setStatusText(
+          traceable
+            ? `SeedyMCP traced ${relations.length} global research relationships. They remain metadata-only leads.`
+            : map.match.status === "candidate"
+              ? "SeedyMCP found a candidate OpenAlex match. Human confirmation is required before tracing relationships."
+              : "SeedyMCP did not find a safe OpenAlex match for this paper.",
+        );
+        return {
+          ok: true,
+          visibleView: "paper_connection_map",
+          thaiPaper: {
+            source: activeDetail.document.source,
+            title: boundedToolText(activeDetail.document.title, 180),
+            citable: true,
+          },
+          match: map.match,
+          seed: traceable && map.seed ? {
+            id: map.seed.id,
+            title: boundedToolText(map.seed.title, 160),
+            year: map.seed.year,
+            topic: boundedToolText(map.seed.topic, 100) || null,
+            authors: (map.seed.authors ?? []).slice(0, 3).map((name) => boundedToolText(name, 100)),
+            institutions: (map.seed.institutions ?? []).slice(0, 3).map((name) => boundedToolText(name, 120)),
+            citable: false,
+          } : null,
+          relationCounts: {
+            cites: relationCounts.cites ?? 0,
+            citedBy: relationCounts.cited_by ?? 0,
+            related: relationCounts.related ?? 0,
+          },
+          relations: relations.map((node) => ({
+            id: node.id,
+            title: boundedToolText(node.title, 150),
+            year: node.year,
+            relation: node.relation,
+            topic: boundedToolText(node.topic, 100) || null,
+            url: boundedToolText(node.url, 220),
+            citable: false,
+          })),
+          evidenceBoundary: "OpenAlex relationships are metadata-only Global Research Leads. They are not evidence until the underlying sources are separately opened and reviewed.",
+          nextHumanStep: traceable
+            ? "Review the visible relationship map, then carry selected leads into a Research Path as comparison targets—not as evidence."
+            : "Review the candidate in OpenAlex or continue without a global relationship claim.",
+        };
+      },
       draftResearchPassport: async (input, signal) => {
         if (input.source.startsWith("private:")) {
           throw new Error("Private paper sources cannot be included in a public Research Passport.");
@@ -7506,6 +7787,7 @@ export default function Home() {
           const priorRunSteps = webMcpActivityRef.current;
           const latestInspect = [...priorRunSteps].reverse().find((item) => item.tool === "inspect_paper_evidence");
           const latestDiscover = [...priorRunSteps].reverse().find((item) => item.tool === "discover_research");
+          const latestConnectionTrace = [...priorRunSteps].reverse().find((item) => item.tool === "trace_research_connections");
           const draftStep = recordWebMcpActivity(
             "draft_research_passport",
             `${exactEvidence.length} exact-page anchors · ${globalWorks.length} metadata-only leads · page review pending`,
@@ -7517,7 +7799,7 @@ export default function Home() {
             reviewedAt: null,
             stale: false,
             openedEvidenceIds: [],
-            runSteps: [latestDiscover, latestInspect, draftStep].filter((item): item is WebMcpActivity => Boolean(item)),
+            runSteps: [latestDiscover, latestInspect, latestConnectionTrace, draftStep].filter((item): item is WebMcpActivity => Boolean(item)),
             translationStatus,
             focus: input.focus,
             gapLens: input.gapLens,
@@ -7595,6 +7877,12 @@ export default function Home() {
       },
       buildResearchPath: async (input, signal) => {
         const collection: CollectionFilter = input.collection === "all" ? "" : input.collection;
+        const connectionResponse = citationMapRef.current.phase === "ready" ? citationMapRef.current.response : null;
+        const connectionTraceable = isTraceableOpenAlexMatch(connectionResponse?.match);
+        const selectedGlobalLeads = input.globalLeadIds.map((id) => connectionResponse?.nodes.find((node) => node.id === id)).filter((node): node is CitationMapResponse["nodes"][number] => Boolean(node));
+        if (input.globalLeadIds.length && (!connectionTraceable || selectedGlobalLeads.length !== input.globalLeadIds.length)) {
+          throw new Error("Trace and review the active paper connections before carrying these global leads into a Research Path.");
+        }
         const requestId = ++pathBuildRequestIdRef.current;
         setPathGoal(input.goal);
         setPathLevel(input.level);
@@ -7614,13 +7902,30 @@ export default function Home() {
               outcome: input.outcome,
               collection,
               knowledgeGaps: input.knowledgeGaps,
+              globalLeads: selectedGlobalLeads.map((lead) => ({
+                id: lead.id,
+                title: lead.title,
+                year: lead.year,
+                relation: lead.relation,
+                topic: lead.topic ?? null,
+                citable: false,
+              })),
             }),
           });
-          if (!isResearchPath(path)) throw new Error("Seed Research returned an invalid research path.");
+          if (!isResearchPath(path)) throw new Error("Seedy Research returned an invalid research path.");
           if (signal.aborted || pathBuildRequestIdRef.current !== requestId) {
             throw new DOMException("The Research Path build was cancelled.", "AbortError");
           }
-          setResearchPath(path);
+          const enrichedPath: ResearchPath = selectedGlobalLeads.length && connectionResponse ? {
+            ...path,
+            globalConnections: {
+              match: connectionResponse.match,
+              source: citationMapSourceRef.current,
+              evidenceBoundary: "OpenAlex relationships are metadata-only Global Research Leads and are not used as Research Path evidence.",
+              leads: selectedGlobalLeads,
+            },
+          } : path;
+          setResearchPath(enrichedPath);
           setCompletedPathStages([]);
           setPathStageMastery({});
           setPathCheckpointAnswers({});
@@ -7630,27 +7935,41 @@ export default function Home() {
             ? "WebMCP adapted the visible Research Path around the reviewed gaps."
             : "WebMCP built a visible Research Path for the learner to review.");
           trackProductEvent("research_path_created", {
-            level: path.level,
-            outcome: path.outcome,
-            paperCount: path.stages.reduce((count, stage) => count + stage.papers.length, 0),
+            level: enrichedPath.level,
+            outcome: enrichedPath.outcome,
+            paperCount: enrichedPath.stages.reduce((count, stage) => count + stage.papers.length, 0),
             collection: collection || "all",
           });
           if (input.knowledgeGaps.length) trackProductEvent("path_adapted", { gapCount: input.knowledgeGaps.length, completedStages: 0 });
-          recordWebMcpActivity("build_research_path", `${path.stages.length} stages · ${path.coverage?.paperCount ?? 0} matching papers`);
+          recordWebMcpActivity("build_research_path", `${enrichedPath.stages.length} stages · ${enrichedPath.coverage?.paperCount ?? 0} matching papers · ${selectedGlobalLeads.length} global leads`);
 
           return {
             ok: true,
             visibleView: "research_path",
-            goal: path.goal,
-            planningMode: path.planningMode,
-            coverage: path.coverage,
-            adaptedFromGaps: path.adaptedFromGaps ?? input.knowledgeGaps,
-            stages: path.stages.map((stage) => ({
+            goal: enrichedPath.goal,
+            planningMode: enrichedPath.planningMode,
+            coverage: enrichedPath.coverage,
+            adaptedFromGaps: enrichedPath.adaptedFromGaps ?? input.knowledgeGaps,
+            candidateGap: enrichedPath.candidateGap,
+            nextStudyProtocol: enrichedPath.nextStudyProtocol,
+            stages: enrichedPath.stages.map((stage) => ({
               id: stage.id,
               title: stage.title,
               objective: boundedToolText(stage.objective, 150),
               papers: stage.papers.map((paper) => boundedToolText(paper.title, 100)),
             })),
+            globalConnections: enrichedPath.globalConnections ? {
+              match: enrichedPath.globalConnections.match,
+              leads: enrichedPath.globalConnections.leads.map((lead) => ({
+                id: lead.id,
+                title: boundedToolText(lead.title, 140),
+                year: lead.year,
+                relation: lead.relation,
+                url: boundedToolText(lead.url, 220),
+                citable: false,
+              })),
+              evidenceBoundary: enrichedPath.globalConnections.evidenceBoundary,
+            } : null,
             nextHumanStep: "Open a stage paper, answer its checkpoint in your own words, then ask the agent to inspect learning progress.",
           };
         } catch (error) {
@@ -7701,23 +8020,27 @@ export default function Home() {
     setWebMcpStatus("checking");
     const proxy: SeedResearchWebMcpHandlers = {
       discoverResearch: (input, signal) => {
-        if (!webMcpHandlersRef.current) throw new Error("Seed Research is still preparing its site tools.");
+        if (!webMcpHandlersRef.current) throw new Error("Seedy Research is still preparing its site tools.");
         return webMcpHandlersRef.current.discoverResearch(input, signal);
       },
       inspectPaperEvidence: (input, signal) => {
-        if (!webMcpHandlersRef.current) throw new Error("Seed Research is still preparing its site tools.");
+        if (!webMcpHandlersRef.current) throw new Error("Seedy Research is still preparing its site tools.");
         return webMcpHandlersRef.current.inspectPaperEvidence(input, signal);
       },
+      traceResearchConnections: (input, signal) => {
+        if (!webMcpHandlersRef.current) throw new Error("SeedyMCP is still preparing its site tools.");
+        return webMcpHandlersRef.current.traceResearchConnections(input, signal);
+      },
       draftResearchPassport: (input, signal) => {
-        if (!webMcpHandlersRef.current) throw new Error("Seed Research is still preparing its site tools.");
+        if (!webMcpHandlersRef.current) throw new Error("Seedy Research is still preparing its site tools.");
         return webMcpHandlersRef.current.draftResearchPassport(input, signal);
       },
       buildResearchPath: (input, signal) => {
-        if (!webMcpHandlersRef.current) throw new Error("Seed Research is still preparing its site tools.");
+        if (!webMcpHandlersRef.current) throw new Error("Seedy Research is still preparing its site tools.");
         return webMcpHandlersRef.current.buildResearchPath(input, signal);
       },
       inspectLearningProgress: (signal) => {
-        if (!webMcpHandlersRef.current) throw new Error("Seed Research is still preparing its site tools.");
+        if (!webMcpHandlersRef.current) throw new Error("Seedy Research is still preparing its site tools.");
         return webMcpHandlersRef.current.inspectLearningProgress(signal);
       },
     };
@@ -7799,7 +8122,7 @@ export default function Home() {
       >
         <div className="mobileBrandStrip" aria-label="SEEDY status">
           <span className="mobileBrandName">SEEDY</span>
-          <span className="brandBadge">Seed Research</span>
+          <span className="brandBadge">Seedy Research</span>
         </div>
         {showComposer ? (
           <section className="searchStage">
@@ -7815,7 +8138,7 @@ export default function Home() {
                     ? `Search ${feedCitableTotal.toLocaleString("en-US")} page-cited papers across ${Math.max(feedCatalogTotal, feedCitableTotal).toLocaleString("en-US")} Thai research records.`
                     : "Search Thai research across local and global discovery sources. Compare findings. Verify every supported claim on the original page."}
                 </p>
-                <div className="corpusProof" aria-label="Seed Research corpus coverage">
+                <div className="corpusProof" aria-label="Seedy Research corpus coverage">
                   <span><strong>{feedCitableTotal ? feedCitableTotal.toLocaleString("en-US") : "—"}</strong> citable papers</span>
                   <span><strong>{feedTotalSections ? feedTotalSections.toLocaleString("en-US") : "—"}</strong> page-linked sections</span>
                   <span><strong>{feedTotalChunks ? feedTotalChunks.toLocaleString("en-US") : "—"}</strong> cited passages</span>
@@ -7826,7 +8149,7 @@ export default function Home() {
                 {webMcpStatus === "ready" ? (
                   <p className="webMcpStatus" role="status" aria-label="WebMCP site tools ready">
                     <span aria-hidden />
-                    WebMCP active · 5 site tools · shared human-agent view
+                    SeedyMCP active · 6 site tools · shared human-agent view
                   </p>
                 ) : null}
               </>
@@ -8051,6 +8374,7 @@ export default function Home() {
         detail={paperDetail}
         status={paperDetailStatus}
         error={paperDetailError}
+        citationMap={citationMap}
         translation={paperDetail ? paperTranslations[cardKey(paperDetail.document)] : undefined}
         paperLanguage={paperLanguage}
         highlightedEvidence={paperEvidenceTarget}
@@ -8061,6 +8385,9 @@ export default function Home() {
         onOpenRelated={(card) => void openPaperDetail(card)}
         onToggleBookmark={toggleBookmark}
         onSaveLibrary={saveLibraryDetails}
+        onLoadCitationMap={() => {
+          if (paperDetail?.document) void loadCitationMapForPaper(paperDetail.document).catch(() => undefined);
+        }}
         onPaperLanguageChange={changePaperLanguage}
       />
     </div>

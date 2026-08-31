@@ -1,9 +1,9 @@
-# CivilMCP Agent Map
+# Seedy Research Agent Map
 
-This repository is an agent-legible system of record for CivilMCP. Start here, then open only the linked docs needed for the task.
+This repository is an agent-legible system of record for Seedy Research. Start here, then open only the linked docs needed for the task.
 
 ## Product
-CivilMCP is the evidence-engine substrate for Seed Research by SEEDY, a Thai-first Research Preview that begins with civil engineering. The user-facing product is a Next.js research/learning app with five browser-native WebMCP site tools, backed by a Python FastAPI remote MCP retrieval server and Supabase pgvector. Its WebMCP hero flow is the Evidence-bounded Research Passport: exact-page Thai evidence with an optional bounded English rendering, OpenAlex metadata-only discovery leads, one unvalidated candidate gap, mandatory reopening and acknowledgment of every selected page, then Markdown export.
+Seedy Research is a Thai-first research product built for whole Thai research and beginning with the Civil Research Pack as its first proof vertical. SeedyMCP is the shared human-agent browser layer: six site tools move from Thai discovery to exact-page or lawful full-paper inspection, exact-DOI global connection tracing, a Thai-to-global Research Path ending in a candidate gap and Next-Study Protocol, and a Research Passport review/export checkpoint. The Python FastAPI remote MCP service, Supabase pgvector store, `civil_*` data objects, stable routes, and deployment domains remain compatibility contracts until a separately verified migration.
 
 ## Source Of Truth
 - Architecture: `docs/ARCHITECTURE.md`

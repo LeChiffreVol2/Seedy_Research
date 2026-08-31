@@ -4,8 +4,8 @@ import { ArrowLeft, BookOpenCheck, Braces, Database, Gauge, KeyRound, Network, S
 import styles from "./developers.module.css";
 
 export const metadata: Metadata = {
-  title: "WebMCP & Research API | Seed Research by SEEDY",
-  description: "Collaborate with browser agents through WebMCP or connect independent clients to Thai page-cited evidence through the Seed Research MCP API.",
+  title: "SeedyMCP & Research API | Seedy Research",
+  description: "Collaborate with browser agents through SeedyMCP or connect independent clients to Thai page-cited evidence through the Seedy Research MCP API.",
 };
 
 const endpoint = "https://civil-mcp-server.vercel.app/v2/mcp";
@@ -23,13 +23,13 @@ export default function DevelopersPage() {
     <main className={styles.page}>
       <nav className={styles.nav}><a href="/"><ArrowLeft size={15} aria-hidden /> Back to SEEDY</a><span>WebMCP + Research API</span></nav>
       <section className={styles.hero}>
-        <p className={styles.eyebrow}>SEEDY · Seed Research</p>
+        <p className={styles.eyebrow}>SEEDY · Seedy Research</p>
         <h1>Thai research evidence for people and agents.</h1>
-        <p>Collaborate with an agent in the live page through five browser-native WebMCP tools—including an evidence-bounded Thai → Global Research Passport—or connect an independent research client to the bounded remote MCP endpoint.</p>
+        <p>Collaborate with an agent in the live page through six browser-native SeedyMCP tools—including an evidence-bounded Thai → Global Research Passport and a fail-closed OpenAlex connection trace—or connect an independent research client to the bounded remote MCP endpoint.</p>
         <div className={styles.endpoint}><div><span>Streamable HTTP</span><code>{endpoint}</code></div><a href="/?view=settings">Create personal key</a></div>
       </section>
 
-      <section className={styles.proof} aria-label="Seed Research API trust model">
+      <section className={styles.proof} aria-label="Seedy Research API trust model">
         <article><Database size={18} aria-hidden /><strong>Thai-first corpus</strong><span>NCCE and student research plus reviewed-source Thai journal metadata.</span></article>
         <article><BookOpenCheck size={18} aria-hidden /><strong>Exact-page evidence</strong><span>Evidence packets remain separate from metadata-only discovery records.</span></article>
         <article><ShieldCheck size={18} aria-hidden /><strong>Owner-scoped access</strong><span>Revocable personal keys today; OAuth 2.1 for supported interactive clients.</span></article>
@@ -38,8 +38,8 @@ export default function DevelopersPage() {
       <section className={styles.section}>
         <div><p className={styles.eyebrow}>Two agent surfaces</p><h2>Share the page, or work remotely.</h2><p className={styles.sectionLead}>WebMCP and remote MCP reuse the same evidence rules but solve different jobs.</p></div>
         <div className={styles.connectGrid}>
-          <article><Network size={19} aria-hidden /><h3>WebMCP · shared browser</h3><p>Open Explore with ChatGPT or Chrome. Five site tools discover research, open exact-page evidence, draft a review-gated Research Passport, build a Research Path, and inspect learning progress while the person watches and verifies the same page.</p><a href="/?view=explore">Open the WebMCP research surface</a></article>
-          <article><Braces size={19} aria-hidden /><h3>Remote MCP · independent client</h3><p>Use the stateless endpoint for agents that need research and library tools without an open Seed Research page.</p><code>{endpoint}</code></article>
+          <article><Network size={19} aria-hidden /><h3>SeedyMCP · shared browser</h3><p>Open Explore with ChatGPT or Chrome. Six site tools discover research, open exact-page evidence, trace guarded global connections, build a Research Path, draft a review-gated Passport, and inspect progress while the person verifies the same page.</p><a href="/?view=explore">Open the SeedyMCP research surface</a></article>
+          <article><Braces size={19} aria-hidden /><h3>Remote MCP · independent client</h3><p>Use the stateless endpoint for agents that need research and library tools without an open Seedy Research page.</p><code>{endpoint}</code></article>
         </div>
       </section>
 
@@ -72,7 +72,7 @@ export default function DevelopersPage() {
 
       <section className={styles.boundary}>
         <Braces size={21} aria-hidden />
-        <div><h2>Evidence and metadata never blur together.</h2><p>Indexed Seed Research packets may support claims with their returned pages. ThaiJO and OpenAlex records remain discovery metadata until rights, extraction, provenance, and page-mapping gates pass.</p></div>
+        <div><h2>Evidence and metadata never blur together.</h2><p>Indexed Seedy Research packets may support claims with their returned pages. ThaiJO and OpenAlex records remain discovery metadata until rights, extraction, provenance, and page-mapping gates pass.</p></div>
       </section>
 
       <footer className={styles.footer}><span>Research evidence, not professional advice.</span><div><a href="/privacy">Privacy</a><a href="/terms">Terms</a><a href="/support">Support</a></div></footer>

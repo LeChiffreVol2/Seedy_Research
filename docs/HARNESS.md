@@ -25,7 +25,7 @@ Use the root `Makefile` for normal release work. The direct harness commands rem
 
 ## WebMCP browser contract
 
-`web/tests/e2e/webmcp.spec.ts` installs a deterministic browser-side `document.modelContext` host before application hydration. It requires the exact five-tool contract, checks read-only and untrusted-content annotations, then executes discovery, exact-page evidence opening, Research Passport drafting/review/export, Research Path creation, and progress inspection. The test must verify the corresponding visible UI state; a source-string assertion alone is not sufficient.
+`web/tests/e2e/webmcp.spec.ts` installs a deterministic browser-side `document.modelContext` host before application hydration. It requires the exact six-tool contract, checks read-only and untrusted-content annotations, then executes discovery, exact-page evidence opening, fail-closed OpenAlex connection tracing, Research Passport drafting/review/export, Thai-to-global Research Path creation, and progress inspection. The test must verify the corresponding visible UI state; a source-string assertion alone is not sufficient.
 
 The Passport assertions are part of the release contract: a metadata-only
 record cannot be opened as evidence; the draft must reject an evidence ID that
@@ -62,7 +62,7 @@ The August 31 production promotion separately recorded migration
 table grants, and READY Vercel deployments. For later releases, rerun the focused
 suites against the frozen candidate and manually
 confirm that `inspect_paper_evidence` reports the lawful access state and verified reader anchor without
-including full page text and that the page still registers exactly five WebMCP
+including full page text and that the page still registers exactly six WebMCP
 site tools.
 
 ## Report Contract

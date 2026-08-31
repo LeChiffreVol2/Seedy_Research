@@ -15,8 +15,8 @@ const body = IBM_Plex_Sans_Thai({
 });
 
 export const metadata: Metadata = {
-  title: "Seed Research by SEEDY | Verifiable Thai Research",
-  description: "Discover Thai research, learn from evidence, and verify every AI answer against the original page.",
+  title: "Seedy Research | Thai Research, Connected Globally",
+  description: "Follow Thai research from exact-page evidence to metadata-only global connections, a candidate gap, and a testable next study.",
   icons: {
     icon: "/icon.svg",
   },

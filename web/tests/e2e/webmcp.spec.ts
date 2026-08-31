@@ -25,6 +25,7 @@ const researchCard = {
   evidenceStatus: "indexed",
   citable: true,
   canonicalUrl: "https://example.org/NCCE29_TRL42",
+  doi: "10.1000/thai-road",
   authors: ["Demo Researcher"],
   discoveryLayer: "evidence",
 };
@@ -152,6 +153,52 @@ test.beforeEach(async ({ page }) => {
       }),
     });
   });
+  await page.route("**/api/citation-map", async (route) => {
+    const body = route.request().postDataJSON() as { doi?: string | null; title?: string; year?: number | null };
+    expect(body).toMatchObject({ title: researchCard.title, year: 2024 });
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({
+        status: "connected",
+        provider: "openalex",
+        generatedAt: "2026-09-01T00:00:00.000Z",
+        searchUrl: "https://openalex.org/works?search=road%20safety",
+        match: {
+          status: "verified",
+          basis: "doi",
+          requiresHumanReview: false,
+          titleSimilarity: 1,
+          yearDelta: 0,
+          matchedOpenAlexId: "https://openalex.org/W123",
+        },
+        seed: {
+          id: "https://openalex.org/W123",
+          title: researchCard.title,
+          year: 2024,
+          citedByCount: 18,
+          url: "https://openalex.org/W123",
+          relation: "seed",
+          topic: "Road safety",
+          authors: ["Global Researcher"],
+          institutions: ["Global Road Safety Lab"],
+          citable: false,
+        },
+        nodes: [{
+          id: "https://openalex.org/W456",
+          title: "Global evidence on road-system safety",
+          year: 2025,
+          citedByCount: 9,
+          url: "https://openalex.org/W456",
+          relation: "cited_by",
+          topic: "Road safety",
+          authors: ["Second Researcher"],
+          institutions: ["Global Road Safety Lab"],
+          citable: false,
+        }],
+      }),
+    });
+  });
   await page.route("**/api/papers/**", async (route) => {
     const isDiscoveryOnly = route.request().url().includes("THAIJO-demo");
     await route.fulfill({
@@ -219,8 +266,22 @@ test.beforeEach(async ({ page }) => {
     });
   });
   await page.route("**/api/research-path", async (route) => {
-    const body = route.request().postDataJSON() as { goal?: string; level?: string; outcome?: string; knowledgeGaps?: string[] };
-    const stages = ["Map the field", "Inspect the methods", "Compare the evidence", "Build your position"].map((title, index) => ({
+    const body = route.request().postDataJSON() as {
+      goal?: string;
+      level?: string;
+      outcome?: string;
+      knowledgeGaps?: string[];
+      globalLeads?: Array<{ id?: string; title?: string; relation?: string; citable?: boolean }>;
+    };
+    if (body.globalLeads?.length) {
+      expect(body.globalLeads).toEqual([expect.objectContaining({
+        id: "https://openalex.org/W456",
+        title: "Global evidence on road-system safety",
+        relation: "cited_by",
+        citable: false,
+      })]);
+    }
+    const stages = ["Map the Thai field", "Inspect full-paper evidence", "Connect Thai and global leads", "Frame the gap and next study"].map((title, index) => ({
       id: `stage-${index + 1}`,
       title,
       objective: `Use Thai exact-page evidence to complete ${title.toLowerCase()}.`,
@@ -252,6 +313,23 @@ test.beforeEach(async ({ page }) => {
         coverage: { status: "strong", paperCount: 1, message: "One relevant Thai paper." },
         planningMode: "model",
         model: "gpt-5.6-luna",
+        candidateGap: {
+          status: "candidate_unvalidated",
+          statement: "Whether the Thai road-safety finding transfers across urban contexts remains unvalidated.",
+          basis: "Bounded Thai evidence plus one metadata-only OpenAlex comparison lead.",
+          missingValidation: ["Review the selected global paper full text.", "Test the relation in another Thai context."],
+          noveltyEstablished: false,
+        },
+        nextStudyProtocol: {
+          status: "draft_framework",
+          researchQuestion: "Does the Thai road-system factor pattern recur in a second urban context?",
+          contextOrPopulation: "A bounded second Thai urban road network.",
+          dataNeeded: ["Crash records", "Road-environment observations"],
+          method: "Pre-register a matched observational comparison.",
+          validationPlan: "Compare held-out locations and inspect the selected global lead's full text.",
+          falsificationCondition: "The proposed factor pattern does not recur under the same operational definitions.",
+          evidenceBoundary: "Thai page-linked packets support local claims; OpenAlex records remain metadata-only leads.",
+        },
         generatedAt: "2026-08-31T00:00:00.000Z",
         stages,
         openAlex: { status: "connected", searchUrl: "https://openalex.org", works: [] },
@@ -280,11 +358,13 @@ test("registers non-trivial WebMCP tools and keeps agent actions visible to the 
     "draft_research_passport",
     "inspect_learning_progress",
     "inspect_paper_evidence",
+    "trace_research_connections",
   ]);
   expect(definitions.every((tool) => tool.annotations?.untrustedContentHint === true)).toBe(true);
   expect(definitions.find((tool) => tool.name === "build_research_path")?.annotations?.readOnlyHint).toBe(false);
   expect(definitions.find((tool) => tool.name === "draft_research_passport")?.annotations?.readOnlyHint).toBe(false);
   expect(definitions.find((tool) => tool.name === "discover_research")?.annotations?.readOnlyHint).toBe(true);
+  expect(definitions.find((tool) => tool.name === "trace_research_connections")?.annotations?.readOnlyHint).toBe(true);
 
   const discovery = await page.evaluate(async () => {
     const tools = (window as unknown as { __seedResearchWebMcpTools: Map<string, { execute: (input: unknown) => Promise<unknown> }> }).__seedResearchWebMcpTools;
@@ -305,6 +385,17 @@ test("registers non-trivial WebMCP tools and keeps agent actions visible to the 
     }
   });
   expect(discoveryOnlyError).toContain("discovery-only");
+
+  const connectionWithoutEvidenceError = await page.evaluate(async () => {
+    const tools = (window as unknown as { __seedResearchWebMcpTools: Map<string, { execute: (input: unknown) => Promise<unknown> }> }).__seedResearchWebMcpTools;
+    try {
+      await tools.get("trace_research_connections")?.execute({ source: "NCCE29_TRL42.md" });
+      return "";
+    } catch (error) {
+      return error instanceof Error ? error.message : String(error);
+    }
+  });
+  expect(connectionWithoutEvidenceError).toContain("Open this paper and its evidence");
 
   const evidence = await page.evaluate(async () => {
     const tools = (window as unknown as { __seedResearchWebMcpTools: Map<string, { execute: (input: unknown) => Promise<unknown> }> }).__seedResearchWebMcpTools;
@@ -333,6 +424,20 @@ test("registers non-trivial WebMCP tools and keeps agent actions visible to the 
     "href",
     "/papers/NCCE29_TRL42.md#asset-webmcp-native-page-2067",
   );
+
+  const connections = await page.evaluate(async () => {
+    const tools = (window as unknown as { __seedResearchWebMcpTools: Map<string, { execute: (input: unknown) => Promise<unknown> }> }).__seedResearchWebMcpTools;
+    return tools.get("trace_research_connections")?.execute({ source: "NCCE29_TRL42.md" });
+  }) as {
+    match?: { status?: string; basis?: string; requiresHumanReview?: boolean };
+    relations?: Array<{ relation?: string; citable?: boolean }>;
+    evidenceBoundary?: string;
+  };
+  expect(connections.match).toMatchObject({ status: "verified", basis: "doi", requiresHumanReview: false });
+  expect(connections.relations).toEqual([expect.objectContaining({ relation: "cited_by", citable: false })]);
+  expect(connections.evidenceBoundary).toContain("metadata-only");
+  await expect(page.getByText("Verified DOI OpenAlex match", { exact: true })).toBeVisible();
+  await expect(page.getByText("Global evidence on road-system safety", { exact: true })).toBeVisible();
 
   const privatePassportError = await page.evaluate(async () => {
     const tools = (window as unknown as { __seedResearchWebMcpTools: Map<string, { execute: (input: unknown) => Promise<unknown> }> }).__seedResearchWebMcpTools;
@@ -434,13 +539,22 @@ test("registers non-trivial WebMCP tools and keeps agent actions visible to the 
   expect((await exportPassport.boundingBox())?.height ?? 0).toBeGreaterThanOrEqual(44);
   await page.setViewportSize({ width: 1280, height: 720 });
 
-  await page.evaluate(async () => {
+  const arbitraryLeadError = await page.evaluate(async () => {
     const tools = (window as unknown as { __seedResearchWebMcpTools: Map<string, { execute: (input: unknown) => Promise<unknown> }> }).__seedResearchWebMcpTools;
-    return tools.get("discover_research")?.execute({ query: "updated road safety question", scope: "thai_and_global" });
+    try {
+      await tools.get("build_research_path")?.execute({
+        goal: "Understand how Thai cities can reduce severe road crashes",
+        level: "foundation",
+        outcome: "study_plan",
+        collection: "ncce",
+        globalLeadIds: ["https://openalex.org/W999999"],
+      });
+      return "";
+    } catch (error) {
+      return error instanceof Error ? error.message : String(error);
+    }
   });
-  await expect(passportPanel.getByText("Out of date · redraft required", { exact: true })).toBeVisible();
-  await expect(exportPassport).toBeDisabled();
-  await expect(passportPanel.getByText("3 completed calls", { exact: true })).toBeVisible();
+  expect(arbitraryLeadError).toContain("Trace and review the active paper connections");
 
   const path = await page.evaluate(async () => {
     const tools = (window as unknown as { __seedResearchWebMcpTools: Map<string, { execute: (input: unknown) => Promise<unknown> }> }).__seedResearchWebMcpTools;
@@ -449,20 +563,100 @@ test("registers non-trivial WebMCP tools and keeps agent actions visible to the 
       level: "foundation",
       outcome: "study_plan",
       collection: "ncce",
+      globalLeadIds: ["https://openalex.org/W456"],
     });
-  }) as { stages?: unknown[] };
+  }) as {
+    stages?: unknown[];
+    globalConnections?: { leads?: Array<{ id?: string; citable?: boolean }> };
+    candidateGap?: { status?: string; noveltyEstablished?: boolean };
+    nextStudyProtocol?: { status?: string; researchQuestion?: string };
+  };
   expect(path.stages).toHaveLength(4);
+  expect(path.globalConnections?.leads).toEqual([
+    expect.objectContaining({ id: "https://openalex.org/W456", citable: false }),
+  ]);
+  expect(path.candidateGap).toMatchObject({ status: "candidate_unvalidated", noveltyEstablished: false });
+  expect(path.nextStudyProtocol).toMatchObject({ status: "draft_framework" });
   await expect(page.getByRole("heading", { name: "Understand how Thai cities can reduce severe road crashes" })).toBeVisible();
   await expect(page.getByLabel("0% of research path mastered")).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Candidate gap · not proven novel" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Next-Study Protocol" })).toBeVisible();
+  await expect(page.getByText("Does the Thai road-system factor pattern recur in a second urban context?", { exact: true })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Global comparison leads" })).toBeVisible();
+  await expect(page.getByText("Global evidence on road-system safety", { exact: true })).toBeVisible();
 
   const progress = await page.evaluate(async () => {
     const tools = (window as unknown as { __seedResearchWebMcpTools: Map<string, { execute: (input: unknown) => Promise<unknown> }> }).__seedResearchWebMcpTools;
     return tools.get("inspect_learning_progress")?.execute({});
   }) as { state?: string; masteredStages?: number; privacy?: string };
   expect(progress).toMatchObject({ state: "in_progress", masteredStages: 0, privacy: "Learner free-text answers are intentionally omitted." });
+
+  await page.evaluate(async () => {
+    const tools = (window as unknown as { __seedResearchWebMcpTools: Map<string, { execute: (input: unknown) => Promise<unknown> }> }).__seedResearchWebMcpTools;
+    return tools.get("discover_research")?.execute({ query: "updated road safety question", scope: "thai_and_global" });
+  });
+  await expect(passportPanel.getByText("Out of date · redraft required", { exact: true })).toBeVisible();
+  await expect(exportPassport).toBeDisabled();
+  await passportPanel.getByText("Inspect WebMCP run").click();
+  await expect(passportPanel.getByText("4 completed calls", { exact: true })).toBeVisible();
 });
 
-test("keeps source-hosted full text outside the exact-five WebMCP evidence result", async ({ page }) => {
+test("fails closed on a candidate OpenAlex match until a human confirms it", async ({ page }) => {
+  await page.route("**/api/citation-map", async (route) => {
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({
+        status: "connected",
+        provider: "openalex",
+        generatedAt: "2026-09-01T00:00:00.000Z",
+        searchUrl: "https://openalex.org/works?search=road%20safety",
+        match: {
+          status: "candidate",
+          basis: "title",
+          requiresHumanReview: true,
+          titleSimilarity: 0.82,
+          yearDelta: 3,
+          matchedOpenAlexId: "https://openalex.org/W-CANDIDATE",
+        },
+        seed: {
+          id: "https://openalex.org/W-CANDIDATE",
+          title: "Possible road safety match",
+          year: 2021,
+          citedByCount: 2,
+          url: "https://openalex.org/W-CANDIDATE",
+          relation: "seed",
+          citable: false,
+        },
+        // Even a malformed provider response cannot make candidate relations
+        // visible or return them to the browser agent before confirmation.
+        nodes: [{
+          id: "https://openalex.org/W-MUST-STAY-HIDDEN",
+          title: "Relationship from an unconfirmed candidate",
+          year: 2022,
+          citedByCount: 1,
+          url: "https://openalex.org/W-MUST-STAY-HIDDEN",
+          relation: "related",
+          citable: false,
+        }],
+      }),
+    });
+  });
+  await page.goto("/?view=explore");
+  await expect(page.getByLabel("WebMCP site tools ready")).toBeVisible({ timeout: 15_000 });
+  const result = await page.evaluate(async () => {
+    const tools = (window as unknown as { __seedResearchWebMcpTools: Map<string, { execute: (input: unknown) => Promise<unknown> }> }).__seedResearchWebMcpTools;
+    await tools.get("inspect_paper_evidence")?.execute({ source: "NCCE29_TRL42.md", page: 2067 });
+    return tools.get("trace_research_connections")?.execute({ source: "NCCE29_TRL42.md" });
+  }) as { match?: { status?: string; requiresHumanReview?: boolean }; relations?: unknown[] };
+
+  expect(result.match).toMatchObject({ status: "candidate", requiresHumanReview: true });
+  expect(result.relations).toEqual([]);
+  await expect(page.getByText("A candidate OpenAlex match needs human confirmation", { exact: false })).toBeVisible();
+  await expect(page.getByText("Relationship from an unconfirmed candidate", { exact: true })).toHaveCount(0);
+});
+
+test("keeps source-hosted full text outside the bounded WebMCP evidence result", async ({ page }) => {
   const officialUrl = "https://publisher.example.org/papers/road-safety";
   const nonNativePageText = "SOURCE-HOSTED PAGE TEXT MUST NEVER ENTER THE WEBMCP RESULT";
   await page.route("**/api/papers/**/reader**", async (route) => {
@@ -511,6 +705,7 @@ test("keeps source-hosted full text outside the exact-five WebMCP evidence resul
     "draft_research_passport",
     "inspect_learning_progress",
     "inspect_paper_evidence",
+    "trace_research_connections",
   ]);
   expect(result.evidence?.readerAccess).toMatchObject({
     mode: "source_hosted",

@@ -16,12 +16,17 @@ export type InspectPaperEvidenceInput = {
   page?: number;
 };
 
+export type TraceResearchConnectionsInput = {
+  source: string;
+};
+
 export type BuildResearchPathInput = {
   goal: string;
   level: WebMcpPathLevel;
   outcome: WebMcpPathOutcome;
   collection: WebMcpCollection;
   knowledgeGaps: string[];
+  globalLeadIds: string[];
 };
 
 export type DraftResearchPassportInput = {
@@ -34,6 +39,7 @@ export type DraftResearchPassportInput = {
 export type SeedResearchWebMcpHandlers = {
   discoverResearch: (input: DiscoverResearchInput, signal: AbortSignal) => Promise<unknown>;
   inspectPaperEvidence: (input: InspectPaperEvidenceInput, signal: AbortSignal) => Promise<unknown>;
+  traceResearchConnections: (input: TraceResearchConnectionsInput, signal: AbortSignal) => Promise<unknown>;
   draftResearchPassport: (input: DraftResearchPassportInput, signal: AbortSignal) => Promise<unknown>;
   buildResearchPath: (input: BuildResearchPathInput, signal: AbortSignal) => Promise<unknown>;
   inspectLearningProgress: (signal: AbortSignal) => Promise<unknown>;
@@ -73,6 +79,7 @@ declare global {
 export const SEED_RESEARCH_WEBMCP_TOOL_NAMES = [
   "discover_research",
   "inspect_paper_evidence",
+  "trace_research_connections",
   "draft_research_passport",
   "build_research_path",
   "inspect_learning_progress",
@@ -147,9 +154,15 @@ function parseInspectPaperEvidence(input: unknown): InspectPaperEvidenceInput {
   };
 }
 
+function parseTraceResearchConnections(input: unknown): TraceResearchConnectionsInput {
+  const record = inputRecord(input);
+  assertAllowedKeys(record, ["source"]);
+  return { source: requiredText(record, "source", 1, 320) };
+}
+
 function parseBuildResearchPath(input: unknown): BuildResearchPathInput {
   const record = inputRecord(input);
-  assertAllowedKeys(record, ["goal", "level", "outcome", "collection", "knowledgeGaps"]);
+  assertAllowedKeys(record, ["goal", "level", "outcome", "collection", "knowledgeGaps", "globalLeadIds"]);
   const rawGaps = record.knowledgeGaps;
   if (rawGaps != null && !Array.isArray(rawGaps)) throw new Error("knowledgeGaps must be an array of strings.");
   const knowledgeGaps = (rawGaps ?? []).map((value) => {
@@ -159,12 +172,23 @@ function parseBuildResearchPath(input: unknown): BuildResearchPathInput {
     return gap;
   });
   if (knowledgeGaps.length > 4) throw new Error("knowledgeGaps supports at most four items.");
+  const rawGlobalLeadIds = record.globalLeadIds;
+  if (rawGlobalLeadIds != null && !Array.isArray(rawGlobalLeadIds)) throw new Error("globalLeadIds must be an array of OpenAlex work IDs.");
+  const globalLeadIds = (rawGlobalLeadIds ?? []).map((value) => {
+    if (typeof value !== "string") throw new Error("Each global lead ID must be text.");
+    const id = value.trim();
+    if (!/^https:\/\/openalex\.org\/W\d+$/i.test(id) || id.length > 320) throw new Error("Each global lead ID must be a valid OpenAlex work URL.");
+    return id;
+  });
+  if (globalLeadIds.length > 4) throw new Error("globalLeadIds supports at most four items.");
+  if (new Set(globalLeadIds).size !== globalLeadIds.length) throw new Error("globalLeadIds must be unique.");
   return {
     goal: requiredText(record, "goal", 8, 280),
     level: enumValue(record, "level", ["foundation", "applied", "research"], "foundation"),
     outcome: enumValue(record, "outcome", ["literature_review", "study_plan", "decision_brief"], "study_plan"),
     collection: enumValue(record, "collection", ["all", "ncce", "ce_project"], "all"),
     knowledgeGaps: [...new Set(knowledgeGaps)],
+    globalLeadIds,
   };
 }
 
@@ -202,7 +226,7 @@ export async function registerSeedResearchWebMcpTools(
     {
       name: "discover_research",
       title: "Discover Thai and global research",
-      description: "Search Seed Research for Thai papers and optional global OpenAlex metadata. Use for topic discovery; it updates the shared Explore view and keeps page-citable evidence separate from discovery-only records.",
+      description: "Search Seedy Research for Thai papers and optional global OpenAlex metadata. Use for topic discovery; it updates the shared Explore view and keeps page-citable evidence separate from discovery-only records.",
       inputSchema: {
         type: "object",
         properties: {
@@ -219,7 +243,7 @@ export async function registerSeedResearchWebMcpTools(
     {
       name: "inspect_paper_evidence",
       title: "Inspect evidence and lawful full-paper access",
-      description: "Open one Seed Research paper on the shared page, return bounded evidence excerpts with source pages, and report the strongest lawful reader mode without returning full-page text to the agent. Use after discovery when the user wants to verify a paper or supported claim.",
+      description: "Open one Seedy Research paper on the shared page, return bounded evidence excerpts with source pages, and report the strongest lawful reader mode without returning full-page text to the agent. Use after discovery when the user wants to verify a paper or supported claim.",
       inputSchema: {
         type: "object",
         properties: {
@@ -232,6 +256,21 @@ export async function registerSeedResearchWebMcpTools(
       },
       annotations: { readOnlyHint: true, untrustedContentHint: true },
       execute: async (input, options) => handlers.inspectPaperEvidence(parseInspectPaperEvidence(input), signalFor(options)),
+    },
+    {
+      name: "trace_research_connections",
+      title: "Trace Thai-to-global research connections",
+      description: "Trace the active Thai paper into a bounded OpenAlex citation neighborhood. Use only after opening the paper evidence. The shared page shows match confidence plus cited, citing, and related works; every returned global node remains metadata-only until separately reviewed as evidence.",
+      inputSchema: {
+        type: "object",
+        properties: {
+          source: { type: "string", minLength: 1, maxLength: 320, description: "Exact source identifier of the active Thai paper opened with inspect_paper_evidence." },
+        },
+        required: ["source"],
+        additionalProperties: false,
+      },
+      annotations: { readOnlyHint: true, untrustedContentHint: true },
+      execute: async (input, options) => handlers.traceResearchConnections(parseTraceResearchConnections(input), signalFor(options)),
     },
     {
       name: "draft_research_passport",
@@ -254,7 +293,7 @@ export async function registerSeedResearchWebMcpTools(
     {
       name: "build_research_path",
       title: "Build an evidence-backed research path",
-      description: "Create or adapt a visible four-stage Research Path from Thai evidence. Use when the user wants a study plan, literature-review path, or project brief; optional learning gaps personalize the next path.",
+      description: "Create or adapt a visible Thai-to-global Research Path: map the Thai field, inspect page/full-paper evidence, connect selected metadata-only global leads, then frame a candidate gap and falsifiable Next-Study Protocol. Optional learning gaps personalize the next path.",
       inputSchema: {
         type: "object",
         properties: {
@@ -263,6 +302,7 @@ export async function registerSeedResearchWebMcpTools(
           outcome: { type: "string", enum: ["literature_review", "study_plan", "decision_brief"], description: "Artifact the learner wants to produce." },
           collection: { type: "string", enum: ["all", "ncce", "ce_project"], description: "Thai evidence collection; defaults to all." },
           knowledgeGaps: { type: "array", maxItems: 4, items: { type: "string", minLength: 2, maxLength: 180 }, description: "Optional evidence-backed gaps from a prior checkpoint." },
+          globalLeadIds: { type: "array", maxItems: 4, uniqueItems: true, items: { type: "string", pattern: "^https://openalex\\.org/W[0-9]+$" }, description: "Optional metadata-only OpenAlex work IDs returned by trace_research_connections to carry as global comparison leads." },
         },
         required: ["goal"],
         additionalProperties: false,

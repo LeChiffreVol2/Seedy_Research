@@ -3,8 +3,8 @@ import type { Metadata } from "next";
 import { LegalShell } from "@/components/legal-shell";
 
 export const metadata: Metadata = {
-  title: "Privacy | Seed Research by SEEDY",
-  description: "How Seed Research handles account, research, and usage data.",
+  title: "Privacy | Seedy Research",
+  description: "How Seedy Research handles account, research, and usage data.",
 };
 
 export default function PrivacyPage() {
@@ -12,7 +12,7 @@ export default function PrivacyPage() {
     <LegalShell
       eyebrow="Privacy"
       title="Your research data stays tied to your account."
-      intro="Effective August 12, 2026. Seed Research by SEEDY is a public research preview, and this notice describes the data needed to operate it."
+      intro="Effective August 12, 2026. Seedy Research is a public research preview, and this notice describes the data needed to operate it."
     >
       <section>
         <h2>What we store</h2>

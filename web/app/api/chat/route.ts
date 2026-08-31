@@ -989,7 +989,7 @@ async function generateRunningSummary(
       model: resolveRouterLanguageModel(routerProvider, routerModel),
       abortSignal: AbortSignal.timeout(ROUTER_TIMEOUT_MS),
       system:
-        "You compact long Seed Research chat history into durable working memory. " +
+        "You compact long Seedy Research chat history into durable working memory. " +
         "Keep user goals, decisions, unresolved questions, important paper/source references, and constraints. " +
         "Do not include raw chunks, filler, or hidden system details. Write concise Thai unless source text requires English.",
       prompt: [
@@ -1416,7 +1416,7 @@ async function planContextWithDeepSeek(question: string, routerModel: string): P
           {
             role: "system",
             content:
-              "You are a bounded retrieval router for Seed Research. Return json only. " +
+              "You are a bounded retrieval router for Seedy Research. Return json only. " +
               ROUTER_RULES +
               "Use this exact JSON shape: " +
               "{\"intent\":\"simple_lookup|compare|summarize|methodology|citation_search\"," +
@@ -1904,7 +1904,7 @@ function buildAnswerSystemPrompt(
         ]
       : [];
   return [
-    "You are Seed Research by SEEDY, a production-grade evidence engine for research papers.",
+    "You are Seedy Research, a production-grade evidence engine for research papers.",
     "Answer in Thai unless the user explicitly asks otherwise.",
     "Use only the provided evidence packets when MCP context is available. Do not invent paper details.",
     "Never expose raw chunks, OCR noise, similarity scores, tool calls, context stats, or hidden routing notes.",
@@ -2305,7 +2305,7 @@ async function generateMissionArtifact(
       abortSignal: AbortSignal.timeout(ANSWER_TIMEOUT_MS),
       schema: MissionArtifactSchema,
       system: [
-        "You are Seed Research by SEEDY, a bounded Evidence Mission synthesizer.",
+        "You are Seedy Research, a bounded Evidence Mission synthesizer.",
         "Use only the supplied evidence packets for factual claims. Never invent a paper, page, method, result, or E-number.",
         "Write Thai unless the user explicitly requested another language.",
         "Distinguish finding from interpretation. Use 'insufficient' when coverage is too weak.",
@@ -2369,7 +2369,7 @@ function buildMissionMarkdown(artifact: MissionArtifact): string {
     "",
     `**Evidence verdict — ${missionVerdictLabel(artifact.verdict.status)}:** ${rationale}`,
     "",
-    "Seed Research วางแผน ค้น เปรียบเทียบ และตรวจ page provenance ภายใต้งบ tool/step ที่จำกัดแล้ว โครงสร้างหลักฐาน, Thailand → World bridge และ learning checkpoints อยู่ใน Evidence Brief ด้านล่าง",
+    "Seedy Research วางแผน ค้น เปรียบเทียบ และตรวจ page provenance ภายใต้งบ tool/step ที่จำกัดแล้ว โครงสร้างหลักฐาน, Thailand → World bridge และ learning checkpoints อยู่ใน Evidence Brief ด้านล่าง",
   ].join("\n");
 }
 
@@ -2467,7 +2467,7 @@ function buildContextText(
   );
 
   const rawContext = [
-    "SEEDY Seed Research",
+    "Seedy Research",
     `Intent: ${plan.intent}`,
     `Search query: ${plan.searchQuery}`,
     `Collection filter: ${collection || "all"}`,
@@ -3326,7 +3326,7 @@ export async function POST(request: NextRequest) {
           }),
         );
       },
-      onError: () => "Seed Research could not publish the Evidence Brief.",
+      onError: () => "Seedy Research could not publish the Evidence Brief.",
     });
     return finalizeResponse(response);
   }
@@ -3467,7 +3467,7 @@ export async function POST(request: NextRequest) {
     console.error("civilmcp_chat_generation_failed", error instanceof Error ? error.message : String(error));
     return finalizeResponse(Response.json(
       {
-        error: `Seed Research could not generate this answer. ${creditRecoveryMessage(creditsRestored)}`,
+        error: `Seedy Research could not generate this answer. ${creditRecoveryMessage(creditsRestored)}`,
         traceId,
         creditRecovery: creditRecoveryState(creditsRestored),
       },

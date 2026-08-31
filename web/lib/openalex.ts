@@ -24,8 +24,24 @@ type OpenAlexApiWork = {
   publication_year?: unknown;
   cited_by_count?: unknown;
   primary_topic?: { display_name?: unknown } | null;
+  authorships?: unknown;
   referenced_works?: unknown;
   related_works?: unknown;
+};
+
+export type OpenAlexConnectionInput = {
+  doi?: unknown;
+  title?: unknown;
+  year?: unknown;
+};
+
+export type OpenAlexMatch = {
+  status: "verified" | "candidate" | "unmatched";
+  basis: "doi" | "title_year" | "title" | "none";
+  requiresHumanReview: boolean;
+  titleSimilarity: number | null;
+  yearDelta: number | null;
+  matchedOpenAlexId: string | null;
 };
 
 export type OpenAlexCitationNode = {
@@ -35,12 +51,16 @@ export type OpenAlexCitationNode = {
   citedByCount: number;
   url: string;
   relation: "seed" | "cites" | "cited_by" | "related";
+  topic: string | null;
+  authors: string[];
+  institutions: string[];
   citable: false;
 };
 
 export type OpenAlexCitationMap = {
   status: OpenAlexDiscoveryStatus;
   searchUrl: string;
+  match: OpenAlexMatch;
   seed: OpenAlexCitationNode | null;
   nodes: OpenAlexCitationNode[];
 };
@@ -48,6 +68,15 @@ export type OpenAlexCitationMap = {
 const MAX_QUERY_LENGTH = 280;
 const MAX_RESULTS = 6;
 const OPENALEX_TIMEOUT_MS = 8_000;
+const CONNECTION_SELECT = "id,doi,display_name,publication_year,cited_by_count,primary_topic,authorships,referenced_works,related_works";
+const EMPTY_MATCH: OpenAlexMatch = {
+  status: "unmatched",
+  basis: "none",
+  requiresHumanReview: true,
+  titleSimilarity: null,
+  yearDelta: null,
+  matchedOpenAlexId: null,
+};
 
 export function normalizeOpenAlexQuery(value: unknown): string {
   return typeof value === "string"
@@ -74,8 +103,136 @@ function integer(value: unknown, min = 0): number | null {
 }
 
 function normalizeDoi(value: unknown): string | null {
-  const cleaned = text(value, 320).replace(/^https?:\/\/(?:dx\.)?doi\.org\//i, "");
-  return cleaned ? `https://doi.org/${cleaned}` : null;
+  const cleaned = text(value, 320)
+    .replace(/^doi:\s*/i, "")
+    .replace(/^https?:\/\/(?:dx\.)?doi\.org\//i, "")
+    .trim()
+    .toLowerCase();
+  return /^10\.\d{4,9}\/[\S]+$/i.test(cleaned) ? `https://doi.org/${cleaned}` : null;
+}
+
+function normalizeConnectionInput(rawInput: unknown): { doi: string | null; title: string; year: number | null } {
+  if (typeof rawInput === "string") {
+    const doi = normalizeDoi(rawInput);
+    return { doi, title: doi ? "" : normalizeOpenAlexQuery(rawInput), year: null };
+  }
+  if (!rawInput || typeof rawInput !== "object" || Array.isArray(rawInput)) return { doi: null, title: "", year: null };
+  const input = rawInput as OpenAlexConnectionInput;
+  const parsedYear = integer(input.year, 1);
+  return {
+    doi: normalizeDoi(input.doi),
+    title: normalizeOpenAlexQuery(input.title),
+    year: parsedYear && parsedYear <= 3_000 ? parsedYear : null,
+  };
+}
+
+const TITLE_STOPWORDS = new Set(["a", "an", "and", "associated", "across", "for", "in", "of", "on", "or", "study", "the", "with"]);
+
+function normalizedTitle(value: unknown): string {
+  return text(value, 320)
+    .normalize("NFKC")
+    .toLocaleLowerCase("en-US")
+    .replace(/[^\p{L}\p{N}]+/gu, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function titleToken(value: string): string {
+  if (value === "thailand" || value === "thai") return "thai";
+  if (value.length > 4 && value.endsWith("ies")) return `${value.slice(0, -3)}y`;
+  if (value.length > 4 && value.endsWith("es")) return value.slice(0, -2);
+  if (value.length > 3 && value.endsWith("s")) return value.slice(0, -1);
+  return value;
+}
+
+function titleTokens(value: unknown): Set<string> {
+  return new Set(normalizedTitle(value).split(" ").filter(Boolean).filter((token) => !TITLE_STOPWORDS.has(token)).map(titleToken));
+}
+
+function titleSimilarity(left: unknown, right: unknown): number {
+  const leftTokens = titleTokens(left);
+  const rightTokens = titleTokens(right);
+  if (!leftTokens.size || !rightTokens.size) return 0;
+  const intersection = [...leftTokens].filter((token) => rightTokens.has(token)).length;
+  const union = new Set([...leftTokens, ...rightTokens]).size;
+  return union ? intersection / union : 0;
+}
+
+function yearDelta(expected: number | null, actual: unknown): number | null {
+  const candidate = integer(actual, 1);
+  return expected && candidate ? Math.abs(expected - candidate) : null;
+}
+
+function matchCandidate(
+  input: { doi: string | null; title: string; year: number | null },
+  candidates: OpenAlexApiWork[],
+): { work: OpenAlexApiWork | null; match: OpenAlexMatch } {
+  if (input.doi) {
+    const exactDoi = candidates.find((work) => normalizeDoi(work.doi) === input.doi);
+    if (exactDoi) {
+      return {
+        work: exactDoi,
+        match: {
+          status: "verified",
+          basis: "doi",
+          requiresHumanReview: false,
+          titleSimilarity: input.title ? titleSimilarity(input.title, exactDoi.display_name) : null,
+          yearDelta: yearDelta(input.year, exactDoi.publication_year),
+          matchedOpenAlexId: text(exactDoi.id, 320) || null,
+        },
+      };
+    }
+  }
+  if (!input.title) return { work: null, match: EMPTY_MATCH };
+
+  const expectedTitle = normalizedTitle(input.title);
+  const ranked = candidates
+    .map((work) => ({
+      work,
+      similarity: titleSimilarity(input.title, work.display_name),
+      exactTitle: normalizedTitle(work.display_name) === expectedTitle,
+      delta: yearDelta(input.year, work.publication_year),
+    }))
+    .filter(({ work }) => Boolean(text(work.id, 320) && text(work.display_name, 320)))
+    .sort((left, right) => Number(right.exactTitle) - Number(left.exactTitle) || right.similarity - left.similarity || (left.delta ?? 99) - (right.delta ?? 99));
+  const best = ranked[0];
+  if (!best) return { work: null, match: EMPTY_MATCH };
+  const runnerUp = ranked[1];
+  const ambiguous = Boolean(
+    runnerUp
+    && best.exactTitle === runnerUp.exactTitle
+    && Math.abs(best.similarity - runnerUp.similarity) < 0.1
+    && Math.abs((best.delta ?? 99) - (runnerUp.delta ?? 99)) <= 1,
+  );
+  if (ambiguous) return { work: null, match: EMPTY_MATCH };
+
+  if (best.exactTitle && input.year != null && best.delta != null && best.delta <= 1) {
+    return {
+      work: best.work,
+      match: {
+        status: "candidate",
+        basis: "title_year",
+        requiresHumanReview: true,
+        titleSimilarity: best.similarity,
+        yearDelta: best.delta,
+        matchedOpenAlexId: text(best.work.id, 320) || null,
+      },
+    };
+  }
+  if (best.similarity >= 0.72) {
+    return {
+      work: best.work,
+      match: {
+        status: "candidate",
+        basis: "title",
+        requiresHumanReview: true,
+        titleSimilarity: best.similarity,
+        yearDelta: best.delta,
+        matchedOpenAlexId: text(best.work.id, 320) || null,
+      },
+    };
+  }
+  return { work: null, match: EMPTY_MATCH };
 }
 
 function searchUrlFor(query: string): string {
@@ -101,7 +258,7 @@ export async function discoverOpenAlex(
       : OPENALEX_TIMEOUT_MS;
     const url = new URL("https://api.openalex.org/works");
     url.searchParams.set("search", query);
-    url.searchParams.set("per-page", String(limit));
+    url.searchParams.set("per_page", String(limit));
     url.searchParams.set("select", "id,doi,display_name,publication_year,cited_by_count,primary_topic");
     url.searchParams.set("api_key", apiKey);
     const response = await fetch(url, {
@@ -144,10 +301,28 @@ function openAlexWorkId(value: unknown): string {
   return text(value, 320).replace(/^https:\/\/openalex\.org\//i, "");
 }
 
+function workPeople(work: OpenAlexApiWork): { authors: string[]; institutions: string[] } {
+  const authors = new Set<string>();
+  const institutions = new Set<string>();
+  for (const item of Array.isArray(work.authorships) ? work.authorships : []) {
+    if (!item || typeof item !== "object") continue;
+    const authorship = item as { author?: { display_name?: unknown } | null; institutions?: unknown };
+    const author = text(authorship.author?.display_name, 120);
+    if (author && authors.size < 3) authors.add(author);
+    for (const rawInstitution of Array.isArray(authorship.institutions) ? authorship.institutions : []) {
+      if (!rawInstitution || typeof rawInstitution !== "object") continue;
+      const institution = text((rawInstitution as { display_name?: unknown }).display_name, 140);
+      if (institution && institutions.size < 3) institutions.add(institution);
+    }
+  }
+  return { authors: [...authors], institutions: [...institutions] };
+}
+
 function citationNode(work: OpenAlexApiWork, relation: OpenAlexCitationNode["relation"], fallbackUrl: string): OpenAlexCitationNode | null {
   const id = text(work.id, 320);
   const title = text(work.display_name, 260);
   if (!id || !title) return null;
+  const people = workPeople(work);
   return {
     id,
     title,
@@ -155,16 +330,22 @@ function citationNode(work: OpenAlexApiWork, relation: OpenAlexCitationNode["rel
     citedByCount: integer(work.cited_by_count) ?? 0,
     url: normalizeDoi(work.doi) || id || fallbackUrl,
     relation,
+    topic: text(work.primary_topic?.display_name, 120) || null,
+    authors: people.authors,
+    institutions: people.institutions,
     citable: false,
   };
 }
 
-export async function citationMapOpenAlex(rawQuery: unknown): Promise<OpenAlexCitationMap> {
-  const query = normalizeOpenAlexQuery(rawQuery);
-  const searchUrl = searchUrlFor(query);
-  if (process.env.FEDERATED_DISCOVERY_ENABLED?.trim() === "false") return { status: "disabled", searchUrl, seed: null, nodes: [] };
+export async function citationMapOpenAlex(rawInput: unknown): Promise<OpenAlexCitationMap> {
+  const input = normalizeConnectionInput(rawInput);
+  const searchQuery = input.title || input.doi || "";
+  const searchUrl = searchUrlFor(searchQuery);
+  if (process.env.FEDERATED_DISCOVERY_ENABLED?.trim() === "false") {
+    return { status: "disabled", searchUrl, match: EMPTY_MATCH, seed: null, nodes: [] };
+  }
   const apiKey = process.env.OPENALEX_API_KEY?.trim();
-  if (!apiKey) return { status: "link_only", searchUrl, seed: null, nodes: [] };
+  if (!apiKey) return { status: "link_only", searchUrl, match: EMPTY_MATCH, seed: null, nodes: [] };
   const fetchJson = async (url: URL) => {
     url.searchParams.set("api_key", apiKey);
     const response = await fetch(url, { cache: "no-store", signal: AbortSignal.timeout(OPENALEX_TIMEOUT_MS) });
@@ -174,35 +355,59 @@ export async function citationMapOpenAlex(rawQuery: unknown): Promise<OpenAlexCi
   };
   try {
     const seedUrl = new URL("https://api.openalex.org/works");
-    seedUrl.searchParams.set("search", query);
-    seedUrl.searchParams.set("per-page", "1");
-    seedUrl.searchParams.set("select", "id,doi,display_name,publication_year,cited_by_count,referenced_works,related_works");
-    const seedPayload = await fetchJson(seedUrl);
-    const seedWork = (Array.isArray(seedPayload.results) ? seedPayload.results[0] : null) as OpenAlexApiWork | null;
-    if (!seedWork) return { status: "connected", searchUrl, seed: null, nodes: [] };
+    if (input.doi) seedUrl.searchParams.set("filter", `doi:${input.doi}`);
+    else seedUrl.searchParams.set("search", input.title);
+    seedUrl.searchParams.set("per_page", "5");
+    seedUrl.searchParams.set("select", CONNECTION_SELECT);
+    let seedPayload = await fetchJson(seedUrl);
+    let seedCandidates = (Array.isArray(seedPayload.results) ? seedPayload.results : []) as OpenAlexApiWork[];
+    let selected = matchCandidate(input, seedCandidates);
+    if (input.doi && selected.match.status !== "verified" && input.title) {
+      const titleUrl = new URL("https://api.openalex.org/works");
+      titleUrl.searchParams.set("search", input.title);
+      titleUrl.searchParams.set("per_page", "5");
+      titleUrl.searchParams.set("select", CONNECTION_SELECT);
+      seedPayload = await fetchJson(titleUrl);
+      seedCandidates = (Array.isArray(seedPayload.results) ? seedPayload.results : []) as OpenAlexApiWork[];
+      selected = matchCandidate({ ...input, doi: null }, seedCandidates);
+    }
+    const seedWork = selected.work;
+    if (!seedWork) return { status: "connected", searchUrl, match: selected.match, seed: null, nodes: [] };
     const seed = citationNode(seedWork, "seed", searchUrl);
-    if (!seed) return { status: "connected", searchUrl, seed: null, nodes: [] };
+    if (!seed) return { status: "connected", searchUrl, match: EMPTY_MATCH, seed: null, nodes: [] };
+    if (selected.match.requiresHumanReview) {
+      return { status: "connected", searchUrl, match: selected.match, seed, nodes: [] };
+    }
     const references = (Array.isArray(seedWork.referenced_works) ? seedWork.referenced_works : []).slice(0, 4).map(openAlexWorkId).filter(Boolean);
     const related = (Array.isArray(seedWork.related_works) ? seedWork.related_works : []).slice(0, 4).map(openAlexWorkId).filter(Boolean);
     const incomingUrl = new URL("https://api.openalex.org/works");
     incomingUrl.searchParams.set("filter", `cites:${openAlexWorkId(seed.id)}`);
-    incomingUrl.searchParams.set("sort", "-cited_by_count");
-    incomingUrl.searchParams.set("per-page", "4");
-    incomingUrl.searchParams.set("select", "id,doi,display_name,publication_year,cited_by_count");
+    incomingUrl.searchParams.set("sort", "cited_by_count:desc");
+    incomingUrl.searchParams.set("per_page", "4");
+    incomingUrl.searchParams.set("select", CONNECTION_SELECT);
     const relationIds = [...new Set([...references, ...related])];
-    const relationUrl = new URL("https://api.openalex.org/works");
-    relationUrl.searchParams.set("filter", `openalex:${relationIds.join("|") || openAlexWorkId(seed.id)}`);
-    relationUrl.searchParams.set("per-page", String(Math.max(1, relationIds.length)));
-    relationUrl.searchParams.set("select", "id,doi,display_name,publication_year,cited_by_count");
-    const [incomingPayload, relationPayload] = await Promise.all([fetchJson(incomingUrl), fetchJson(relationUrl)]);
+    const relationRequest = relationIds.length ? (() => {
+      const relationUrl = new URL("https://api.openalex.org/works");
+      relationUrl.searchParams.set("filter", `openalex:${relationIds.join("|")}`);
+      relationUrl.searchParams.set("per_page", String(relationIds.length));
+      relationUrl.searchParams.set("select", CONNECTION_SELECT);
+      return fetchJson(relationUrl);
+    })() : Promise.resolve({ results: [] });
+    const [incomingPayload, relationPayload] = await Promise.all([fetchJson(incomingUrl), relationRequest]);
     const incoming = (Array.isArray(incomingPayload.results) ? incomingPayload.results : [])
       .map((work) => citationNode(work as OpenAlexApiWork, "cited_by", searchUrl)).filter((node): node is OpenAlexCitationNode => Boolean(node));
     const referenceSet = new Set(references);
     const outward = (Array.isArray(relationPayload.results) ? relationPayload.results : [])
       .map((work) => citationNode(work as OpenAlexApiWork, referenceSet.has(openAlexWorkId((work as OpenAlexApiWork).id)) ? "cites" : "related", searchUrl))
       .filter((node): node is OpenAlexCitationNode => Boolean(node));
-    return { status: "connected", searchUrl, seed, nodes: [...incoming, ...outward].slice(0, 12) };
+    return { status: "connected", searchUrl, match: selected.match, seed, nodes: [...incoming, ...outward].slice(0, 12) };
   } catch (error) {
-    return { status: error instanceof Error && error.message === "rate_limited" ? "rate_limited" : "unavailable", searchUrl, seed: null, nodes: [] };
+    return {
+      status: error instanceof Error && error.message === "rate_limited" ? "rate_limited" : "unavailable",
+      searchUrl,
+      match: EMPTY_MATCH,
+      seed: null,
+      nodes: [],
+    };
   }
 }

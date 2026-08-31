@@ -1,9 +1,10 @@
-# WebMCP Challenge Submission — Seed Research by SEEDY
+# WebMCP Challenge Submission — Seedy Research
 
 ## Candidate status
 
-- Product: **Seed Research by SEEDY**
-- Technical substrate: **CivilMCP evidence engine**
+- Product: **Seedy Research**
+- Browser-agent layer: **SeedyMCP**
+- Compatibility substrate / first proof vertical: **CivilMCP / Civil Research Pack**
 - Working app: <https://civil-mcp-web.vercel.app/>
 - Deadline: **September 3, 2026 at 1:00 PM PDT** (**September 4 at 3:00 AM ICT**)
 - Public source repository: <https://github.com/LeChiffreVol2/Seedy_Research>
@@ -68,7 +69,7 @@ The repository and production release now contain:
   `unavailable` modes;
 - an enrichment to the existing `inspect_paper_evidence` WebMCP flow that reports
   reader access state and a verified reopenable page anchor while keeping full page text out of the
-  tool result; the browser contract remains exactly five site tools;
+  tool result; the browser contract now exposes exactly six site tools;
 - provider-generic Thai discovery while retaining the legacy ThaiJO provider ID;
   and
 - an explicit reader and completeness contract in
@@ -96,11 +97,11 @@ proof materially changes national provider coverage.
 
 ## Submission title
 
-**Seed Research — Thai-to-Global Research Passports with Exact-Page Evidence**
+**Seedy Research — Thai-to-Global Research Paths with Exact-Page Evidence**
 
 ## One-line pitch
 
-Seed Research lets people and AI agents turn an indexed Thai paper into a page-reviewed Research Passport: exact-page source evidence with a bounded English bridge, clearly separated global metadata leads, and one explicitly unvalidated candidate gap.
+Seedy Research lets people and AI agents move from an indexed Thai paper to a global research path: exact-page evidence, fail-closed OpenAlex connections, a page-reviewed Research Passport, and one explicitly provisional Next-Study Protocol.
 
 ## Devpost description
 
@@ -108,15 +109,15 @@ Seed Research lets people and AI agents turn an indexed Thai paper into a page-r
 
 Important Thai research is fragmented across conference proceedings, university collections, and local journals. Global indexes may expose only partial metadata, while generic AI search can blur discovery records, source text, and unsupported claims. Students and researchers lose time finding local work and still have to reconstruct which source page supports each conclusion.
 
-### What Seed Research does
+### What Seedy Research does
 
-Seed Research is a Thai-first evidence and research-learning platform. Its production evidence vertical contains 1,297 page-citable civil-engineering papers and 11,523 page-linked sections. A separate 2,578-record ThaiJO-hosted catalog brings Explore to 3,875 searchable records without silently treating metadata as evidence. The latest bounded pilot added 198 net-new discovery records with zero full-text downloads or evidence links. OpenAlex connects a Thai query to global research metadata while preserving the same boundary.
+Seedy Research is built for whole Thai research and begins with a production civil-engineering proof vertical: 1,297 page-citable papers and 11,523 page-linked sections. A separate 2,578-record ThaiJO-hosted catalog brings Explore to 3,875 searchable records without silently treating metadata as evidence. The latest bounded pilot added 198 net-new discovery records with zero full-text downloads or evidence links. This is measurable proof of the ingestion and trust architecture, not a claim of national completeness. OpenAlex connects a verified Thai seed to global research metadata while preserving the same boundary.
 
-The product lets a person search, inspect the exact source page, compare findings, build a four-stage Research Path, answer evidence checkpoints, and export auditable artifacts. Its WebMCP hero flow is the Evidence-bounded Research Passport: one to three page-linked Thai anchors, a bounded English rendering alongside—not instead of—the source excerpt when needed, up to four OpenAlex discovery leads that remain non-citable metadata, one unvalidated candidate gap, and a page-review gate before Markdown export. Translation and global lookup run in parallel; either can degrade without erasing the Thai evidence. Every selected anchor must be reopened before review can be acknowledged. That acknowledgment checks provenance access; it does not validate the candidate relationship or establish scientific correctness, novelty, transferability, or a comprehensive literature gap.
+The hero is a Thai-to-Global Research Path. The person and agent map the Thai field, inspect an exact page or rights-cleared full paper, trace a DOI-verified OpenAlex seed, carry selected metadata-only leads into the path, then frame a candidate gap as a Next-Study Protocol with a bounded question, context, data, method, validation step, and falsification condition. Title-based matches remain review-only candidates and expose no graph. The Research Passport is the trust checkpoint inside this path: one to three Thai page anchors, a bounded English rendering beside the source when needed, non-citable global leads, an unvalidated inference, and a page-review gate before Markdown export. Reopening a page verifies access to the claimed provenance; it does not establish scientific correctness, novelty, transferability, or a comprehensive literature gap.
 
 ### Why WebMCP is essential
 
-Before WebMCP, a browser agent had to infer the meaning of a large research interface, scrape rendered cards, and guess which controls represented citable evidence. Seed Research now exposes five bounded site tools from the live top-level page. The agent can discover Thai and global research, open exact-page evidence, draft a Research Passport from the active verified paper, create or adapt a Research Path, and inspect checkpoint progress. Each call updates the same page the person is viewing, so the person can verify, correct, review, and export the work.
+Before WebMCP, a browser agent had to infer the meaning of a large research interface, scrape rendered cards, and guess which controls represented citable evidence. Seedy Research now exposes six bounded site tools from the live top-level page. The agent can discover Thai research, open exact-page evidence, trace guarded global relationships, draft a Research Passport, create or adapt a Research Path, and inspect checkpoint progress. Each call updates the same page the person is viewing, so the person can verify, correct, review, and export the work.
 
 This is not a chat wrapper and not merely a remote MCP endpoint. WebMCP is the collaboration layer between an agent and the existing evidence product: it gives the agent structured access to the paper and evidence state the person is already viewing, while the final review and export remain visible human actions.
 
@@ -125,11 +126,12 @@ This is not a chat wrapper and not merely a remote MCP endpoint. WebMCP is the c
 1. A person asks an agent to investigate a topic such as road-system factors in serious Thai urban crashes.
 2. The agent calls `discover_research`; Explore visibly updates with page-citable Thai papers and separately labelled global metadata.
 3. The agent calls `inspect_paper_evidence`; the paper drawer opens on the same page with a bounded packet and its original-page target.
-4. The person asks the agent to connect that finding to global work without treating metadata as evidence. The agent calls `draft_research_passport` with the active paper and one to three visible evidence IDs.
-5. The shared page retains the Thai source excerpt, adds a bounded English rendering when available, then renders OpenAlex metadata-only leads and one candidate validation gap whose proposed evidence relationship is explicitly unvalidated. It states that novelty and transferability are not established.
-6. The person reopens every selected exact page, acknowledges page review, and only then exports the boundary-preserving Markdown artifact. The candidate inference remains labelled unvalidated.
+4. The agent calls `trace_research_connections`. Only an exact DOI match may expose cites/cited-by/related records; every title-based or ambiguous match fails closed for human review.
+5. The agent calls `build_research_path` with selected OpenAlex IDs already visible in that verified connection map. Arbitrary or stale IDs are rejected. The visible path ends in a candidate gap and Next-Study Protocol.
+6. The agent calls `draft_research_passport` with one to three visible evidence IDs. The page retains the Thai excerpt, adds a bounded English rendering when available, and keeps every global lead non-citable.
+7. The person reopens every selected exact page, acknowledges page review, and only then exports the boundary-preserving Markdown artifact. The candidate inference remains labelled unvalidated.
 
-The result is a shared research loop: the agent handles structured discovery and bounded artifact drafting; the person remains the source-verification, inference-review, and export boundary. Research Path and privacy-bounded progress tools remain available as a second learning workflow, but they are not needed to understand the Passport hero flow.
+The result is a shared research loop: the agent handles structured navigation and bounded drafting; the person remains the source-verification, match-review, inference-review, and export boundary. WebMCP is essential because the active paper, connection match, selected leads, path, and Passport all depend on visible page state that the person can inspect.
 
 ## WebMCP implementation
 
@@ -139,20 +141,22 @@ The browser bridge is implemented in `web/lib/webmcp.ts` and wired from `web/app
 | --- | --- | --- |
 | `discover_research` | Updates the visible Explore query, filters, Thai results, and optional global panel. | `readOnlyHint: true`; external/paper output uses `untrustedContentHint: true`; query, scope, and collection are validated and bounded. |
 | `inspect_paper_evidence` | Opens the visible paper drawer and a reopenable page/evidence deep link. | `readOnlyHint: true`; source/evidence/page inputs are bounded; returned excerpts are short and labelled untrusted. |
+| `trace_research_connections` | Opens a bounded Thai-to-global connection map for the active citable paper. | `readOnlyHint: true`; structured DOI/title/year matching; only an exact DOI seed may return at most 12 metadata-only nodes; all title-based, conflicting, and ambiguous matches return no graph and require human review. |
 | `draft_research_passport` | Creates a visible Thai → Global Research Passport from evidence already opened in the active paper; reopening every selected page and acknowledging page review unlocks Markdown export. | `readOnlyHint: false`; accepts one active public citable source, an 8–180 character focus, one to three visible exact-page evidence IDs, and one gap lens. Private, discovery-only, off-paper, and non-page-linked inputs fail closed. Translation is limited to the selected Thai excerpts and retains the original. OpenAlex leads return `citable: false`; novelty, evidence relation, and transferability remain unestablished. |
-| `build_research_path` | Creates or adapts visible local Research Path state through the existing rate-limited API. | `readOnlyHint: false`; goal, level, outcome, collection, and at most four gaps are validated; server retrieval and context remain bounded. |
+| `build_research_path` | Creates or adapts visible local Research Path state, carries selected verified-map leads into planning, and returns a structured provisional gap plus study protocol. | `readOnlyHint: false`; goal, level, outcome, collection, at most four gaps, and at most four exact OpenAlex work IDs are validated; stale or arbitrary lead IDs fail closed; selected global records are untrusted metadata targets, never evidence; `candidate_unvalidated` and `draft_framework` artifacts remain available under deterministic fallback. |
 | `inspect_learning_progress` | Reads current stage status, scores, reviewed evidence count, and learning gaps. | `readOnlyHint: true`; raw learner answers are deliberately omitted. |
 
 Implementation details:
 
 - Imperative JavaScript registration through `document.modelContext.registerTool(...)` in the top-level document.
-- Five non-overlapping tools with narrow JSON Schemas and `additionalProperties: false`.
+- Six non-overlapping tools with narrow JSON Schemas and `additionalProperties: false`.
 - Strict application-code validation in addition to browser schema handling.
 - `AbortController` cleanup for React lifecycle changes and execution cancellation support for network requests.
 - Per-call request IDs and a research-context revision prevent late discovery, evidence, or Passport responses from replacing newer visible work; changing the query marks a completed Passport out of date.
 - The Passport snapshots its own bounded WebMCP run steps, so later tool calls cannot rewrite the displayed provenance trace.
 - Connected-zero, rate-limited, unavailable, link-only, and disabled OpenAlex states remain visibly distinct.
 - Concise structured results; full evidence remains visible in the human interface rather than copied into oversized tool payloads.
+- Research Path exports preserve the structured candidate-gap and Next-Study Protocol fields, including missing validation, evidence boundary, and falsification condition; novelty is always explicitly unestablished.
 - Same-origin application APIs reuse existing identity, authorization, distributed rate limits, provider timeouts, and evidence-rights boundaries.
 - The remote MCP server remains available for workflows that do not depend on an open page; it is distinct from this browser-native WebMCP layer.
 
@@ -163,9 +167,10 @@ Implementation details:
 1. Update the ChatGPT desktop app to the latest version.
 2. Use **GPT-5.6 Sol or GPT-5.6 Terra**; Luna currently does not invoke site tools.
 3. Open <https://civil-mcp-web.vercel.app/?view=explore> in the built-in browser.
-4. Open **Site tools** in the address bar and confirm these five tools:
+4. Open **Site tools** in the address bar and confirm these six tools:
    - `discover_research`
    - `inspect_paper_evidence`
+   - `trace_research_connections`
    - `draft_research_passport`
    - `build_research_path`
    - `inspect_learning_progress`
@@ -185,26 +190,27 @@ npm ci
 npx playwright test tests/e2e/webmcp.spec.ts
 ```
 
-The test provides a browser-side `document.modelContext` host, verifies all five schemas and annotations, invokes discovery → evidence → Passport draft → exact-page reopening → page-review acknowledgment → export before continuing through path → progress, and asserts the corresponding visible UI state. It also proves that discovery-only, non-visible, private, and non-page-linked anchors fail closed; OpenAlex leads remain non-citable; provider outages remain distinct from zero results; context changes cancel stale drafts; and Passport export stays disabled until every selected page is reopened and review is acknowledged.
+The test provides a browser-side `document.modelContext` host, verifies all six schemas and annotations, invokes discovery → evidence → connection trace → path → Passport draft → exact-page reopening → page-review acknowledgment → export → progress, and asserts the corresponding visible UI state. It also proves that candidate/ambiguous connection matches expose no graph; arbitrary global IDs, discovery-only records, non-visible evidence, private sources, and non-page-linked anchors fail closed; global records remain non-citable; context changes cancel stale work; and Passport export stays disabled until every selected page is reopened and review is acknowledged.
 
 ## Golden judge prompts
 
 1. **Discovery:** `Find Thai research about serious road crashes. Keep page-citable evidence separate from metadata-only discovery.`
 2. **Verification:** `Open the strongest indexed Thai paper and show me the exact-page evidence I should inspect before relying on it.`
-3. **Passport hero:** `Draft a Research Passport from the visible evidence about how road-system factors transfer across urban contexts. Use the context gap lens. Treat OpenAlex only as metadata, and do not claim novelty or transferability.`
-4. **Optional learning continuation:** `Build a foundation-level Research Path from the page-linked Thai evidence.`
+3. **Connection trace:** `Trace how this exact Thai paper connects to global research. Show the match basis and keep every OpenAlex record metadata-only.`
+4. **Path hero:** `Build a foundation-level Thai-to-global Research Path using the visible connection lead. End with a candidate gap and a falsifiable Next-Study Protocol; do not claim proven novelty.`
+5. **Passport checkpoint:** `Draft a Research Passport from the visible exact-page evidence. Use the context gap lens and keep global records out of the evidence set.`
 
-## Demo video script — 90-second Passport judge flow
+## Demo video script — 100-second Thai-to-global judge flow
 
 | Time | Screen and action | Narration |
 | --- | --- | --- |
-| 0:00–0:10 | Explore, corpus proof, and the five-tool Site tools menu | Thai research is difficult to connect globally, and a summary is not useful if its source cannot be checked. Seed Research exposes five structured tools on the live page. |
+| 0:00–0:10 | Explore, corpus proof, and the six-tool Site tools menu | Thai research is difficult to connect globally, and a summary is not useful if its source cannot be checked. Seedy Research exposes six structured tools on the live page. |
 | 0:10–0:25 | Agent calls `discover_research`; Thai evidence and global metadata render in separate lanes | WebMCP replaces UI guessing with a bounded discovery contract while keeping evidence and metadata visibly distinct. |
 | 0:25–0:40 | Agent calls `inspect_paper_evidence`; drawer opens and highlights the target at p.2067 | This Thai packet has original-page provenance. The person can inspect it before accepting or exporting a claim. |
-| 0:40–0:58 | Agent calls `draft_research_passport` from the active source and visible evidence ID | The browser agent uses the same paper state the person is viewing to create a visible artifact—not a hidden remote response. |
-| 0:58–1:12 | Passport shows the Thai source excerpt plus bounded English rendering, `OpenAlex · metadata only`, an unvalidated candidate gap, and `global records used as evidence: 0` | Translation does not replace the source. Global records are leads, never evidence. The gap is a validation question with an unvalidated evidence relationship; novelty and transferability are explicitly not established. |
-| 1:12–1:24 | Show disabled review/export controls, reopen every selected exact page, then click `Mark pages reviewed` | The agent drafts; the human confirms page access. Export cannot happen before every anchor is reopened, and the candidate inference remains unvalidated. |
-| 1:24–1:30 | Export Markdown and reveal the immutable Passport WebMCP run | One indexed Thai paper becomes a portable, page-reviewed Research Passport with its evidence and inference boundaries intact. |
+| 0:40–0:55 | Agent calls `trace_research_connections`; show match basis and metadata-only relations | SeedyMCP does not join by vague similarity: candidate or ambiguous matches fail closed before a global graph is shown. |
+| 0:55–1:10 | Agent calls `build_research_path` with one visible lead | The Thai seed and selected global lead become a four-stage path ending in a provisional gap and falsifiable Next-Study Protocol. The global lead is still not evidence. |
+| 1:10–1:25 | Agent calls `draft_research_passport`; show exact-page Thai evidence, `OpenAlex · metadata only`, and `global records used as evidence: 0` | The Passport is the trust checkpoint: translation does not replace the source, and inference remains visibly unvalidated. |
+| 1:25–1:40 | Reopen the exact page, acknowledge review, export Markdown, and reveal the immutable four-call run | One Thai paper becomes a portable research starting point without hiding how it was matched, what was actually read, or what remains to be tested. |
 
 Use English narration or complete English captions. Show the real Site tools menu and real tool calls. Do not accelerate away registration or error states. Use only source material and visuals that the team has permission to publish.
 
@@ -239,7 +245,7 @@ trace rather than relying on narration alone.
 The pre-existing product already had a Next.js research UI, a remote MCP server, page-linked evidence, Research Path, and evaluation harness. The WebMCP Challenge extension is the browser-native collaboration layer added during the competition period:
 
 - top-level WebMCP registration;
-- five bounded, annotated site tools;
+- six bounded, annotated site tools, including fail-closed Thai-to-global relationship tracing;
 - the Evidence-bounded Research Passport with active-paper validation, exact-page anchors, metadata-only global leads, candidate-gap framing, human-review gating, and Markdown export;
 - shared UI state transitions across discovery, evidence, Passport, learning path, and progress;
 - strict browser-tool input validation and cancellation;
@@ -248,10 +254,11 @@ The pre-existing product already had a Next.js research UI, a remote MCP server,
 - an official 36-family ThaiJO endpoint registry, duplicate-safe metadata harvesting, whole-issue filtering, and a live `sc01` pilot that adds 198 net-new discovery records without promoting full text;
 - a deployed 3-paper/68-page rights-reviewed reader slice and
   fail-closed access resolver, plus reader-access enrichment inside the
-  existing five-tool WebMCP contract without returning full page text;
+  existing WebMCP contract without returning full page text;
+- guarded OpenAlex seed resolution plus selected-lead carryover into a Research Path that ends in a candidate gap and Next-Study Protocol;
 - this challenge-specific public submission and demo package.
 
-Before submission, replace this paragraph with exact competition-period commit hashes and timestamps. Do not claim pre-existing product work as new Challenge work.
+Git history separates the pre-existing baseline from the Challenge work: `1179b09` is the August 20 baseline before the competition window, `e9f8ed8` is the August 31 challenge extension, and `9523b7c` is the September 1 candidate before the final SeedyMCP connection-trace release. The final submission must record the last release SHA here after promotion. Do not claim pre-existing product work as new Challenge work.
 
 ## Final freeze checklist
 
@@ -261,10 +268,10 @@ Before submission, replace this paragraph with exact competition-period commit h
 - [ ] Record the baseline commit and every competition-period WebMCP commit with real timestamps.
 - [ ] Run `git diff --check` and `python3.10 harness/check_invariants.py`.
 - [x] Run `python3.10 -m unittest pipeline.test_reader_pack`, the combined reader/feed units, and the focused `paper-reader.spec.ts` browser suite.
-- [x] Run the focused WebMCP E2E with exact-five and no-full-page-text assertions.
+- [x] Run the focused WebMCP E2E with exact-six, fail-closed connection matching, and no-full-page-text assertions.
 - [x] Run all 31 local desktop/mobile/reader/WebMCP E2E scenarios serially; rerun them against the frozen deployment candidate after deploy.
 - [ ] Run the web build, security checks, strict data quality, live smoke, retrieval eval, memory eval, and quality score against one candidate fingerprint.
-- [ ] Test the deployed candidate in ChatGPT's built-in browser with Sol or Terra and record the five visible tools plus the complete Passport review/export flow.
+- [ ] Test the deployed candidate in ChatGPT's built-in browser with Sol or Terra and record the six visible tools plus the complete connection → path → Passport review/export flow.
 - [ ] Test the deployed candidate in Chrome with WebMCP enabled.
 - [ ] Confirm the live deployment SHA matches the public candidate commit.
 - [ ] Record actual demo latency and tool-call count; do not invent a before/after number.

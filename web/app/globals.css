@@ -7184,6 +7184,8 @@ body {
 .citationMapEmpty strong { font-size: .73rem; }
 .citationMapEmpty small { color: #6f7986; font-size: .64rem; }
 .citationMap { display: grid; gap: 9px; }
+.citationMatch { width: fit-content; margin: 0; border: 1px solid rgba(10, 145, 102, .2); border-radius: 999px; background: rgba(236, 249, 244, .82); color: #23705a; padding: 4px 8px; font-size: .59rem; font-weight: 800; letter-spacing: .02em; }
+.citationMatch.verified { border-color: rgba(0, 122, 255, .2); background: rgba(238, 247, 255, .82); color: var(--accent-ink); }
 .citationSeed,.citationNodes a { display: grid; gap: 3px; border: 1px solid rgba(83, 105, 132, .13); border-radius: 10px; background: rgba(255, 255, 255, .72); padding: 10px; color: inherit; text-decoration: none; }
 .citationSeed { border-color: rgba(0, 122, 255, .22); background: rgba(238, 247, 255, .78); }
 .citationSeed span,.citationNodes span { color: #74808d; font-size: .58rem; font-weight: 800; letter-spacing: .05em; text-transform: uppercase; }
@@ -7307,6 +7309,19 @@ body {
 .pathAssessmentEvidence button:hover { border-color: rgba(0, 122, 255, .28); background: #fff; }
 .pathAssessmentEvidence button span { overflow: hidden; font-size: .64rem; font-weight: 760; text-overflow: ellipsis; white-space: nowrap; }
 .pathAssessmentEvidence button small { display: -webkit-box; overflow: hidden; color: #707b88; font-size: .59rem; line-height: 1.4; -webkit-box-orient: vertical; -webkit-line-clamp: 2; }
+.pathResearchArtifacts { display: grid; grid-template-columns: minmax(0, .9fr) minmax(0, 1.1fr); gap: 12px; }
+.pathResearchArtifacts article { display: grid; align-content: start; gap: 9px; padding: 17px; border: 1px solid rgba(83, 105, 132, .14); border-radius: 14px; background: rgba(255, 255, 255, .76); }
+.pathResearchArtifacts h3,.pathResearchArtifacts p,.pathResearchArtifacts dl,.pathResearchArtifacts dd { margin: 0; }
+.pathResearchArtifacts h3 { color: #25313d; font-size: .92rem; }
+.pathResearchArtifacts article > p:not(.workspaceEyebrow):not(.pathProtocolBoundary) { color: #4f5d69; font-size: .72rem; line-height: 1.55; }
+.pathResearchArtifacts dl { display: grid; gap: 8px; }
+.pathResearchArtifacts dl > div { display: grid; gap: 3px; }
+.pathResearchArtifacts dt { color: #536171; font-size: .61rem; font-weight: 800; letter-spacing: .05em; text-transform: uppercase; }
+.pathResearchArtifacts dd,.pathResearchArtifacts li { color: #465360; font-size: .68rem; line-height: 1.5; }
+.pathResearchArtifacts ul { display: grid; gap: 3px; margin: 0; padding-left: 17px; }
+.pathCandidateGap { border-color: rgba(181, 126, 43, .22) !important; background: rgba(255, 249, 239, .72) !important; }
+.pathNextStudyProtocol { border-color: rgba(0, 122, 255, .16) !important; background: rgba(242, 248, 255, .72) !important; }
+.pathProtocolBoundary { padding-top: 9px; border-top: 1px solid rgba(83, 105, 132, .12); color: #697584; font-size: .62rem; line-height: 1.5; }
 .pathCompletion {
   display: flex; align-items: center; justify-content: space-between; gap: 18px; padding: 18px 20px;
   border: 1px solid rgba(38, 148, 104, .24); border-radius: 14px;
@@ -7326,6 +7341,7 @@ body {
 .mcpOpenAccess span { color: #68776f; font-size: .62rem; }
 
 @media (max-width: 760px) {
+  .pathResearchArtifacts { grid-template-columns: 1fr; }
   .pathCheckpointSteps { grid-template-columns: 1fr; }
   .pathDraftHeader { align-items: flex-start; flex-direction: column; }
   .pathAssessmentEvidence > div { grid-template-columns: 1fr; }

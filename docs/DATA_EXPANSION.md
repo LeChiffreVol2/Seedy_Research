@@ -1,8 +1,8 @@
-# CivilMCP Data Expansion
+# Seedy Research Data Expansion
 
 ## Product boundary
 
-CivilMCP is a Thai research evidence network, not a folder of PDFs. Every source
+Seedy Research is a Thai research evidence network, not a folder of PDFs. Every source
 enters one of two layers:
 
 1. **Source catalog** — metadata for discovery, deduplication, rights review,

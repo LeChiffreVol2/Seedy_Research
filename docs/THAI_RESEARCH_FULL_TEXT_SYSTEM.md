@@ -2,12 +2,12 @@
 
 ## Decision
 
-Seed Research needs a full-paper reading layer to become an end-to-end research
+Seedy Research needs a full-paper reading layer to become an end-to-end research
 product. Search, exact-page evidence, Research Passport, and systematic-review
 workflows are already valuable, but a user should not have to leave the research
 loop between discovery and analysis whenever lawful full text exists.
 
-That does **not** mean copying every PDF into CivilMCP. The winning product is a
+That does **not** mean copying every PDF into Seedy Research. The winning product is a
 rights-aware national research navigator with a first-class reader: it renders
 full papers natively when the asset permits it, keeps publisher-hosted papers at
 the publisher when redistribution is not permitted, guides authenticated users
@@ -67,7 +67,7 @@ coverage of TCI, TNRR, TDC, Thai conferences, or Thai research nationally.
 OpenAlex and Scopus are not empty of Thai research. Some Thai journals,
 Thai-affiliated international publications, DOI records, and repository copies
 appear in global indexes. Their coverage is incomplete for Thailand and cannot
-be used as a national denominator. CivilMCP should use them for identity,
+be used as a national denominator. Seedy Research should use them for identity,
 citation, global discovery, and lawful-location enrichment after ingesting Thai
 primary sources—not as substitutes for ThaiJO, TCI, TNRR, TDC, conference
 proceedings, or institutional repositories.
@@ -186,11 +186,11 @@ always fall away from native display.
 
 | Mode | User experience | Storage and delivery rule | Citation rule |
 | --- | --- | --- | --- |
-| **1. Native verified (`native_verified`)** | Full-page reader with outline, page sync, search, highlights, notes, citation copy, and exact-page anchors. | CivilMCP may store/process/display only when the asset's verified permissions allow every required action. | Page-citable only after provenance, page mapping, extraction, and quality gates pass. |
-| **2. Source hosted (`source_hosted`)** | Open the official publisher/repository reader or deep link while preserving Research Workspace context. Embed only when origin policy and terms explicitly permit it. | Do not proxy or copy the full text. Cache only permitted metadata and short excerpts. | Metadata-only unless CivilMCP can create a stable, rights-cleared exact-page anchor. |
-| **3. Restricted (`restricted`)** | Show availability, holding institution, access instructions, and the official resolver/login path. | Never bypass authentication, proxy member-only files, or retain credentials. | Metadata-only inside CivilMCP unless a separately cleared asset is deposited. |
-| **4. Metadata only (`metadata_only`)** | Show the bibliographic record, DOI, and official source link without a read-paper claim. | Store and display only fields permitted by the provider agreement. | Discovery lead, not CivilMCP evidence. |
-| **5. Unavailable (`unavailable`)** | Explain that no verified manifestation is available; offer DOI lookup, library request, or author-copy workflow when possible. | No full text and no invented fallback URL. | Not citable as CivilMCP evidence. |
+| **1. Native verified (`native_verified`)** | Full-page reader with outline, page sync, search, highlights, notes, citation copy, and exact-page anchors. | Seedy Research may store/process/display only when the asset's verified permissions allow every required action. | Page-citable only after provenance, page mapping, extraction, and quality gates pass. |
+| **2. Source hosted (`source_hosted`)** | Open the official publisher/repository reader or deep link while preserving Research Workspace context. Embed only when origin policy and terms explicitly permit it. | Do not proxy or copy the full text. Cache only permitted metadata and short excerpts. | Metadata-only unless Seedy Research can create a stable, rights-cleared exact-page anchor. |
+| **3. Restricted (`restricted`)** | Show availability, holding institution, access instructions, and the official resolver/login path. | Never bypass authentication, proxy member-only files, or retain credentials. | Metadata-only inside Seedy Research unless a separately cleared asset is deposited. |
+| **4. Metadata only (`metadata_only`)** | Show the bibliographic record, DOI, and official source link without a read-paper claim. | Store and display only fields permitted by the provider agreement. | Discovery lead, not Seedy Research evidence. |
+| **5. Unavailable (`unavailable`)** | Explain that no verified manifestation is available; offer DOI lookup, library request, or author-copy workflow when possible. | No full text and no invented fallback URL. | Not citable as Seedy Research evidence. |
 
 A public PDF button is evidence of availability, not automatically permission to
 store, transform, embed, translate, or redistribute. Conversely, a restrictive
@@ -247,7 +247,7 @@ rights, attribution, retention, takedown, and audit contacts.
 Start with a metadata-only sample and publish a reconciliation report back to the
 partner: duplicate clusters, missing DOI/author/department fields, broken links,
 and access-state counts. Promote only mutually approved assets. This gives each
-national provider a data-quality benefit and makes CivilMCP a partner rather than
+national provider a data-quality benefit and makes Seedy Research a partner rather than
 an uncontrolled mirror.
 
 ## Coverage completeness contract
@@ -369,7 +369,7 @@ its work, asset, page, provider, rights, and review state.
 
 ## Judge-facing product proof
 
-The competitive story is not “we scraped the most PDFs.” It is that Seed Research
+The competitive story is not “we scraped the most PDFs.” It is that Seedy Research
 turns fragmented Thai research infrastructure into one human-agent research loop
 without flattening discovery, rights, and evidence:
 

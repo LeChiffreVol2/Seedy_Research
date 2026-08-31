@@ -182,7 +182,7 @@ async function buildWorkspaceRun(input: RunRequest, ownerId: string) {
     abortSignal: AbortSignal.timeout(WORKSPACE_GENERATION_TIMEOUT_MS),
     schema: generatedWorkspaceSchema,
     system: [
-      "You are Seed Research by SEEDY, a bounded batch research agent.",
+      "You are Seedy Research, a bounded batch research agent.",
       "Populate a research matrix using only the supplied page-linked evidence packets.",
       "Return one row per supplied source and one cell per requested column.",
       "Every factual cell must cite 1-4 evidence IDs from its own paper. Never cite another paper's packet in that row.",

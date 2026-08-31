@@ -295,12 +295,12 @@ function AccessFallback({
     source_hosted: {
       icon: <ExternalLink size={22} aria-hidden />,
       title: access.statusLabel || "Full text is hosted by the official source",
-      body: humanizeReason(access.reason) || "CivilMCP keeps your research context here while the publisher or repository delivers the paper under its own access terms.",
+      body: humanizeReason(access.reason) || "Seedy Research keeps your research context here while the publisher or repository delivers the paper under its own access terms.",
     },
     restricted: {
       icon: <FileLock2 size={22} aria-hidden />,
       title: access.statusLabel || "Institutional access required",
-      body: access.instructions || humanizeReason(access.reason) || "Use the official resolver or your institution’s library access. CivilMCP never proxies credentials or bypasses authentication.",
+      body: access.instructions || humanizeReason(access.reason) || "Use the official resolver or your institution’s library access. Seedy Research never proxies credentials or bypasses authentication.",
     },
     metadata_only: {
       icon: <Library size={22} aria-hidden />,
@@ -310,7 +310,7 @@ function AccessFallback({
     unavailable: {
       icon: <BookOpenText size={22} aria-hidden />,
       title: access.statusLabel || "Full text unavailable",
-      body: humanizeReason(access.reason) || "CivilMCP could not verify a readable full-text asset for this record. Availability and reuse rights are checked separately.",
+      body: humanizeReason(access.reason) || "Seedy Research could not verify a readable full-text asset for this record. Availability and reuse rights are checked separately.",
     },
   }[mode];
   const sourceActionLabel = mode === "source_hosted"

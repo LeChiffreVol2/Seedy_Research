@@ -79,6 +79,7 @@ EXPECTED_WRITE_TOOLS = {
 EXPECTED_WEBMCP_TOOLS = {
     "discover_research",
     "inspect_paper_evidence",
+    "trace_research_connections",
     "draft_research_passport",
     "build_research_path",
     "inspect_learning_progress",
@@ -164,6 +165,7 @@ def check_webmcp_contract() -> Check:
     bridge_path = ROOT / "web" / "lib" / "webmcp.ts"
     page_path = ROOT / "web" / "app" / "page.tsx"
     e2e_path = ROOT / "web" / "tests" / "e2e" / "webmcp.spec.ts"
+    path_route_path = ROOT / "web" / "app" / "api" / "research-path" / "route.ts"
     next_config_path = ROOT / "web" / "next.config.ts"
     if not bridge_path.exists() or not e2e_path.exists():
         return Check(
@@ -175,6 +177,7 @@ def check_webmcp_contract() -> Check:
     bridge = bridge_path.read_text(encoding="utf-8", errors="replace")
     page = page_path.read_text(encoding="utf-8", errors="replace")
     e2e = e2e_path.read_text(encoding="utf-8", errors="replace")
+    path_route = path_route_path.read_text(encoding="utf-8", errors="replace")
     next_config = next_config_path.read_text(encoding="utf-8", errors="replace")
     declared = set(re.findall(r'name:\s*"([a-z_]+)"', bridge))
     missing = sorted(EXPECTED_WEBMCP_TOOLS - declared)
@@ -185,7 +188,17 @@ def check_webmcp_contract() -> Check:
         "exact_tool_count": len(declared) == len(EXPECTED_WEBMCP_TOOLS),
         "strict_schemas": bridge.count("additionalProperties: false") >= len(EXPECTED_WEBMCP_TOOLS),
         "read_and_untrusted_hints": "readOnlyHint" in bridge and bridge.count("untrustedContentHint: true") >= len(EXPECTED_WEBMCP_TOOLS),
-        "wired_to_page": "registerSeedResearchWebMcpTools(proxy)" in page and "WebMCP active · 5 site tools" in page,
+        "wired_to_page": "registerSeedResearchWebMcpTools(proxy)" in page and "SeedyMCP active · 6 site tools" in page,
+        "fail_closed_connection_trace": all(
+            marker in page
+            for marker in (
+                "traceResearchConnections: async",
+                "isTraceableOpenAlexMatch(map.match)",
+                "relations: relations.map",
+                "metadata-only Global Research Leads",
+                "Trace and review the active paper connections",
+            )
+        ) and (ROOT / "web" / "tests" / "e2e" / "openalex-connections.spec.ts").exists(),
         "active_visible_exact_page_evidence": all(
             marker in page
             for marker in (
@@ -220,6 +233,25 @@ def check_webmcp_contract() -> Check:
                 "global records used as evidence: 0",
             )
         ) and all(marker in e2e for marker in ("toBeDisabled()", "Mark pages reviewed", "toBeEnabled()", "citable).toBe(false)", "provider unavailable", "bounded English rendering")),
+        "structured_research_path_artifacts": all(
+            marker in path_route
+            for marker in (
+                "globalLeadSchema",
+                'status: z.literal("candidate_unvalidated")',
+                "noveltyEstablished: z.literal(false)",
+                'status: z.literal("draft_framework")',
+                "falsificationCondition",
+                "SELECTED GLOBAL LEADS — METADATA ONLY, NEVER EVIDENCE",
+                "fallbackResearchArtifacts",
+            )
+        ) and all(
+            marker in page
+            for marker in (
+                "globalLeads: selectedGlobalLeads.map",
+                "Candidate gap · not proven novel",
+                "Next-Study Protocol — draft framework",
+            )
+        ) and all(marker in e2e for marker in ("W999999", "candidate_unvalidated", "draft_framework")),
         "webmcp_headers": "tools=(self)" in next_config and 'Origin-Agent-Cluster", value: "?1"' in next_config,
         "browser_execution_test": all(tool in e2e for tool in EXPECTED_WEBMCP_TOOLS) and ".execute(" in e2e,
     }
@@ -234,7 +266,7 @@ def check_webmcp_contract() -> Check:
     return Check(
         "webmcp_contract",
         "pass",
-        "Five bounded WebMCP tools are wired to visible UI state with exact-page Passport evidence, review gating, annotations, cleanup, and browser execution coverage.",
+        "Six bounded WebMCP tools are wired to visible UI state with fail-closed connection matching, exact-page Passport evidence, review gating, annotations, cleanup, and browser execution coverage.",
     )
 
 
@@ -600,7 +632,7 @@ def check_product_contract() -> Check:
         "personalized_research_path": all(
             marker in research_path
             for marker in (
-                "civilmcp-research-path-v2", "Map the field", "discoverOpenAlex", "knowledgeGaps",
+                "civilmcp-research-path-v2", "Map the Thai field", "Frame the gap and next study", "discoverOpenAlex", "knowledgeGaps",
                 'z.literal("assess_checkpoint")', "checkpointResultSchema", "getPaperDetail", "CHECKPOINT_MODEL",
                 'score >= 75 ? "understood"', "ALLOW-LISTED EVIDENCE",
                 "includeFacets: false", "MAX_ACTIVE_PATH_BUILDS", "gradeAvailable: false",
@@ -615,8 +647,9 @@ def check_product_contract() -> Check:
         ) and "Private Project Library" in research_workspace_ui,
         "living_review": all(marker in living_reviews for marker in ("resultKeys", "createLivingReviewWatch", 'scope: "living_review_check"'))
         and "LivingReviewPanel" in page,
-        "citation_map": "citationMapOpenAlex" in openalex and (ROOT / "web" / "app" / "api" / "citation-map" / "route.ts").exists()
-        and "Citation map" in page,
+        "citation_map": all(marker in openalex for marker in ("citationMapOpenAlex", "titleSimilarity", "requiresHumanReview"))
+        and (ROOT / "web" / "app" / "api" / "citation-map" / "route.ts").exists()
+        and "Thai-to-global connection map" in page,
         "public_paper_pages": (ROOT / "web" / "app" / "papers" / "[source]" / "page.tsx").exists(),
         "personal_mcp_parity": all(
             marker in mcp_server
