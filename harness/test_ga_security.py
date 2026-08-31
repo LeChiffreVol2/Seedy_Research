@@ -178,6 +178,24 @@ class GASecurityContracts(unittest.TestCase):
         self.assertIn("vars.PREVIEW_RELEASE_ENABLED == 'true'", preview)
         self.assertIn("github.event_name == 'workflow_dispatch'", preview)
 
+    def test_github_actions_use_node24_runtime(self) -> None:
+        workflows = "\n".join(
+            source(path)
+            for path in (
+                ".github/workflows/ci.yml",
+                ".github/workflows/preview-release.yml",
+            )
+        )
+        for action in (
+            "actions/checkout",
+            "actions/setup-python",
+            "actions/setup-node",
+            "actions/upload-artifact",
+        ):
+            self.assertIn(f"{action}@v7", workflows)
+            for old_major in range(1, 7):
+                self.assertNotIn(f"{action}@v{old_major}", workflows)
+
     def test_guest_persistence_and_history_writes_are_bounded(self) -> None:
         auth = source("web/lib/chat-auth.ts")
         session = source("web/app/api/session/route.ts")

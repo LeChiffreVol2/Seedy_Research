@@ -77,15 +77,15 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           persist-credentials: false
       - name: Pin release commit
         run: test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
-      - uses: actions/setup-python@v5
+      - uses: actions/setup-python@v7
         with:
           python-version: "3.10"
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v7
         with:
           node-version: "20"
           cache: npm
@@ -117,7 +117,7 @@ jobs:
     timeout-minutes: 5
     environment: preview
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           persist-credentials: false
       - name: Pin release commit
@@ -176,7 +176,7 @@ jobs:
     outputs:
       url: ${{ steps.deploy.outputs.url }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           persist-credentials: false
       - name: Pin release commit
@@ -209,7 +209,7 @@ jobs:
     outputs:
       url: ${{ steps.deploy.outputs.url }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           persist-credentials: false
       - name: Pin release commit
@@ -249,7 +249,7 @@ jobs:
       MCP_VERCEL_AUTOMATION_BYPASS_SECRET: ${{ secrets.MCP_VERCEL_AUTOMATION_BYPASS_SECRET }}
       WEB_VERCEL_AUTOMATION_BYPASS_SECRET: ${{ secrets.WEB_VERCEL_AUTOMATION_BYPASS_SECRET }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           persist-credentials: false
       - name: Verify release commit and preview artifacts
@@ -258,14 +258,14 @@ jobs:
           for url in "$MCP_URL" "$WEB_URL"; do
             [[ "$url" == https://* ]] || { echo "Invalid preview URL: $url" >&2; exit 1; }
           done
-      - uses: actions/setup-python@v5
+      - uses: actions/setup-python@v7
         with:
           python-version: "3.10"
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v7
         with:
           node-version: "20"
       - run: python harness/run_smoke.py --strict
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         if: always()
         with:
           name: preview-harness-reports-${{ github.sha }}
@@ -287,7 +287,7 @@ jobs:
       web_url: ${{ steps.stage_web.outputs.url }}
       web_id: ${{ steps.stage_web.outputs.id }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           persist-credentials: false
       - name: Pin release commit
@@ -389,7 +389,7 @@ jobs:
       MCP_VERCEL_AUTOMATION_BYPASS_SECRET: ${{ secrets.MCP_VERCEL_AUTOMATION_BYPASS_SECRET }}
       WEB_VERCEL_AUTOMATION_BYPASS_SECRET: ${{ secrets.WEB_VERCEL_AUTOMATION_BYPASS_SECRET }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           persist-credentials: false
       - name: Verify release commit and staged artifacts
@@ -398,14 +398,14 @@ jobs:
           for url in "$MCP_URL" "$WEB_URL"; do
             [[ "$url" == https://* ]] || { echo "Invalid staged URL: $url" >&2; exit 1; }
           done
-      - uses: actions/setup-python@v5
+      - uses: actions/setup-python@v7
         with:
           python-version: "3.10"
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v7
         with:
           node-version: "20"
       - run: python harness/run_smoke.py --strict
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         if: always()
         with:
           name: production-candidate-reports-${{ github.sha }}
@@ -443,12 +443,12 @@ jobs:
       STAGED_WEB_URL: ${{ needs.stage-production.outputs.web_url }}
       MCP_HARNESS_API_KEY: ${{ secrets.MCP_HARNESS_API_KEY }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           persist-credentials: false
       - name: Pin release commit
         run: test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
-      - uses: actions/setup-python@v5
+      - uses: actions/setup-python@v7
         with:
           python-version: "3.10"
       - run: python harness/run_smoke.py --strict
@@ -484,7 +484,7 @@ jobs:
               VERCEL_PROJECT_ID="$project_id" vercel logs --environment production --level error --since 5m --token="$VERCEL_TOKEN"
             )
           done
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         if: always()
         with:
           name: production-harness-reports-${{ github.sha }}
