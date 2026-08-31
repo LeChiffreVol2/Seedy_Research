@@ -1,6 +1,6 @@
 import { expect, test } from "@playwright/test";
 
-import { citationMapOpenAlex } from "../../lib/openalex";
+import { citationMapOpenAlex, discoverOpenAlex } from "../../lib/openalex";
 
 type StubWork = {
   id: string;
@@ -52,6 +52,60 @@ test.describe("OpenAlex Thai-to-global connection contract", () => {
   test.beforeEach(() => {
     process.env.FEDERATED_DISCOVERY_ENABLED = "true";
     process.env.OPENALEX_API_KEY = "test-openalex-key";
+    process.env.OPENALEX_ALLOW_ANONYMOUS = "false";
+  });
+
+  test("uses the bounded anonymous OpenAlex bridge only when explicitly enabled", async () => {
+    delete process.env.OPENALEX_API_KEY;
+    process.env.OPENALEX_ALLOW_ANONYMOUS = "true";
+    const restore = installOpenAlexStub([{
+      id: "https://openalex.org/W7197017660",
+      doi: "https://doi.org/10.70730/jfow3489",
+      display_name: "A Critical Analysis of Research on the Use of Artificial Intelligence in English Language Teaching in Thailand: Conflicting Results and Methodological Limitations",
+      publication_year: 2026,
+      cited_by_count: 0,
+      referenced_works: [],
+      related_works: [],
+    }]);
+    try {
+      const map = await citationMapOpenAlex({
+        doi: "10.70730/JFOW3489",
+        title: "A Critical Analysis of Research on the Use of Artificial Intelligence in English Language Teaching in Thailand: Conflicting Results and Methodological Limitations",
+        year: 2026,
+      });
+      expect(map.status).toBe("connected");
+      expect(map.match).toMatchObject({
+        status: "verified",
+        basis: "doi",
+        requiresHumanReview: false,
+        matchedOpenAlexId: "https://openalex.org/W7197017660",
+      });
+    } finally {
+      restore();
+    }
+  });
+
+  test("returns bounded metadata-only discovery through the explicit anonymous bridge", async () => {
+    delete process.env.OPENALEX_API_KEY;
+    process.env.OPENALEX_ALLOW_ANONYMOUS = "true";
+    const restore = installOpenAlexStub([{
+      id: "https://openalex.org/W2997300544",
+      display_name: "Preparing teachers for the application of AI-powered technologies in foreign language education",
+      publication_year: 2020,
+      cited_by_count: 54,
+      primary_topic: { display_name: "AI in language education" },
+    }]);
+    try {
+      const result = await discoverOpenAlex("longitudinal mixed-methods Thai ELT", { maxResults: 1 });
+      expect(result.status).toBe("connected");
+      expect(result.works).toEqual([expect.objectContaining({
+        id: "https://openalex.org/W2997300544",
+        title: "Preparing teachers for the application of AI-powered technologies in foreign language education",
+        citable: false,
+      })]);
+    } finally {
+      restore();
+    }
   });
 
   test("treats an exact DOI as verified and returns bounded metadata-only relations", async () => {

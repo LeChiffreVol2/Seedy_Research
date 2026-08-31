@@ -17,20 +17,22 @@ into the citable evidence index.
 | --- | ---: | --- |
 | Student Transport Projects | 67 | Student transport research projects, 2019–2024 |
 | NCCE | 1,230 | NCCE25, NCCE26, NCCE29, and NCCE31 proceedings |
-| **Total** | **1,297** | **11,523 active, page-linked sections** |
+| Rights-reviewed ThaiJO reader | 3 | LEARN Journal CC BY 4.0 full papers |
+| **Total** | **1,300** | **11,591 active, page-linked sections/pages** |
 
 The page-linked section count is the current public passage-level proof metric.
 The underlying index still has 1,064 active rows without page ranges plus nine
 paged rows beyond document-declared chunk counts, so the product no longer
 presents every active chunk as exact-page evidence. A staged NCCE31 boundary
 repair now produces 1,300 local markdown paper files and 1,299 index-eligible
-papers after
-one reviewed duplicate exclusion; production remains at 1,297 until the bounded
-152-job embedding refresh and exact duplicate cleanup receive explicit approval.
+papers after one reviewed duplicate exclusion. The database-backed Civil Research
+Pack remains at 1,297 while the three separately rights-reviewed reader papers
+bring the public page-citable total to 1,300; the broader embedding refresh and
+exact duplicate cleanup remain separately gated.
 
 The separate discovery catalog currently adds **2,578 active ThaiJO-hosted
 research metadata records** across 16 contributing OAI set specs in two official
-endpoint families, bringing Explore to **3,875 searchable records**. The
+endpoint families, bringing Explore to **3,878 searchable records**. The
 August 31 `sc01` pilot contributed 198 net-new active records after duplicate and
 whole-issue filtering. All 2,578 have a publisher link, 833 have a DOI, and none
 is eligible for AI answers or citations until full-text rights and page
@@ -81,21 +83,22 @@ Seedy Research exposes six browser-native SeedyMCP site tools from the top-level
 
 This is complementary to the remote MCP service: remote MCP works without an open page, while WebMCP lets a browser agent and a person collaborate in the same live research workspace. Inputs are validated again in application code; paper and external metadata outputs are marked as untrusted content; read-only tools are annotated explicitly; registration and in-flight work support cancellation.
 
-### Hero flow: Thai-to-Global Research Path
+### Challenge hero flow: Passport Trust Gate
 
-The Challenge hero flow begins with an indexed Thai paper, not a generated
-summary. A browser agent and the person share the same visible state while they:
+The repeatable Challenge flow begins with a rights-reviewed Thai paper, not a
+generated summary. The Site tools menu exposes all six capabilities, while the
+timed proof invokes only the three calls needed to produce a consequential
+human-agent handoff:
 
-1. discover bounded Thai evidence;
-2. open an exact page or a rights-cleared full paper;
-3. trace an exact-DOI OpenAlex match and select metadata-only
-   global comparison leads;
-4. build a four-stage Research Path that ends in a candidate gap and a
-   Next-Study Protocol;
-5. draft a Research Passport from one to three visible page anchors; and
-6. reopen every selected page before acknowledging review and exporting.
+1. `discover_research` finds the rights-reviewed ThaiJO paper;
+2. `inspect_paper_evidence` opens its exact page and lawful reader state;
+3. `draft_research_passport` creates a one-anchor Passport with non-citable
+   global metadata and one unvalidated validation gap; and
+4. the person reopens the page, acknowledges review, and exports Markdown.
 
-The Passport is the trust checkpoint inside that end-to-end path. It renders
+Research Path, connection tracing, and progress inspection remain available
+outside the 75-second must-pass flow. The Passport is the trust checkpoint
+inside the broader Thai-to-Global Research Path. It renders
 three deliberately separate layers:
 
 1. page-linked Thai evidence with exact original pages, retaining the source excerpt and adding a bounded English rendering when translation is available;
@@ -111,7 +114,10 @@ metadata, and inference boundaries. The Passport audits provenance and frames
 a next verification step; it does not prove scientific correctness, novelty,
 global transferability, or a comprehensive literature gap.
 
-In ChatGPT's built-in browser, use GPT-5.6 Sol or Terra for site-tool invocation. GPT-5.6 Luna remains the bounded default inside Seedy Research for path planning, checkpoint assessment, and other server-side product workflows.
+In ChatGPT's built-in browser, use a current account/model configuration where
+the Site tools control is visibly available and record that configuration in
+the run manifest. OpenAI does not publish a fixed build/account/model matrix;
+the app's server-side model settings are a separate concern.
 
 Run the browser contract test with:
 
@@ -210,7 +216,7 @@ Public MCP v2 also uses `MCP_PUBLIC_URL`, `MCP_OAUTH_AUDIENCE`,
 `MCP_DOCUMENTATION_URL`, and `MCP_OAUTH_ENABLED`. Keep OAuth disabled until the
 Supabase OAuth server and `civil_mcp_access_token_hook` are enabled together.
 
-`OPENAI_API_KEY` powers the default GPT-5.6 Luna chat, Research Path planning and assessment, translation, Workspace generation, and embedding jobs. `DEEPSEEK_API_KEY` is an optional server-side fallback. `OPENALEX_API_KEY` is optional and server-only; without it, Explore and Research Path keep a safe link-only bridge to OpenAlex search. Never expose provider, service-role, or MCP keys through `NEXT_PUBLIC_*` variables.
+`OPENAI_API_KEY` powers the default GPT-5.6 Luna chat, Research Path planning and assessment, translation, Workspace generation, and embedding jobs. `DEEPSEEK_API_KEY` is an optional server-side fallback. `OPENALEX_API_KEY` is optional and server-only; without it, Explore and Research Path keep a safe link-only bridge unless the operator explicitly enables the bounded `OPENALEX_ALLOW_ANONYMOUS=true` Challenge fallback. Anonymous access is for low-volume verification, not the approved 100-user/20-workflow capacity target; sustained traffic requires a free or paid server-side OpenAlex key. Never expose provider, service-role, or MCP keys through `NEXT_PUBLIC_*` variables.
 
 Semantic retrieval automatically degrades to a bounded keyword fallback when
 the embedding provider is unavailable. Fallback answers keep exact-page

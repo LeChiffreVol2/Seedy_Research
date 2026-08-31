@@ -78,6 +78,16 @@ const EMPTY_MATCH: OpenAlexMatch = {
   matchedOpenAlexId: null,
 };
 
+function openAlexAccess(): { allowed: boolean; apiKey: string } {
+  const apiKey = process.env.OPENALEX_API_KEY?.trim() ?? "";
+  const anonymousAllowed = process.env.OPENALEX_ALLOW_ANONYMOUS?.trim() === "true";
+  return { allowed: Boolean(apiKey) || anonymousAllowed, apiKey };
+}
+
+function addOpenAlexAccess(url: URL, apiKey: string): void {
+  if (apiKey) url.searchParams.set("api_key", apiKey);
+}
+
 export function normalizeOpenAlexQuery(value: unknown): string {
   return typeof value === "string"
     ? value
@@ -248,8 +258,8 @@ export async function discoverOpenAlex(
   const enabled = process.env.FEDERATED_DISCOVERY_ENABLED?.trim() !== "false";
   if (!enabled) return { status: "disabled", searchUrl, works: [] };
 
-  const apiKey = process.env.OPENALEX_API_KEY?.trim();
-  if (!apiKey) return { status: "link_only", searchUrl, works: [] };
+  const access = openAlexAccess();
+  if (!access.allowed) return { status: "link_only", searchUrl, works: [] };
 
   try {
     const limit = boundedResultCount(options.maxResults);
@@ -260,7 +270,7 @@ export async function discoverOpenAlex(
     url.searchParams.set("search", query);
     url.searchParams.set("per_page", String(limit));
     url.searchParams.set("select", "id,doi,display_name,publication_year,cited_by_count,primary_topic");
-    url.searchParams.set("api_key", apiKey);
+    addOpenAlexAccess(url, access.apiKey);
     const response = await fetch(url, {
       cache: "no-store",
       signal: AbortSignal.timeout(timeoutMs),
@@ -344,10 +354,10 @@ export async function citationMapOpenAlex(rawInput: unknown): Promise<OpenAlexCi
   if (process.env.FEDERATED_DISCOVERY_ENABLED?.trim() === "false") {
     return { status: "disabled", searchUrl, match: EMPTY_MATCH, seed: null, nodes: [] };
   }
-  const apiKey = process.env.OPENALEX_API_KEY?.trim();
-  if (!apiKey) return { status: "link_only", searchUrl, match: EMPTY_MATCH, seed: null, nodes: [] };
+  const access = openAlexAccess();
+  if (!access.allowed) return { status: "link_only", searchUrl, match: EMPTY_MATCH, seed: null, nodes: [] };
   const fetchJson = async (url: URL) => {
-    url.searchParams.set("api_key", apiKey);
+    addOpenAlexAccess(url, access.apiKey);
     const response = await fetch(url, { cache: "no-store", signal: AbortSignal.timeout(OPENALEX_TIMEOUT_MS) });
     if (response.status === 429) throw new Error("rate_limited");
     if (!response.ok) throw new Error("unavailable");

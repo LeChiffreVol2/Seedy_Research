@@ -30,6 +30,42 @@ const researchCard = {
   discoveryLayer: "evidence",
 };
 
+const goldenPassportCard = {
+  id: "reader-pack:thaijo:learn:291631",
+  source: "thaijo:learn:291631",
+  collection: "",
+  sourceType: "journal_article",
+  paperCode: "10.70730/JFOW3489",
+  pageStart: 1,
+  pageEnd: 17,
+  discipline: "education",
+  language: "en",
+  publishedAt: "2026-07-31",
+  title: "A Critical Analysis of Research on the Use of Artificial Intelligence in English Language Teaching in Thailand: Conflicting Results and Methodological Limitations",
+  date: "31 Jul 2026",
+  sourceLabel: "ThaiJO · LEARN Journal · Native reader",
+  summary: "Rights-verified CC-BY-4.0 full paper with 17 page-addressable pages.",
+  tags: ["Native reader", "CC BY 4.0", "ThaiJO"],
+  filters: ["hot", "recent", "evidence", "thai", "tci"],
+  evidenceCount: 17,
+  pages: 17,
+  pageLabel: "17 verified pages",
+  preview: "beam",
+  prompt: "",
+  provider: "tci_thaijo",
+  evidenceStatus: "extracted",
+  citable: true,
+  canonicalUrl: "https://so04.tci-thaijo.org/index.php/LEARN/article/view/291631",
+  journalTitle: "LEARN Journal: Language Education and Acquisition Research Network",
+  authors: ["Supong Tangkiengsirisin", "Le Van Canh", "Sethawut Techasan"],
+  doi: "10.70730/JFOW3489",
+  rightsStatus: "open_license_verified",
+  accessLevel: "full_text_licensed",
+  licenseExpression: "CC-BY-4.0",
+  licenseUrl: "https://creativecommons.org/licenses/by/4.0/",
+  discoveryLayer: "evidence",
+};
+
 const readerFullPageText = "FULL VERIFIED PAGE TEXT MUST STAY OUT OF THE WEBMCP TOOL RESULT";
 
 test.beforeEach(async ({ page }) => {
@@ -599,6 +635,115 @@ test("registers non-trivial WebMCP tools and keeps agent actions visible to the 
   await expect(exportPassport).toBeDisabled();
   await passportPanel.getByText("Inspect WebMCP run").click();
   await expect(passportPanel.getByText("4 completed calls", { exact: true })).toBeVisible();
+});
+
+test("completes the production-seed Passport trust gate in exactly three site-tool calls", async ({ page }) => {
+  await page.unroute("**/api/research-feed**");
+  await page.route("**/api/research-feed**", async (route) => {
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({
+        cards: [goldenPassportCard],
+        facets: {
+          total: 1300,
+          catalogTotal: 3878,
+          citableTotal: 1300,
+          metadataOnlyTotal: 2578,
+          totalSections: 11591,
+          totalChunks: 68682,
+          filters: { hot: 1300, evidence: 1300, thai: 2581, tci: 2581 },
+        },
+        nextCursor: null,
+        generatedAt: "2026-09-01T00:00:00.000Z",
+      }),
+    });
+  });
+  await page.unroute("**/api/global-discovery");
+  await page.route("**/api/global-discovery", async (route) => {
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({
+        status: "connected",
+        provider: "openalex",
+        generatedAt: "2026-09-01T00:00:00.000Z",
+        searchUrl: "https://openalex.org/works?search=longitudinal%20mixed-methods%20Thai%20ELT",
+        works: [{
+          id: "https://openalex.org/W2997300544",
+          doi: null,
+          title: "Preparing teachers for the application of AI-powered technologies in foreign language education",
+          year: 2020,
+          citedByCount: 54,
+          topic: "AI in language education",
+          url: "https://openalex.org/W2997300544",
+          citable: false,
+        }],
+      }),
+    });
+  });
+  await page.unroute("**/api/papers/**/reader**");
+  await page.unroute("**/api/papers/**");
+
+  const response = await page.goto("/?view=explore");
+  expect(response?.headers()["permissions-policy"]).toContain("tools=(self)");
+  await expect(page.getByLabel("WebMCP site tools ready")).toBeVisible({ timeout: 15_000 });
+
+  const discovered = await page.evaluate(async () => {
+    const tools = (window as unknown as { __seedResearchWebMcpTools: Map<string, { execute: (input: unknown) => Promise<unknown> }> }).__seedResearchWebMcpTools;
+    return tools.get("discover_research")?.execute({
+      query: "AI in English language teaching in Thailand methodological limitations",
+      collection: "all",
+      scope: "thai",
+    });
+  }) as { thaiEvidence?: Array<{ source?: string; nativeReaderVerified?: boolean }> };
+  expect(discovered.thaiEvidence?.[0]).toMatchObject({ source: goldenPassportCard.source, nativeReaderVerified: true });
+
+  const inspected = await page.evaluate(async () => {
+    const tools = (window as unknown as { __seedResearchWebMcpTools: Map<string, { execute: (input: unknown) => Promise<unknown> }> }).__seedResearchWebMcpTools;
+    return tools.get("inspect_paper_evidence")?.execute({
+      source: "thaijo:learn:291631",
+      evidenceId: "thaijo-learn-291631-page-2",
+      page: 2,
+    });
+  }) as { evidence?: Array<{ id?: string; page?: string }>; readerAccess?: { mode?: string; pageReadableInSeedResearch?: boolean } };
+  expect(inspected.evidence?.[0]).toMatchObject({ id: "thaijo-learn-291631-page-2", page: "p.2" });
+  expect(inspected.readerAccess).toMatchObject({ mode: "native_verified", pageReadableInSeedResearch: true });
+
+  const drafted = await page.evaluate(async () => {
+    const tools = (window as unknown as { __seedResearchWebMcpTools: Map<string, { execute: (input: unknown) => Promise<unknown> }> }).__seedResearchWebMcpTools;
+    return tools.get("draft_research_passport")?.execute({
+      source: "thaijo:learn:291631",
+      focus: "How should a longitudinal mixed-methods Thai ELT study test AI learning outcomes beyond novelty effects?",
+      evidenceIds: ["thaijo-learn-291631-page-2"],
+      gapLens: "validation",
+    });
+  }) as { translationStatus?: string; globalLeads?: Array<{ citable?: boolean }>; candidateGap?: { status?: string; evidenceRelationValidated?: boolean } };
+  expect(drafted.translationStatus).toBe("not_needed");
+  expect(drafted.globalLeads).toEqual([expect.objectContaining({ citable: false })]);
+  expect(drafted.candidateGap).toMatchObject({ status: "unsupported_candidate", evidenceRelationValidated: false });
+
+  const passportPanel = page.getByLabel("Thai-to-global research passport");
+  const exportPassport = passportPanel.getByRole("button", { name: "Export passport" });
+  await expect(exportPassport).toBeDisabled();
+  await passportPanel.getByRole("button", { name: "Open evidence thaijo-learn-291631-page-2 at p.2" }).click();
+  await expect(page.getByRole("dialog", { name: "Paper detail" })).toBeVisible();
+  await expect(page.getByTestId("paper-reader-action")).toHaveText(/Read verified full paper/);
+  await page.getByRole("button", { name: "Close paper detail" }).click();
+  await passportPanel.getByRole("button", { name: "Mark pages reviewed" }).click();
+  await expect(exportPassport).toBeEnabled();
+  const downloadPromise = page.waitForEvent("download");
+  await exportPassport.click();
+  const download = await downloadPromise;
+  expect(download.suggestedFilename()).toMatch(/^seed-research-passport-sr-.*\.md$/);
+
+  await passportPanel.getByText("Inspect WebMCP run").click();
+  await expect(passportPanel.getByText("3 completed calls", { exact: true })).toBeVisible();
+  await expect(passportPanel.getByText("discover_research", { exact: true })).toBeVisible();
+  await expect(passportPanel.getByText("inspect_paper_evidence", { exact: true })).toBeVisible();
+  await expect(passportPanel.getByText("draft_research_passport", { exact: true })).toBeVisible();
+  await expect(passportPanel.getByText("trace_research_connections", { exact: true })).toHaveCount(0);
+  await expect(passportPanel.getByText("build_research_path", { exact: true })).toHaveCount(0);
 });
 
 test("fails closed on a candidate OpenAlex match until a human confirms it", async ({ page }) => {

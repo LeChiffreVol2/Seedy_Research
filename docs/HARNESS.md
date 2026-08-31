@@ -27,6 +27,14 @@ Use the root `Makefile` for normal release work. The direct harness commands rem
 
 `web/tests/e2e/webmcp.spec.ts` installs a deterministic browser-side `document.modelContext` host before application hydration. It requires the exact six-tool contract, checks read-only and untrusted-content annotations, then executes discovery, exact-page evidence opening, fail-closed OpenAlex connection tracing, Research Passport drafting/review/export, Thai-to-global Research Path creation, and progress inspection. The test must verify the corresponding visible UI state; a source-string assertion alone is not sufficient.
 
+The same suite has a focused Challenge regression that uses the committed
+`thaijo:learn:291631` rights-reviewed reader route rather than the synthetic
+road-safety fixture. It proves the timed three-call Passport Trust Gate:
+Thai-only discovery, page-2 inspection, Passport drafting, locked export,
+human page reopening, review acknowledgment, Markdown download, and an exact
+three-call run trace. Catalog and OpenAlex responses remain boundary mocks;
+paper detail and reader access use the real committed pack.
+
 The Passport assertions are part of the release contract: a metadata-only
 record cannot be opened as evidence; the draft must reject an evidence ID that
 is not visible in the active paper; returned OpenAlex leads remain
@@ -36,7 +44,12 @@ has been reopened; export is enabled only after that acknowledgment while the
 candidate inference remains unvalidated; bounded Thai-to-English rendering retains both source and translation; and the downloaded Markdown plus visible WebMCP activity trace
 preserve the same boundary.
 
-Before a challenge release, also run one manual pass in ChatGPT's built-in browser with GPT-5.6 Sol or Terra and one pass in Chrome with WebMCP testing enabled. Record the deployed URL, candidate SHA, tool list, prompt, result, and any confirmation shown. The deterministic E2E proves application behavior; the manual pass proves compatibility with the actual challenge host.
+Before a challenge release, also run one manual pass in ChatGPT's built-in
+browser with Site tools visibly available and one pass in Chrome with native
+WebMCP testing enabled. Record the deployed URL, candidate SHA, exact host
+build/account/model configuration, six-tool inventory, prompt, calls, timings,
+result, and every confirmation shown. The deterministic E2E proves application
+behavior; the manual pass proves compatibility with the actual challenge host.
 
 ## Rights-reviewed paper-reader contract
 

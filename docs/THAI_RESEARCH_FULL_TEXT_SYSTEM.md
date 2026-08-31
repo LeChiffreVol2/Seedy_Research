@@ -26,9 +26,10 @@ coverage statement must name a provider, denominator, access layer, and date.
 
 ## Live baseline and the missing link
 
-As of 31 August 2026, production exposes **3,875 searchable records**:
+As of 1 September 2026, production exposes **3,878 searchable records**:
 
-- **1,297 page-citable evidence records**;
+- **1,300 page-citable evidence records**, including the three rights-reviewed
+  reader papers below;
 - **2,578 metadata-only discovery records**; and
 - **2 of 36 official ThaiJO OAI endpoint families active** in the bounded live
   harvest.

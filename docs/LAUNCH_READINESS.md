@@ -8,7 +8,7 @@ global GA or as a paid product on Vercel Hobby.
 
 The launch promise is narrow and testable:
 
-> Find Thai civil-engineering research that global indexes miss, verify every
+> Find Thai research that global indexes can miss, verify every
 > supported claim at the page, and turn the evidence into reviews, learning
 > paths, and research decisions.
 
@@ -34,7 +34,7 @@ The launch promise is narrow and testable:
   19-tool first-party compatibility contract. OAuth and revocable owner-scoped
   personal keys share the same permission and distributed-quota boundary.
   Metadata-only records are never returned as citable evidence.
-- WebMCP: five top-level browser site tools for discovery, exact-page evidence,
+- WebMCP: six top-level browser site tools for discovery, exact-page evidence,
   Evidence-bounded Research Passport drafting, Research Path
   creation/adaptation, and privacy-bounded progress inspection. Tool calls
   must update the same visible page the person is reviewing.
@@ -75,8 +75,9 @@ All of the following must pass against the same source state:
     Explore, evidence-drawer, Research Passport, Research Path, and progress
     state; Passport page-review acknowledgment remains locked until every selected exact-page anchor is reopened, export remains locked until that acknowledgment, and OpenAlex leads
     remain non-citable. The deployed candidate is also checked manually in
-    ChatGPT's built-in browser with Sol or Terra and in Chrome with WebMCP
-    testing enabled.
+    ChatGPT's built-in browser using a configuration where Site tools are
+    visibly available and in Chrome with native WebMCP testing enabled. Record
+    the exact host build, account class, selected model, permissions, and calls.
 
 The August 31, 2026 production dependency audit found no high or critical
 advisories and five transitive low-severity advisories in the current AI SDK
