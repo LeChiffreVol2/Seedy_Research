@@ -104,6 +104,8 @@ Vercel Hobby cron can only run daily, so `citymcp/ops-dashboard/vercel.json` kee
 daily fallback in the retained deployment configuration. The former five-minute
 GitHub refresh is paused while CityMCP is archived in maintenance-only mode.
 `.github/workflows/citymcp-ingest.yml` now permits explicit manual dispatch only.
+The isolated CityMCP CI and preview/promotion workflows are manual-only as well;
+Seedy Research CI and deployment remain independent and automatic.
 
 Before deliberately reactivating the CityMCP workflow, configure the GitHub
 repository that owns the deployment:

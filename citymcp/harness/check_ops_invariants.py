@@ -248,6 +248,7 @@ def check_ops_ingest_auth_guard() -> Check:
 def check_ops_ingest_cron_cadence() -> Check:
     vercel_config = OPS_ROOT / "vercel.json"
     external_scheduler = ROOT / ".github" / "workflows" / "citymcp-ingest.yml"
+    citymcp_readme = ROOT / "citymcp" / "README.md"
     if not vercel_config.exists():
         return Check("ops_ingest_cron_cadence", "fail", "citymcp/ops-dashboard/vercel.json is missing.", "Restore Vercel cron configuration for read-model refresh.")
     try:
@@ -260,10 +261,15 @@ def check_ops_ingest_cron_cadence() -> Check:
         return Check("ops_ingest_cron_cadence", "fail", "No /api/ops/ingest/refresh cron configured.", "Add a production cron for read-model refresh.")
     schedule = str(refresh_jobs[0].get("schedule", ""))
     external_text = read(external_scheduler) if external_scheduler.exists() else ""
+    citymcp_status = read(citymcp_readme) if citymcp_readme.exists() else ""
     has_external_five_minute = all(
         marker in external_text
         for marker in ['cron: "*/5 * * * *"', "https://citymcp.vercel.app/api/ops/ingest/refresh", "OPS_INGEST_SECRET", "curl --fail"]
     )
+    has_archived_manual_path = all(
+        marker in external_text
+        for marker in ["archived in maintenance-only mode", "workflow_dispatch:", "OPS_INGEST_SECRET", "curl --fail"]
+    ) and "archived / maintenance-only" in citymcp_status and not re.search(r"^\s*schedule\s*:", external_text, re.MULTILINE)
     if schedule != "*/5 * * * *":
         if has_external_five_minute:
             return Check(
@@ -271,13 +277,47 @@ def check_ops_ingest_cron_cadence() -> Check:
                 "pass",
                 f"Vercel schedule={schedule!r}; GitHub Actions external scheduler provides five-minute ingest cadence.",
             )
+        if schedule == "0 0 * * *" and has_archived_manual_path:
+            return Check(
+                "ops_ingest_cron_cadence",
+                "pass",
+                "CityMCP is archived in maintenance-only mode: the retained Vercel daily fallback remains configured and GitHub ingest is manual-only.",
+            )
         return Check(
             "ops_ingest_cron_cadence",
             "fail",
             f"schedule={schedule!r}",
-            "Use */5 * * * * on Vercel Pro or keep .github/workflows/citymcp-ingest.yml as the five-minute external scheduler.",
+            "Use */5 * * * * on Vercel Pro, keep the five-minute external scheduler, or preserve the explicit archived/manual-only contract.",
         )
     return Check("ops_ingest_cron_cadence", "pass", "Read-model refresh cron is configured for five-minute cadence.")
+
+
+def check_ops_archived_workflows() -> Check:
+    status_path = ROOT / "citymcp" / "README.md"
+    status_text = read(status_path) if status_path.exists() else ""
+    if "archived / maintenance-only" not in status_text:
+        return Check("ops_archived_workflows", "pass", "CityMCP is active; automatic workflow policy is unchanged.")
+
+    workflow_paths = [
+        ROOT / ".github" / "workflows" / "citymcp-ingest.yml",
+        ROOT / ".github" / "workflows" / "citymcp-ci.yml",
+        ROOT / ".github" / "workflows" / "citymcp-release.yml",
+    ]
+    offenders: list[str] = []
+    for path in workflow_paths:
+        workflow_text = read(path) if path.exists() else ""
+        if "workflow_dispatch:" not in workflow_text or re.search(
+            r"^\s*(?:push|pull_request|schedule)\s*:", workflow_text, re.MULTILINE
+        ):
+            offenders.append(str(path.relative_to(ROOT)))
+    if offenders:
+        return Check(
+            "ops_archived_workflows",
+            "fail",
+            f"automatic or non-runnable archived workflows={offenders}",
+            "Archived CityMCP workflows must retain workflow_dispatch and omit push, pull_request, and schedule triggers.",
+        )
+    return Check("ops_archived_workflows", "pass", "All archived CityMCP workflows are explicit manual dispatch only.")
 
 
 def check_ops_action_record_research_guard() -> Check:
@@ -599,6 +639,7 @@ def build_checks(strict: bool) -> list[Check]:
         check_ops_server_secret_boundary(),
         check_ops_ingest_auth_guard(),
         check_ops_ingest_cron_cadence(),
+        check_ops_archived_workflows(),
         check_ops_action_record_research_guard(),
         check_ops_real_data_only_guards(),
         check_ops_spatial_rpc_read_model_presence(),

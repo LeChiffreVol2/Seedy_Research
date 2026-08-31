@@ -1,17 +1,8 @@
 name: CityMCP preview and promote
 
 on:
-  pull_request:
-    paths:
-      - "citymcp/**"
-      - "supabase/migrations/*smart_city*.sql"
-      - ".github/workflows/citymcp-*.yml"
-  push:
-    branches: [main]
-    paths:
-      - "citymcp/**"
-      - "supabase/migrations/*smart_city*.sql"
-      - ".github/workflows/citymcp-*.yml"
+  # Archived / maintenance-only: preview and promotion require an explicit
+  # maintainer dispatch. The existing production deployment is left untouched.
   workflow_dispatch:
     inputs:
       promote:

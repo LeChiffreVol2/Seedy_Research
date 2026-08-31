@@ -1,17 +1,9 @@
 name: CityMCP CI
 
 on:
-  pull_request:
-    paths:
-      - "citymcp/**"
-      - "supabase/migrations/*smart_city*.sql"
-      - ".github/workflows/citymcp-*.yml"
-  push:
-    branches: [main]
-    paths:
-      - "citymcp/**"
-      - "supabase/migrations/*smart_city*.sql"
-      - ".github/workflows/citymcp-*.yml"
+  # CityMCP is archived in maintenance-only mode. Run its isolated validation
+  # only when a maintainer deliberately resumes CityMCP work.
+  workflow_dispatch:
 
 permissions:
   contents: read

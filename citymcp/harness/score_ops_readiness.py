@@ -90,7 +90,13 @@ def check_scheduler_path() -> Check:
     workflow = ROOT / ".github" / "workflows" / "citymcp-ingest.yml"
     text = workflow.read_text(encoding="utf-8", errors="replace") if workflow.exists() else ""
     has_workflow = all(marker in text for marker in ['cron: "*/5 * * * *"', "OPS_INGEST_SECRET", "curl --fail"])
+    has_archived_manual_path = all(
+        marker in text
+        for marker in ["archived in maintenance-only mode", "workflow_dispatch:", "OPS_INGEST_SECRET", "curl --fail"]
+    ) and "schedule:" not in text
     remotes = git_output("remote", "-v")
+    if has_archived_manual_path:
+        return Check("ops_ingest_scheduler_path", "pass", "CityMCP is archived; ingest is retained as an explicit manual workflow only.")
     if has_workflow and remotes:
         return Check("ops_ingest_scheduler_path", "pass", "Five-minute GitHub scheduler workflow exists and this worktree has a Git remote.")
     if has_workflow:

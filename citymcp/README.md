@@ -5,8 +5,9 @@ CityMCP is the smart-city operations consumer that shares CivilMCP's read-only M
 > **Status — archived / maintenance-only (1 September 2026):** source code,
 > migrations, and the existing deployment are retained. Scheduled GitHub
 > refreshes are paused; `.github/workflows/citymcp-ingest.yml` remains available
-> only through an explicit manual dispatch. This status does not affect Seedy
-> Research release gates or production traffic.
+> only through an explicit manual dispatch. CityMCP CI and preview/promotion are
+> also manual-only while archived. This status does not affect Seedy Research
+> release gates or production traffic.
 
 ## Layout
 
@@ -28,3 +29,5 @@ make local-gate
 - CivilMCP CI, release, and quality scoring do not build, deploy, or score this directory.
 - Re-enabling scheduled ingest requires a separate CityMCP decision, a matching
   `OPS_INGEST_SECRET` in GitHub and Vercel, and a CityMCP-only verification run.
+- Re-enabling automatic CityMCP CI or preview releases likewise requires a
+  separate CityMCP decision; the retained workflows remain manually runnable.
