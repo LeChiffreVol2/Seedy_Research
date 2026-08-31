@@ -1,11 +1,19 @@
 import { Buffer } from "node:buffer";
+import { readdirSync } from "node:fs";
+import { join } from "node:path";
 
 import { createClient } from "@supabase/supabase-js";
 
 import { PAPER_SUMMARY_OVERRIDES } from "./paper-summary-overrides";
 import { PAPER_TITLE_OVERRIDES } from "./paper-title-overrides";
+import {
+  findRightsReviewedReaderPaper,
+  listRightsReviewedReaderPapers,
+  type RightsReviewedReaderPage,
+  type RightsReviewedReaderPaper,
+} from "./rights-reviewed-reader-papers";
 
-export type FeedFilter = "hot" | "recent" | "evidence" | "tci" | "ncce" | "ce_project";
+export type FeedFilter = "hot" | "recent" | "evidence" | "thai" | "tci" | "ncce" | "ce_project";
 export type CollectionFilter = "" | "ce_project" | "ncce";
 export type PreviewVariant = "beam" | "flood" | "seismic" | "traffic";
 
@@ -22,6 +30,8 @@ export type ResearchFeedCard = {
   proceedingNo?: number | null;
   proceedingYear?: number | null;
   discipline?: string | null;
+  language?: string | null;
+  publishedAt?: string | null;
   title: string;
   date: string;
   sourceLabel: string;
@@ -44,6 +54,8 @@ export type ResearchFeedCard = {
   doi?: string | null;
   rightsStatus?: string | null;
   accessLevel?: string | null;
+  licenseExpression?: string | null;
+  licenseUrl?: string | null;
   discoveryLayer?: "evidence" | "thai_discovery";
 };
 
@@ -81,6 +93,10 @@ export type PaperEvidence = {
   pageStart?: number | null;
   pageEnd?: number | null;
   snippet: string;
+  /** Physical page index used by the native reader; source page labels remain in pageStart/pageEnd. */
+  readerPageNumber?: number | null;
+  /** Stable native-reader anchor. Present only for a rights-verified reader page. */
+  readerAnchor?: string | null;
 };
 
 export type PaperDetailResponse = {
@@ -175,6 +191,7 @@ type ListFeedParams = {
   q?: string | null;
   limit?: string | number | null;
   cursor?: string | null;
+  includeFacets?: boolean;
 };
 
 const DOCUMENT_SELECT =
@@ -208,7 +225,8 @@ function getSupabaseAdmin() {
 }
 
 export function normalizeFeedFilter(value: string | null | undefined): FeedFilter {
-  return value === "recent" || value === "evidence" || value === "tci" || value === "ncce" || value === "ce_project" ? value : "hot";
+  if (value === "tci") return "thai";
+  return value === "recent" || value === "evidence" || value === "thai" || value === "ncce" || value === "ce_project" ? value : "hot";
 }
 
 export function normalizeCollection(value: string | null | undefined): CollectionFilter {
@@ -581,6 +599,11 @@ function collectionLabel(value: CollectionFilter): string {
 
 function providerLabel(value: string): string {
   if (value === "tci_thaijo") return "ThaiJO";
+  if (value === "tci_citation") return "TCI Citation Index";
+  if (value === "tnrr") return "TNRR";
+  if (value === "thailis_tdc") return "ThaiLIS / TDC";
+  if (value === "thai_conference") return "Thai Conferences";
+  if (value === "thai_ir") return "Thai Institutional Repositories";
   if (value === "student_transport_projects") return "Student Transport";
   if (value === "ncce") return "NCCE";
   return value;
@@ -590,6 +613,11 @@ function disciplineLabel(value: string | null | undefined): string {
   const cleaned = (value ?? "").trim();
   const labels: Record<string, string> = {
     unknown: "General Engineering",
+    science: "Science",
+    life_sciences: "Life Sciences",
+    physical_sciences: "Physical Sciences",
+    health_sciences: "Health Sciences",
+    social_sciences: "Social Sciences",
     transport: "Transport",
     structural: "Structural",
     geotechnical: "Geotechnical",
@@ -644,8 +672,17 @@ function previewSlug(source: string): string {
     .replace(/^[._]+|[._]+$/g, "") || "paper";
 }
 
-function previewUrlForSource(source: string): string {
-  return `/paper-previews/${previewSlug(source)}.jpg`;
+const PAPER_PREVIEW_FILES = (() => {
+  try {
+    return new Set(readdirSync(join(process.cwd(), "public", "paper-previews")));
+  } catch {
+    return new Set<string>();
+  }
+})();
+
+function previewUrlForSource(source: string): string | undefined {
+  const filename = `${previewSlug(source)}.jpg`;
+  return PAPER_PREVIEW_FILES.has(filename) ? `/paper-previews/${filename}` : undefined;
 }
 
 function hotScore(doc: DocumentRow): number {
@@ -764,7 +801,7 @@ function cardFromCatalog(row: CatalogRow): ResearchFeedCard {
   const summary = [
     journalTitle,
     authors.length ? `By ${authors.slice(0, 3).join(", ")}` : "",
-    "Discovery metadata. Open the publisher record to verify the full text and reuse terms.",
+    "Discovery metadata. Open the source record to verify full-text access and reuse terms.",
   ].filter(Boolean).join(" · ");
   const previewDoc: DocumentRow = {
     id: row.id,
@@ -780,12 +817,14 @@ function cardFromCatalog(row: CatalogRow): ResearchFeedCard {
     sourceType: row.source_type,
     paperCode: null,
     discipline: row.discipline,
+    language: row.language,
+    publishedAt: row.published_at,
     title,
     date: formatDate(row.published_at ?? row.source_updated_at ?? row.updated_at),
     sourceLabel: [providerLabel(row.provider), journalTitle, disciplineLabel(row.discipline)].filter(Boolean).join(" · "),
     summary,
     tags,
-    filters: ["tci"],
+    filters: ["thai", "tci"],
     evidenceCount: 0,
     pages: 0,
     pageLabel: "Metadata only",
@@ -802,6 +841,113 @@ function cardFromCatalog(row: CatalogRow): ResearchFeedCard {
     rightsStatus: row.rights_status,
     accessLevel: row.access_level,
     discoveryLayer: "thai_discovery",
+  };
+}
+
+function readerSourcePageNumber(page: RightsReviewedReaderPage): number {
+  const parsed = Number.parseInt(page.pageLabel, 10);
+  return Number.isSafeInteger(parsed) && parsed >= 0 ? parsed : page.pageNumber;
+}
+
+function readerStableAnchor(paper: RightsReviewedReaderPaper, page: RightsReviewedReaderPage): string {
+  return `asset:${paper.asset.id}:page:${page.pageNumber}`;
+}
+
+function cardFromRightsReviewedReaderPaper(paper: RightsReviewedReaderPaper): ResearchFeedCard {
+  const firstPage = paper.pages[0];
+  const lastPage = paper.pages[paper.pages.length - 1];
+  const pageStart = firstPage ? readerSourcePageNumber(firstPage) : null;
+  const pageEnd = lastPage ? readerSourcePageNumber(lastPage) : null;
+  const indexedAt = paper.asset.rightsVerifiedAt;
+  const ageDays = Math.max(0, (Date.now() - new Date(indexedAt).getTime()) / 86_400_000);
+  const filters: FeedFilter[] = ["hot", "evidence", "thai", "tci"];
+  // Match the database-backed `recent` facet instead of pinning the committed
+  // reader pack in that tab forever after its review date ages past 45 days.
+  if (ageDays <= 45) filters.splice(1, 0, "recent");
+  const card: ResearchFeedCard = {
+    id: `reader-pack:${paper.source}`,
+    source: paper.source,
+    collection: "",
+    sourceType: "journal_article",
+    paperCode: paper.doi,
+    pageStart,
+    pageEnd,
+    discipline: "education",
+    language: paper.asset.language,
+    publishedAt: paper.publishedAt,
+    title: paper.title,
+    date: formatDate(paper.publishedAt),
+    sourceLabel: `ThaiJO · ${paper.journalTitle} · Native reader`,
+    summary: `Rights-verified ${paper.asset.licenseExpression} full paper with ${paper.asset.pageCount} page-addressable pages. Read, search, annotate, and reopen every citation against the official version of record.`,
+    tags: ["Native reader", "CC BY 4.0", "ThaiJO"],
+    filters,
+    evidenceCount: paper.pages.length,
+    pages: paper.asset.pageCount,
+    pageLabel: `${paper.asset.pageCount} verified pages`,
+    preview: derivePreview({ id: paper.source, source: paper.source, discipline: "education" }, paper.title),
+    prompt: "",
+    indexedAt,
+    provider: paper.provider,
+    evidenceStatus: "extracted",
+    citable: true,
+    canonicalUrl: paper.sourceUrl,
+    journalTitle: paper.journalTitle,
+    authors: [...paper.authors],
+    doi: paper.doi,
+    rightsStatus: paper.asset.rightsStatus,
+    accessLevel: "full_text_licensed",
+    licenseExpression: paper.asset.licenseExpression,
+    licenseUrl: paper.asset.licenseUrl,
+    discoveryLayer: "evidence",
+  };
+  return { ...card, prompt: buildPrompt(card) };
+}
+
+function rightsReviewedReaderCards(filter: FeedFilter, collection: CollectionFilter, q: string): ResearchFeedCard[] {
+  if (collection || filter === "ncce" || filter === "ce_project") return [];
+  const terms = q
+    .toLocaleLowerCase("en")
+    .split(/\s+/)
+    .map((term) => term.trim())
+    .filter((term) => term.length >= 2 && !QUERY_STOP_WORDS.has(term));
+  return listRightsReviewedReaderPapers()
+    .map(cardFromRightsReviewedReaderPaper)
+    .filter((card) => card.filters.includes(filter))
+    .filter((card) => {
+      if (!terms.length) return true;
+      const haystack = [card.title, card.source, card.paperCode, card.journalTitle, ...(card.authors ?? []), ...card.tags]
+        .filter(Boolean)
+        .join(" ")
+        .toLocaleLowerCase("en");
+      return terms.every((term) => haystack.includes(term));
+    })
+    .sort((left, right) => {
+      if (filter === "evidence") return right.evidenceCount - left.evidenceCount;
+      return new Date(right.indexedAt ?? right.date).getTime() - new Date(left.indexedAt ?? left.date).getTime();
+    });
+}
+
+function addReaderPackFacets(facets: ResearchFeedResponse["facets"]): ResearchFeedResponse["facets"] {
+  const cards = listRightsReviewedReaderPapers().map(cardFromRightsReviewedReaderPaper);
+  const providerCounts = new Map(facets.providers.map((item) => [item.provider, { ...item }]));
+  for (const card of cards) {
+    const provider = card.provider ?? "unknown";
+    const current = providerCounts.get(provider);
+    if (current) current.citable += 1;
+    else providerCounts.set(provider, { provider, records: 1, citable: 1 });
+  }
+  const filters = { ...facets.filters };
+  for (const card of cards) {
+    for (const filter of card.filters) filters[filter] += 1;
+  }
+  return {
+    ...facets,
+    total: facets.total + cards.length,
+    totalSections: facets.totalSections + cards.reduce((sum, card) => sum + card.pages, 0),
+    totalChunks: facets.totalChunks + cards.reduce((sum, card) => sum + card.evidenceCount, 0),
+    citableTotal: facets.citableTotal + cards.length,
+    providers: [...providerCounts.values()],
+    filters,
   };
 }
 
@@ -937,25 +1083,32 @@ async function fetchEvidenceFacets(): Promise<EvidenceFacetRow> {
 async function searchCatalog({
   q,
   provider = "",
+  evidenceStatus,
   limit,
   offset,
 }: {
   q: string;
   provider?: string;
+  evidenceStatus?: CatalogRow["evidence_status"];
   limit: number;
   offset: number;
 }): Promise<{ rows: CatalogRow[]; total: number }> {
   const supabase = getSupabaseAdmin() as any;
-  const { data, error } = await supabase.rpc("search_civil_source_catalog_public_v1", {
-    search_query: q,
-    filter_provider: provider || null,
-    filter_discipline: null,
-    match_count: limit,
-    match_offset: offset,
-  });
-  if (!error) {
-    const rows = (data ?? []) as Array<CatalogRow & { total_count?: number | string }>;
-    return { rows, total: Number(rows[0]?.total_count ?? 0) };
+  if (!evidenceStatus) {
+    const { data, error } = await supabase.rpc("search_civil_source_catalog_public_v1", {
+      search_query: q,
+      filter_provider: provider || null,
+      filter_discipline: null,
+      match_count: limit,
+      match_offset: offset,
+    });
+    if (!error) {
+      const rows = (data ?? []) as Array<CatalogRow & { total_count?: number | string }>;
+      return { rows, total: Number(rows[0]?.total_count ?? 0) };
+    }
+    if (!rpcUnavailable(error, "search_civil_source_catalog_public_v1")) {
+      throw new Error(`Failed to search source catalog: ${error.message}`);
+    }
   }
   // Compatibility fallback for environments that have not applied the additive
   // public catalog RPC yet. It remains bounded and never selects abstracts or
@@ -967,6 +1120,7 @@ async function searchCatalog({
     .order("published_at", { ascending: false, nullsFirst: false })
     .range(offset, offset + limit - 1);
   if (provider) query = query.eq("provider", provider);
+  if (evidenceStatus) query = query.eq("evidence_status", evidenceStatus);
   if (q) {
     const term = searchContext(q).baseTerms[0] ?? q;
     query = query.or([
@@ -1209,6 +1363,7 @@ function facetsFromCounts(evidence: EvidenceFacetRow, catalogFacets: CatalogFace
     hot: evidenceTotal,
     recent: Number(evidence.recent ?? 0),
     evidence: Number(evidence.evidence ?? 0),
+    thai: 0,
     tci: 0,
     ncce: Number(evidence.ncce ?? 0),
     ce_project: Number(evidence.ce_project ?? 0),
@@ -1223,7 +1378,9 @@ function facetsFromCounts(evidence: EvidenceFacetRow, catalogFacets: CatalogFace
     providerCounts.set(row.provider, { records, citable });
     catalogTotal += records;
     metadataOnlyTotal += metadataOnly;
-    if (row.provider === "tci_thaijo") filters.tci += records;
+    filters.thai += metadataOnly;
+    // Compatibility alias for saved URLs and older clients.
+    if (row.provider === "tci_thaijo") filters.tci += metadataOnly;
   }
 
   return {
@@ -1242,6 +1399,20 @@ function facetsFromCounts(evidence: EvidenceFacetRow, catalogFacets: CatalogFace
   };
 }
 
+function emptyFacets(): ResearchFeedResponse["facets"] {
+  return {
+    total: 0,
+    totalSections: 0,
+    totalChunks: 0,
+    catalogTotal: 0,
+    citableTotal: 0,
+    metadataOnlyTotal: 0,
+    providers: [],
+    collections: [],
+    filters: { hot: 0, recent: 0, evidence: 0, thai: 0, tci: 0, ncce: 0, ce_project: 0 },
+  };
+}
+
 export async function listResearchFeed(params: ListFeedParams): Promise<ResearchFeedResponse> {
   const filter = normalizeFeedFilter(params.filter);
   const explicitCollection = normalizeCollection(params.collection === "all" ? "" : params.collection);
@@ -1250,33 +1421,53 @@ export async function listResearchFeed(params: ListFeedParams): Promise<Research
   const limit = normalizeLimit(params.limit);
   const offset = decodeCursor(params.cursor);
 
-  const [evidenceFacets, catalogFacets] = await Promise.all([fetchEvidenceFacets(), fetchCatalogFacets()]);
-  const facets = facetsFromCounts(evidenceFacets, catalogFacets);
-  if (filter === "tci") {
-    const catalogPage = await searchCatalog({ q, provider: "tci_thaijo", limit, offset });
-    const cards = catalogPage.rows.map(cardFromCatalog);
+  const facets = params.includeFacets === false
+    ? emptyFacets()
+    : await Promise.all([fetchEvidenceFacets(), fetchCatalogFacets()])
+      .then(([evidenceFacets, catalogFacets]) => addReaderPackFacets(facetsFromCounts(evidenceFacets, catalogFacets)));
+  const readerCards = rightsReviewedReaderCards(filter, collection, q);
+  if (filter === "thai" || filter === "tci") {
+    const readerSlice = readerCards.slice(offset, offset + limit);
+    const catalogOffset = Math.max(0, offset - readerCards.length);
+    const remaining = Math.max(0, limit - readerSlice.length);
+    const catalogPage = await searchCatalog({
+      q,
+      evidenceStatus: "metadata_only",
+      limit: Math.max(1, remaining),
+      offset: catalogOffset,
+    });
+    const cards = [
+      ...readerSlice,
+      ...catalogPage.rows.slice(0, remaining).map(cardFromCatalog),
+    ];
     const nextOffset = offset + limit;
     return {
       cards,
       facets,
-      nextCursor: nextOffset < catalogPage.total ? encodeCursor(nextOffset) : null,
+      nextCursor: nextOffset < readerCards.length + catalogPage.total ? encodeCursor(nextOffset) : null,
       generatedAt: new Date().toISOString(),
     };
   }
 
   if (!q) {
-    const page = await fetchDocumentPage(collection, filter, offset, limit);
+    const readerSlice = readerCards.slice(offset, offset + limit);
+    const documentOffset = Math.max(0, offset - readerCards.length);
+    const remaining = Math.max(0, limit - readerSlice.length);
+    const page = await fetchDocumentPage(collection, filter, documentOffset, Math.max(1, remaining));
     const previews = await fetchDocumentPreviews(page.rows.map((doc) => doc.id));
-    const cards = page.rows.map((doc) => cardFromDocument(
-      doc,
-      previews.sections.get(doc.id) ?? [],
-      previews.chunks.get(doc.id) ?? [],
-    ));
+    const cards = [
+      ...readerSlice,
+      ...page.rows.slice(0, remaining).map((doc) => cardFromDocument(
+        doc,
+        previews.sections.get(doc.id) ?? [],
+        previews.chunks.get(doc.id) ?? [],
+      )),
+    ];
     const nextOffset = offset + limit;
     return {
       cards,
       facets,
-      nextCursor: nextOffset < page.total ? encodeCursor(nextOffset) : null,
+      nextCursor: nextOffset < readerCards.length + page.total ? encodeCursor(nextOffset) : null,
       generatedAt: new Date().toISOString(),
     };
   }
@@ -1292,10 +1483,13 @@ export async function listResearchFeed(params: ListFeedParams): Promise<Research
     (relevanceScores.get(b.id) ?? 0) - (relevanceScores.get(a.id) ?? 0)
     || (fallbackOrder.get(a.id) ?? 0) - (fallbackOrder.get(b.id) ?? 0));
   const catalogMatches = !collection && filter === "hot"
-    ? (await searchCatalog({ q, provider: "tci_thaijo", limit: Math.min(30, limit * 2), offset: 0 })).rows
-      .filter((row) => row.evidence_status === "metadata_only")
+    ? (await searchCatalog({ q, evidenceStatus: "metadata_only", limit: Math.min(30, limit * 2), offset: 0 })).rows
     : [];
-  const combined: Array<{ kind: "evidence"; document: DocumentRow } | { kind: "catalog"; record: CatalogRow }> = [];
+  const combined: Array<
+    { kind: "reader"; card: ResearchFeedCard }
+    | { kind: "evidence"; document: DocumentRow }
+    | { kind: "catalog"; record: CatalogRow }
+  > = readerCards.map((card) => ({ kind: "reader", card }));
   let catalogIndex = 0;
   sorted.forEach((document, index) => {
     combined.push({ kind: "evidence", document });
@@ -1315,7 +1509,9 @@ export async function listResearchFeed(params: ListFeedParams): Promise<Research
     .map((item) => item.document.id);
   const previews = await fetchDocumentPreviews(pageDocumentIds);
   const cards = page.map((item) =>
-    item.kind === "catalog"
+    item.kind === "reader"
+      ? item.card
+      : item.kind === "catalog"
       ? cardFromCatalog(item.record)
       : cardFromDocument(
         item.document,
@@ -1355,22 +1551,33 @@ async function findDocumentBySource(source: string): Promise<DocumentRow | null>
 export async function getResearchCardsBySources(sources: string[]): Promise<ResearchFeedCard[]> {
   const normalized = [...new Set(sources.map((source) => source.trim()).filter(Boolean))].slice(0, 100);
   if (!normalized.length) return [];
+  const readerCards = new Map<string, ResearchFeedCard>();
+  const databaseSources: string[] = [];
+  for (const source of normalized) {
+    const paper = findRightsReviewedReaderPaper(source);
+    if (paper) readerCards.set(source, cardFromRightsReviewedReaderPaper(paper));
+    else databaseSources.push(source);
+  }
+  if (!databaseSources.length) {
+    return normalized.map((source) => readerCards.get(source)).filter((card): card is ResearchFeedCard => Boolean(card));
+  }
   const supabase = getSupabaseAdmin() as any;
   const { data, error } = await supabase
     .from("civil_documents_v2")
     .select(DOCUMENT_SELECT)
-    .in("source", normalized)
-    .limit(normalized.length);
+    .in("source", databaseSources)
+    .limit(databaseSources.length);
   if (error) throw new Error(`Failed to read saved papers: ${error.message}`);
   const docs = (data ?? []) as DocumentRow[];
   const documentIds = docs.map((doc) => doc.id);
   const previews = await fetchDocumentPreviews(documentIds, 4, 2);
-  const cards = new Map(
+  const cards = new Map<string, ResearchFeedCard>(
     docs.map((doc) => [
       doc.source,
       cardFromDocument(doc, previews.sections.get(doc.id) ?? [], previews.chunks.get(doc.id) ?? []),
     ]),
   );
+  for (const [source, card] of readerCards) cards.set(source, card);
   return normalized.map((source) => cards.get(source)).filter((card): card is ResearchFeedCard => Boolean(card));
 }
 
@@ -1402,12 +1609,77 @@ export type PaperEvidenceTarget = {
   pageStart?: number | null;
 };
 
+function readerSectionTitle(page: RightsReviewedReaderPage): string {
+  const candidate = cleanText(page.sectionTitle, 120);
+  const heading = candidate.replace(/^\d+(?:\.\d+)*\.?\s+/, "").trim();
+  if (/^(?:abstract|introduction|background|literature review|related work|research questions?|methodology|methods?|materials and methods|results?|findings?|results? and discussion|discussion|limitations?|conclusions?|conclusion and recommendations?|acknowledgements?|references?|appendix|บทคัดย่อ|บทนำ|ทบทวนวรรณกรรม|ระเบียบวิธีวิจัย|วิธีดำเนินการวิจัย|ผลการวิจัย|ผลการศึกษา|อภิปรายผล|ข้อจำกัด|สรุป|ข้อเสนอแนะ|เอกสารอ้างอิง)$/i.test(heading)) return heading;
+  return `Page ${page.pageLabel}`;
+}
+
+function paperDetailFromRightsReviewedReaderPaper(
+  paper: RightsReviewedReaderPaper,
+  includeRelated: boolean,
+  evidenceTarget?: PaperEvidenceTarget,
+): PaperDetailResponse {
+  const document = cardFromRightsReviewedReaderPaper(paper);
+  const sections: PaperSection[] = paper.pages.map((page) => {
+    const sourcePage = readerSourcePageNumber(page);
+    return {
+      id: `section:${page.id}`,
+      sectionIndex: page.pageNumber - 1,
+      title: readerSectionTitle(page),
+      pageStart: sourcePage,
+      pageEnd: sourcePage,
+      snippet: cleanText(page.text, 280),
+    };
+  });
+  const evidence = paper.pages.map((page): PaperEvidence => {
+    const sourcePage = readerSourcePageNumber(page);
+    return {
+      id: page.id,
+      sectionIndex: page.pageNumber - 1,
+      chunkIndex: 0,
+      sectionTitle: readerSectionTitle(page),
+      pageStart: sourcePage,
+      pageEnd: sourcePage,
+      snippet: cleanText(page.text, 360),
+      readerPageNumber: page.pageNumber,
+      readerAnchor: readerStableAnchor(paper, page),
+    };
+  });
+  const targetIndex = evidence.findIndex((item) =>
+    (evidenceTarget?.id && item.id === evidenceTarget.id)
+    || (evidenceTarget?.pageStart != null && item.pageStart === evidenceTarget.pageStart)
+    || (
+      evidenceTarget?.sectionIndex != null
+      && item.sectionIndex === evidenceTarget.sectionIndex
+      && (evidenceTarget.chunkIndex == null || item.chunkIndex === evidenceTarget.chunkIndex)
+    ));
+  if (targetIndex > 0) evidence.unshift(...evidence.splice(targetIndex, 1));
+  const related = includeRelated
+    ? listRightsReviewedReaderPapers()
+      .filter((candidate) => candidate.source !== paper.source)
+      .map(cardFromRightsReviewedReaderPaper)
+    : [];
+  return {
+    document,
+    sections,
+    evidence,
+    counts: { sections: sections.length, chunks: evidence.length },
+    related,
+    generatedAt: new Date().toISOString(),
+  };
+}
+
 export async function getPaperDetail(
   source: string,
   includeRelated = false,
   evidenceTarget?: PaperEvidenceTarget,
 ): Promise<PaperDetailResponse | null> {
-  const doc = await findDocumentBySource(decodeURIComponent(source));
+  const decodedSource = decodeURIComponent(source);
+  const readerPaper = findRightsReviewedReaderPaper(decodedSource);
+  if (readerPaper) return paperDetailFromRightsReviewedReaderPaper(readerPaper, includeRelated, evidenceTarget);
+  const doc = await findDocumentBySource(decodedSource);
   if (!doc) return null;
 
   const supabase = getSupabaseAdmin() as any;
@@ -1503,8 +1775,18 @@ export async function getPaperDetail(
 }
 
 export async function listPublicPaperRecordsForSitemap(): Promise<Array<{ source: string; updatedAt: string | null }>> {
-  const supabase = getSupabaseAdmin() as any;
-  const records: Array<{ source: string; updatedAt: string | null }> = [];
+  const records: Array<{ source: string; updatedAt: string | null }> = listRightsReviewedReaderPapers().map((paper) => ({
+    source: paper.source,
+    updatedAt: paper.asset.rightsVerifiedAt,
+  }));
+  let supabase: any;
+  try {
+    supabase = getSupabaseAdmin() as any;
+  } catch {
+    // The committed, rights-reviewed reader pack is still a valid public
+    // sitemap surface in preview/build environments without database secrets.
+    return records;
+  }
   for (let offset = 0; offset < 2_000; offset += 1_000) {
     const { data, error } = await supabase
       .from("civil_documents_v2")
@@ -1518,5 +1800,5 @@ export async function listPublicPaperRecordsForSitemap(): Promise<Array<{ source
       : []));
     if (rows.length < 1_000) break;
   }
-  return records;
+  return [...new Map(records.map((record) => [record.source, record])).values()];
 }

@@ -62,10 +62,12 @@ jobs:
           GUEST_SESSION_HMAC_KEY: build-placeholder
           MCP_URL: http://localhost:8000
           NEXT_PUBLIC_MCP_URL: http://localhost:8000
+          CIVILMCP_OPEN_ACCESS: "true"
+          NEXT_PUBLIC_CIVILMCP_OPEN_ACCESS: "true"
           AGENTIC_CONTEXT_ENABLED: "true"
-          ROUTER_PROVIDER: deepseek
-          ROUTER_MODEL: deepseek-v4-flash
-          TRANSLATION_MODEL: deepseek-v4-flash
+          ROUTER_PROVIDER: openai
+          ROUTER_MODEL: gpt-5.6-luna
+          TRANSLATION_MODEL: gpt-5.6-luna
           MAX_AGENT_STEPS: "3"
           MAX_TOOL_CALLS: "4"
           MAX_CONTEXT_CHUNKS: "8"

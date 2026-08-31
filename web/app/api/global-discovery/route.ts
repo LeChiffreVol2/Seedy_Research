@@ -4,6 +4,7 @@ import { z } from "zod";
 import {
   applyChatIdentityCookies,
   chatIdentityErrorResponse,
+  featureAccessDeniedResponse,
   resolveChatIdentity,
 } from "@/lib/chat-auth";
 import { consumeChatQuota } from "@/lib/chat-store";
@@ -27,6 +28,8 @@ export async function POST(request: NextRequest) {
   }
   const { identity, applyAuthCookies } = resolved;
   const finalize = (response: NextResponse) => applyChatIdentityCookies(response, identity, applyAuthCookies);
+  const accessDenied = featureAccessDeniedResponse("explore", identity, applyAuthCookies);
+  if (accessDenied) return accessDenied;
 
   const parsed = requestSchema.safeParse(await readBoundedJson(request, 2_048).catch(() => null));
   if (!parsed.success) {

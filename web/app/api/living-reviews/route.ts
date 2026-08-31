@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 
-import { applyChatIdentityCookies, chatIdentityErrorResponse, resolveChatIdentity } from "@/lib/chat-auth";
+import { applyChatIdentityCookies, chatIdentityErrorResponse, featureAccessDeniedResponse, resolveChatIdentity } from "@/lib/chat-auth";
 import { consumeChatQuota } from "@/lib/chat-store";
 import {
   createLivingReviewWatch, deleteLivingReviewWatch, getLivingReviewWatch,
@@ -40,6 +40,8 @@ export async function GET(request: NextRequest) {
   if (result.response) return result.response;
   const { identity, applyAuthCookies } = result.resolved!;
   const finalize = (response: NextResponse) => applyChatIdentityCookies(response, identity, applyAuthCookies);
+  const accessDenied = featureAccessDeniedResponse("explore", identity, applyAuthCookies);
+  if (accessDenied) return accessDenied;
   if (!identity.isAuthenticated) return finalize(NextResponse.json({ watches: [] }));
   try { return finalize(NextResponse.json({ watches: await listLivingReviewWatches(identity.userId) })); }
   catch { return finalize(NextResponse.json({ error: "Living Reviews are temporarily unavailable." }, { status: 503 })); }
@@ -52,6 +54,8 @@ export async function POST(request: NextRequest) {
   if (result.response) return result.response;
   const { identity, applyAuthCookies } = result.resolved!;
   const finalize = (response: NextResponse) => applyChatIdentityCookies(response, identity, applyAuthCookies);
+  const accessDenied = featureAccessDeniedResponse("explore", identity, applyAuthCookies);
+  if (accessDenied) return accessDenied;
   if (!identity.isAuthenticated) return finalize(NextResponse.json({ error: "Sign in to watch a research topic." }, { status: 401 }));
   const quota = await consumeChatQuota({
     scope: "living_review_check", userId: identity.userId, ipAddress: getRequestIp(request), isAuthenticated: true,
@@ -81,6 +85,8 @@ export async function DELETE(request: NextRequest) {
   if (result.response) return result.response;
   const { identity, applyAuthCookies } = result.resolved!;
   const finalize = (response: NextResponse) => applyChatIdentityCookies(response, identity, applyAuthCookies);
+  const accessDenied = featureAccessDeniedResponse("explore", identity, applyAuthCookies);
+  if (accessDenied) return accessDenied;
   if (!identity.isAuthenticated) return finalize(NextResponse.json({ error: "Sign in to edit Living Reviews." }, { status: 401 }));
   const watchId = request.nextUrl.searchParams.get("watchId")?.trim();
   if (!watchId) return finalize(NextResponse.json({ error: "watchId is required." }, { status: 400 }));

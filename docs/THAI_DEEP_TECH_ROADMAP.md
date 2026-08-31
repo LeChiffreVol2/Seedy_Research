@@ -6,18 +6,23 @@ In eight weeks, prove that CivilMCP can extend from a civil-engineering evidence
 product into a Thai-first deep-tech learning and research platform without
 weakening citation, rights, security, or rollback guarantees.
 
-## Implementation snapshot — 20 August 2026
+## Implementation snapshot — 31 August 2026
 
 - 1,297 page-citable Thai civil-engineering papers remain the evidence layer.
-- 2,380 active records from 11 allowlisted ThaiJO sets are connected as
-  non-citable discovery metadata; publisher links are complete, DOI coverage is
-  818 records, and 38 provider tombstones remain removed for audit.
+- 2,578 active ThaiJO-hosted records across two official endpoint families are
+  connected as non-citable discovery metadata; publisher links are complete,
+  DOI coverage is 833 records, and 44 provider tombstones remain removed for
+  audit (38 from `ph01`, six from `sc01`). The `sc01` pilot added 198 net-new
+  active records without downloading full text or creating evidence links.
 - Explore labels evidence and Thai metadata separately and expands to OpenAlex
   only after an explicit user action. Global records remain external and
   non-citable.
 - The source catalog now has bounded database search plus a versioned,
-  default-deny rights manifest; the ThaiJO harvester enforces exact allowlist
-  pairs, sanitizes malformed provider XML, and writes ingest-run audit state.
+  default-deny rights manifest; the ThaiJO harvester records exact endpoint and
+  set-allowlist or explicit endpoint-scope provenance, sanitizes malformed
+  provider XML, deduplicates OAI IDs,
+  excludes whole-issue containers from paper counts, and writes ingest-run audit
+  state.
 - Research Path includes a `Project brief` outcome that asks for Thai problem
   context, evidence, method, capability, uncertainty, and next experiment while
   prohibiting unsupported TRL, IP, and commercialization claims.

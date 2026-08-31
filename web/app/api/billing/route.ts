@@ -12,6 +12,7 @@ import {
 import { applyChatIdentityCookies, chatIdentityErrorResponse, resolveChatIdentity } from "@/lib/chat-auth";
 import { consumeChatQuota } from "@/lib/chat-store";
 import { getRequestIp, rateLimitHeaders, safeTraceId } from "@/lib/server-guards";
+import { CIVILMCP_OPEN_ACCESS } from "@/lib/product-access";
 
 export const runtime = "nodejs";
 export const preferredRegion = ["sin1"];
@@ -53,6 +54,12 @@ export async function GET(request: NextRequest) {
 }
 
 export async function POST(request: NextRequest) {
+  if (CIVILMCP_OPEN_ACCESS) {
+    return NextResponse.json(
+      { error: "Paid plans are disabled in Open Access because every research feature is already unlocked." },
+      { status: 409 },
+    );
+  }
   const parsed = actionSchema.safeParse(await request.json().catch(() => null));
   if (!parsed.success) return NextResponse.json({ error: "Invalid billing action." }, { status: 400 });
 

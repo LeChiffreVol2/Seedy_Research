@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 
-import { applyChatIdentityCookies, chatIdentityErrorResponse, resolveChatIdentity } from "@/lib/chat-auth";
+import { applyChatIdentityCookies, chatIdentityErrorResponse, featureAccessDeniedResponse, resolveChatIdentity } from "@/lib/chat-auth";
 import { consumeChatQuota, ensureChatUser } from "@/lib/chat-store";
 import { deleteWorkspaceItem, listWorkspaceItems, upsertWorkspaceItem } from "@/lib/paper-workspace";
 import { getResearchCardsBySources } from "@/lib/research-feed";
@@ -52,6 +52,8 @@ export async function GET(request: NextRequest) {
   const result = await resolveIdentityOrResponse(request);
   if (result.response) return result.response;
   const { identity, applyAuthCookies } = result.resolved!;
+  const accessDenied = featureAccessDeniedResponse("workspace", identity, applyAuthCookies);
+  if (accessDenied) return accessDenied;
   const items = await listWorkspaceItems(identity.userId);
   const cards = await getResearchCardsBySources(items.map((item) => item.source));
   return applyChatIdentityCookies(
@@ -69,6 +71,8 @@ export async function POST(request: NextRequest) {
   const result = await resolveIdentityOrResponse(request);
   if (result.response) return result.response;
   const { identity, applyAuthCookies } = result.resolved!;
+  const accessDenied = featureAccessDeniedResponse("workspace", identity, applyAuthCookies);
+  if (accessDenied) return accessDenied;
   const rate = await consumeWorkspaceWriteQuota(request, identity).catch(() => null);
   if (!rate) {
     return applyChatIdentityCookies(
@@ -101,6 +105,8 @@ export async function DELETE(request: NextRequest) {
   const result = await resolveIdentityOrResponse(request);
   if (result.response) return result.response;
   const { identity, applyAuthCookies } = result.resolved!;
+  const accessDenied = featureAccessDeniedResponse("workspace", identity, applyAuthCookies);
+  if (accessDenied) return accessDenied;
   const rate = await consumeWorkspaceWriteQuota(request, identity).catch(() => null);
   if (!rate) {
     return applyChatIdentityCookies(

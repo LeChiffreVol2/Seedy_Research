@@ -112,20 +112,6 @@ def group_pages_by_paper(pages: list[str]) -> list[PaperGroup]:
     return [group for group in groups if group.pages]
 
 
-def merge_duplicate_codes(groups: list[PaperGroup]) -> list[PaperGroup]:
-    merged: list[PaperGroup] = []
-    by_code: dict[str, PaperGroup] = {}
-    for group in groups:
-        existing = by_code.get(group.paper_code)
-        if existing is None:
-            by_code[group.paper_code] = group
-            merged.append(group)
-            continue
-        existing.pages.extend(group.pages)
-        existing.pages.sort(key=lambda item: item[0])
-    return merged
-
-
 def fallback_page_windows(pages: list[str], window_pages: int) -> list[PaperGroup]:
     groups: list[PaperGroup] = []
     buffer: list[tuple[int, str]] = []
@@ -213,9 +199,41 @@ def safe_filename(value: str) -> str:
     return re.sub(r"[^A-Za-z0-9_-]+", "_", value).strip("_")
 
 
+def output_names_for_groups(prefix: str, groups: list[PaperGroup]) -> list[str]:
+    """Return stable filenames without collapsing repeated proceedings codes.
+
+    A code's first contiguous occurrence keeps the historical filename. Later
+    occurrences are separate documents and include their first source page so
+    a repeated footer code cannot merge unrelated parts of the proceedings.
+    """
+
+    seen_codes: set[str] = set()
+    used_names: set[str] = set()
+    names: list[str] = []
+    for group in groups:
+        safe_code = safe_filename(group.paper_code)
+        base = f"{prefix}_{safe_code}"
+        candidate = base
+        if group.paper_code in seen_codes:
+            candidate = f"{base}_P{group.pages[0][0]}"
+
+        # Distinct groups cannot normally start on the same page, but retain a
+        # deterministic occurrence suffix if malformed input does so.
+        occurrence = 2
+        unique_candidate = candidate
+        while unique_candidate in used_names:
+            unique_candidate = f"{candidate}_{occurrence}"
+            occurrence += 1
+
+        seen_codes.add(group.paper_code)
+        used_names.add(unique_candidate)
+        names.append(f"{unique_candidate}.md")
+    return names
+
+
 def extract_pdf(pdf_path: Path, out_dir: Path, overwrite: bool, min_groups: int, window_pages: int) -> tuple[int, int]:
     pages = run_pdftotext(pdf_path)
-    groups = merge_duplicate_codes(group_pages_by_paper(pages))
+    groups = group_pages_by_paper(pages)
     if len(groups) < min_groups:
         groups = fallback_page_windows(pages, window_pages=window_pages)
 
@@ -223,8 +241,7 @@ def extract_pdf(pdf_path: Path, out_dir: Path, overwrite: bool, min_groups: int,
     prefix = f"NCCE{proceeding_no}" if proceeding_no else pdf_path.stem
     written = 0
     skipped = 0
-    for group in groups:
-        name = f"{prefix}_{safe_filename(group.paper_code)}.md"
+    for group, name in zip(groups, output_names_for_groups(prefix, groups), strict=True):
         target = out_dir / name
         if target.exists() and not overwrite:
             skipped += 1

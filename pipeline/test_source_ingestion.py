@@ -13,8 +13,12 @@ if str(PIPELINE_DIR) not in sys.path:
 from extract import markdown_from_pages  # noqa: E402
 from harvest_tci_oai import (  # noqa: E402
     RIGHTS_ACTIONS,
+    apply_endpoint_discipline,
+    catalog_eligible_records,
+    deduplicate_catalog_records,
     is_oai_tombstone,
     load_catalog_records,
+    official_endpoint_registration,
     parse_list_records,
     parse_list_sets,
     preserve_reviewed_catalog_state,
@@ -189,6 +193,71 @@ class SourceIngestionTests(unittest.TestCase):
             reviewed_source_scope("https://example.invalid/oai", "SEAGS_AGSSEA_Journal:RP")
         )
 
+    def test_tci_official_registry_requires_exact_endpoint_match(self) -> None:
+        endpoint = "https://ph01.tci-thaijo.org/index.php/index/oai"
+        registration = official_endpoint_registration(endpoint + "/")
+
+        self.assertIsNotNone(registration)
+        self.assertEqual(registration["endpoint_family"], "ph01")
+        self.assertEqual(registration["discipline"], "physical_sciences")
+        self.assertEqual(registration["registry_version"], 1)
+        self.assertIsNone(official_endpoint_registration(endpoint + "/extra"))
+        self.assertIsNone(official_endpoint_registration(endpoint + "?verb=Identify"))
+        self.assertIsNone(
+            official_endpoint_registration("https://ph01.tci-thaijo.org.evil.invalid/index.php/index/oai")
+        )
+
+    def test_tci_official_registry_covers_all_published_endpoint_families(self) -> None:
+        payload = json.loads(
+            (PIPELINE_DIR / "tci_official_endpoint_registry.json").read_text(encoding="utf-8")
+        )
+        families = {item["family"] for item in payload["endpoints"]}
+
+        self.assertEqual(payload["version"], 1)
+        self.assertEqual(len(payload["endpoints"]), 36)
+        self.assertEqual(len(families), 36)
+        self.assertEqual(
+            families,
+            {
+                "sc01",
+                *(f"li{index:02d}" for index in range(1, 6)),
+                *(f"ph{index:02d}" for index in range(1, 6)),
+                *(f"he{index:02d}" for index in range(1, 6)),
+                *(f"so{index:02d}" for index in range(1, 21)),
+            },
+        )
+
+    def test_tci_official_endpoint_domain_assignment_records_provenance(self) -> None:
+        endpoint = "https://so20.tci-thaijo.org/index.php/index/oai"
+        fixture = (PIPELINE_DIR / "fixtures" / "tci_oai_list_records.xml").read_bytes()
+        records, _ = parse_list_records(endpoint, fixture)
+        registration = official_endpoint_registration(endpoint)
+        self.assertIsNotNone(registration)
+        prior_hash = records[0]["record_hash"]
+
+        apply_endpoint_discipline(records[0], registration)
+
+        self.assertEqual(records[0]["discipline"], "social_sciences")
+        provenance = records[0]["raw_metadata"]["discipline_provenance"]
+        self.assertEqual(provenance["policy"], "tci_thaijo_official_endpoint_registry_v1")
+        self.assertEqual(provenance["match"], "exact_endpoint")
+        self.assertEqual(
+            provenance["registry_source_url"],
+            "https://www.tci-thaijo.org/public/oai.html",
+        )
+        self.assertNotEqual(records[0]["record_hash"], prior_hash)
+
+    def test_tci_unknown_endpoint_has_no_automatic_domain(self) -> None:
+        endpoint = "https://example.invalid/oai"
+        fixture = (PIPELINE_DIR / "fixtures" / "tci_oai_list_records.xml").read_bytes()
+        records, _ = parse_list_records(endpoint, fixture)
+
+        self.assertIsNone(official_endpoint_registration(endpoint))
+        self.assertEqual(records[0]["discipline"], "unknown")
+        self.assertNotIn("discipline_provenance", records[0]["raw_metadata"])
+        self.assertTrue(records[0]["rights_manifest"]["metadata_indexing"])
+        self.assertFalse(records[0]["rights_manifest"]["full_text_download"])
+
     def test_tci_reviewed_batch_is_ordered_unique_and_keeps_general_engineering_explicit(self) -> None:
         endpoint = "https://ph01.tci-thaijo.org/index.php/index/oai"
         reviewed = reviewed_source_sets(endpoint)
@@ -219,6 +288,29 @@ class SourceIngestionTests(unittest.TestCase):
             [record["provider_record_id"] for record in loaded],
             [record["provider_record_id"] for record in records],
         )
+
+    def test_tci_oai_deduplicates_identical_records_before_jsonl_and_apply(self) -> None:
+        endpoint = "https://sc01.tci-thaijo.org/index.php/index/oai"
+        fixture = (PIPELINE_DIR / "fixtures" / "tci_oai_list_records.xml").read_bytes()
+        records, _ = parse_list_records(endpoint, fixture)
+
+        deduplicated = deduplicate_catalog_records([records[0], records[1], records[0]])
+
+        self.assertEqual(
+            [record["provider_record_id"] for record in deduplicated],
+            [records[0]["provider_record_id"], records[1]["provider_record_id"]],
+        )
+
+    def test_tci_catalog_excludes_issue_containers_but_keeps_tombstones(self) -> None:
+        endpoint = "https://sc01.tci-thaijo.org/index.php/index/oai"
+        fixture = (PIPELINE_DIR / "fixtures" / "tci_oai_list_records.xml").read_bytes()
+        records, _ = parse_list_records(endpoint, fixture)
+        issue = json.loads(json.dumps(records[0]))
+        issue["raw_metadata"]["titles"] = ["ฉบับเต็ม", "FULL ISSUE"]
+
+        eligible = catalog_eligible_records([records[0], issue, records[1]])
+
+        self.assertEqual(eligible, [records[0], records[1]])
 
     def test_tci_oai_sanitizes_invalid_xml_control_bytes(self) -> None:
         payload = b"<root><abstract>factor (\xce\xb1\x01) and (\x02\xce\xb2)</abstract></root>"

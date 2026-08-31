@@ -71,6 +71,7 @@ OPENALEX_TIMEOUT_SECONDS = max(2.0, min(float(os.getenv("OPENALEX_TIMEOUT_SECOND
 RATE_LIMIT_WINDOW_SECONDS = int(os.getenv("RATE_LIMIT_WINDOW_SECONDS", "60"))
 RATE_LIMIT_MAX_CALLS = int(os.getenv("RATE_LIMIT_MAX_CALLS", "240"))
 MCP_DISTRIBUTED_RATE_LIMIT = os.getenv("MCP_DISTRIBUTED_RATE_LIMIT", "true").lower() == "true"
+CIVILMCP_OPEN_ACCESS = os.getenv("CIVILMCP_OPEN_ACCESS", "true").lower() != "false"
 
 REQUIRE_TOOL_AUTH = os.getenv("REQUIRE_TOOL_AUTH", "true").lower() == "true"
 MCP_SERVER_API_KEY = os.getenv("MCP_SERVER_API_KEY", "")
@@ -228,6 +229,11 @@ VALID_SOURCE_PROVIDERS = {
     "student_transport_projects",
     "ncce",
     "tci_thaijo",
+    "tci_citation",
+    "tnrr",
+    "thailis_tdc",
+    "thai_conference",
+    "thai_ir",
 }
 
 READ_ONLY_ANNOTATIONS = {
@@ -330,7 +336,7 @@ TOOL_DEFINITIONS: dict[str, dict[str, Any]] = {
 PUBLIC_V2_TOOL_DEFINITIONS: dict[str, dict[str, Any]] = {
     "discover_research": {
         "description": (
-            "Discover and rank Thai page-cited evidence, Thai journal metadata, and optional "
+            "Discover and rank Thai page-cited evidence, Thai source metadata, and optional "
             "OpenAlex metadata for a research question. Every result declares whether it is citable."
         ),
         "annotations": READ_ONLY_ANNOTATIONS,
@@ -609,7 +615,8 @@ def normalize_source_provider(value: str | None) -> str | None:
     cleaned = value.strip()
     if cleaned not in VALID_SOURCE_PROVIDERS:
         raise InputValidationError(
-            "provider must be one of: 'student_transport_projects', 'ncce', 'tci_thaijo', ''."
+            "provider must be one of: 'student_transport_projects', 'ncce', 'tci_thaijo', "
+            "'tci_citation', 'tnrr', 'thailis_tdc', 'thai_conference', 'thai_ir', ''."
         )
     return cleaned or None
 
@@ -862,6 +869,8 @@ def _personal_mcp_owner_id() -> str:
 
 def reserve_public_mcp_units(tool_name: str) -> dict[str, Any] | None:
     """Meter only personal-key/OAuth calls; first-party compatibility keys stay internal."""
+    if CIVILMCP_OPEN_ACCESS:
+        return None
     owner_id = _personal_mcp_owner_id()
     if not owner_id:
         return None

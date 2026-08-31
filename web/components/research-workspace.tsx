@@ -131,8 +131,8 @@ const STORAGE_KEY = "civilmcp-research-workspace-v1";
 const MODEL_OPTIONS = CHAT_MODELS;
 const DEFAULT_REVIEW_PROTOCOL: ReviewProtocol = {
   question: "What does this evidence show, where does it disagree, and what remains uncertain?",
-  searchStrategy: "Search Thai and English civil-engineering terms in CivilMCP, then screen the bounded candidate set.",
-  inclusion: "Relevant civil engineering studies with page-level evidence.",
+  searchStrategy: "Search Thai and English research terms in Seed Research, then screen the bounded candidate set.",
+  inclusion: "Relevant studies with page-level evidence.",
   exclusion: "Out of scope, duplicate, or insufficient evidence.",
 };
 
@@ -142,7 +142,7 @@ function normalizeReviewProtocol(value?: ReviewProtocol): ReviewProtocol {
       ? DEFAULT_REVIEW_PROTOCOL.question
       : value.question,
     searchStrategy: value?.searchStrategy?.trim() || DEFAULT_REVIEW_PROTOCOL.searchStrategy,
-    inclusion: !value?.inclusion || value.inclusion === "Civil engineering studies relevant to the review question with page-linked evidence in CivilMCP."
+    inclusion: !value?.inclusion || value.inclusion === "Civil engineering studies relevant to the review question with page-linked evidence in Seed Research."
       ? DEFAULT_REVIEW_PROTOCOL.inclusion
       : value.inclusion,
     exclusion: !value?.exclusion || value.exclusion === "Out of scope, duplicate, or insufficient evidence to answer the review question."
@@ -170,7 +170,7 @@ const TEMPLATE_COLUMNS: Record<WorkspaceTemplate, WorkspaceColumn[]> = {
     { id: "claim", label: "Claim", prompt: "State the main evidence-supported claim of this paper." },
     { id: "support", label: "Support", prompt: "Describe the exact evidence that supports the claim." },
     { id: "contradiction", label: "Contradiction", prompt: "Identify conflicting or qualifying evidence within the supplied packets; say none found when absent." },
-    { id: "gap", label: "Evidence gap", prompt: "Identify what evidence remains missing before the claim can guide engineering decisions." },
+    { id: "gap", label: "Evidence gap", prompt: "Identify what evidence remains missing before the claim can guide real-world decisions." },
     { id: "next_study", label: "Next study", prompt: "Propose the smallest study or validation that would close the identified gap." },
   ],
   prisma_scoping: [
@@ -202,7 +202,10 @@ const TEMPLATE_MENU_OPTIONS: ReadonlyArray<GlassMenuOption<WorkspaceTemplate>> =
 const MODEL_MENU_OPTIONS: ReadonlyArray<GlassMenuOption<ChatModel>> = MODEL_OPTIONS.map((option) => ({
   value: option.id,
   label: option.label,
-  description: `${option.credits} ${option.credits === 1 ? "credit" : "credits"} per paper`,
+  description: option.id === DEFAULT_CHAT_MODEL
+    ? "OpenAI default · efficient batch extraction"
+    : option.id.startsWith("gpt-") ? "OpenAI · unlocked for this preview" : "Optional fallback · unlocked",
+  badge: option.id.startsWith("gpt-") ? "OPENAI" : undefined,
 }));
 
 function blankCell(columnId: string): WorkspaceCell {
@@ -269,20 +272,20 @@ export function ResearchWorkspacePanel({
   papers,
   seedSources = [],
   authenticated,
-  proEnabled,
+  accessEnabled,
   onUpgrade,
   onOpenPaper,
 }: {
   papers: ResearchWorkspacePaper[];
   seedSources?: string[];
   authenticated: boolean;
-  proEnabled: boolean;
+  accessEnabled: boolean;
   onUpgrade: (message: string) => void;
   onOpenPaper: (source: string) => void;
 }) {
   const defaultColumns = TEMPLATE_COLUMNS.literature_matrix;
   const [workspaceId, setWorkspaceId] = useState("workspace-local");
-  const [title, setTitle] = useState("Thai civil engineering matrix");
+  const [title, setTitle] = useState("Thai research evidence matrix");
   const [template, setTemplate] = useState<WorkspaceTemplate>("literature_matrix");
   const [model, setModel] = useState<ChatModel>(DEFAULT_CHAT_MODEL);
   const [rows, setRows] = useState<WorkspaceRow[]>([]);
@@ -304,7 +307,7 @@ export function ResearchWorkspacePanel({
   const [activeCell, setActiveCell] = useState<{ source: string; columnId: string } | null>(null);
   const [status, setStatus] = useState<"idle" | "running" | "paused" | "saving" | "saved" | "error">("idle");
   const [statusText, setStatusText] = useState("Saved locally");
-  const [runProgress, setRunProgress] = useState({ completed: 0, total: 0, credits: 0 });
+  const [runProgress, setRunProgress] = useState({ completed: 0, total: 0 });
   const appliedSeedRef = useRef("");
   const stopRunRef = useRef(false);
 
@@ -313,7 +316,9 @@ export function ResearchWorkspacePanel({
       const parsed = JSON.parse(window.localStorage.getItem(STORAGE_KEY) ?? "null") as unknown;
       if (isWorkspaceState(parsed)) {
         setWorkspaceId(parsed.workspaceId);
-        setTitle(parsed.template === "prisma_scoping" && parsed.title === "Thai civil engineering matrix" ? "Thai civil engineering scoping review" : parsed.title);
+        setTitle(parsed.title === "Thai civil engineering matrix"
+          ? (parsed.template === "prisma_scoping" ? "Thai research scoping review" : "Thai research evidence matrix")
+          : parsed.title);
         setTemplate(parsed.template);
         setModel(normalizeStoredChatModel(parsed.model));
         setRows(parsed.rows);
@@ -392,7 +397,9 @@ export function ResearchWorkspacePanel({
         const saved = payload.workspaces.map((item) => item.state).find(isWorkspaceState);
         if (!saved || cancelled) return;
         setWorkspaceId(saved.workspaceId);
-        setTitle(saved.template === "prisma_scoping" && saved.title === "Thai civil engineering matrix" ? "Thai civil engineering scoping review" : saved.title);
+        setTitle(saved.title === "Thai civil engineering matrix"
+          ? (saved.template === "prisma_scoping" ? "Thai research scoping review" : "Thai research evidence matrix")
+          : saved.title);
         setTemplate(saved.template);
         setModel(normalizeStoredChatModel(saved.model));
         setRows(saved.rows);
@@ -451,9 +458,6 @@ export function ResearchWorkspacePanel({
   const activeRow = activeCell ? rows.find((row) => row.source === activeCell.source) : null;
   const activeColumn = activeCell ? columns.find((column) => column.id === activeCell.columnId) : null;
   const activeCellValue = activeRow && activeColumn ? activeRow.cells.find((cell) => cell.columnId === activeColumn.id) : null;
-  const selectedModel = CHAT_MODELS.find((item) => item.id === model) ?? CHAT_MODELS[0];
-  const estimatedCredits = runnableRows.length * (selectedModel?.credits ?? 1);
-
   const importCitation = async () => {
     if (!importValue.trim() || importBusy) return;
     setImportBusy(true);
@@ -507,8 +511,8 @@ export function ResearchWorkspacePanel({
     setTemplate(nextTemplate);
     setColumns(nextColumns);
     setRows((current) => current.map((row) => ({ ...row, cells: nextColumns.map((column) => blankCell(column.id)) })));
-    if (nextTemplate === "prisma_scoping" && title === "Thai civil engineering matrix") {
-      setTitle("Thai civil engineering scoping review");
+    if (nextTemplate === "prisma_scoping" && title === "Thai research evidence matrix") {
+      setTitle("Thai research scoping review");
     }
     setActiveCell(null);
     setStatus("idle");
@@ -560,8 +564,8 @@ export function ResearchWorkspacePanel({
   };
 
   const runResearch = async (runRows = runnableRows, runColumns = columns) => {
-    if (!proEnabled) {
-      onUpgrade("Research Workspace is included in Founder Pro. Sign in or upgrade to run batch research.");
+    if (!accessEnabled) {
+      onUpgrade("Research Workspace is temporarily unavailable.");
       return;
     }
     if (!runRows.length || !runColumns.length || status === "running") return;
@@ -569,7 +573,7 @@ export function ResearchWorkspacePanel({
     const runSources = new Set(boundedRows.map((row) => row.source));
     const runColumnIds = new Set(runColumns.map((column) => column.id));
     stopRunRef.current = false;
-    setRunProgress({ completed: 0, total: boundedRows.length, credits: 0 });
+    setRunProgress({ completed: 0, total: boundedRows.length });
     setStatus("running");
     setStatusText(`Running ${boundedRows.length} papers in ${Math.ceil(boundedRows.length / 6)} bounded batches`);
     trackWorkspaceEvent("workspace_started", { papers: boundedRows.length, columns: runColumns.length, template });
@@ -581,7 +585,6 @@ export function ResearchWorkspacePanel({
       ...row,
       cells: row.cells.map((cell) => runColumnIds.has(cell.columnId) ? { ...cell, status: "running" as const, review: "unreviewed" as const } : cell),
     });
-    let creditsUsed = 0;
     let completedPapers = 0;
     try {
       for (let offset = 0; offset < boundedRows.length; offset += 6) {
@@ -599,7 +602,6 @@ export function ResearchWorkspacePanel({
             columns: runColumns.slice(0, 6).map(({ id, label, prompt }) => ({ id, label, prompt })),
           }),
         });
-        creditsUsed += payload.chargedCredits;
         completedPapers += batch.length;
         const resultBySource = new Map(payload.rows.map((row) => [row.source, row]));
         workingRows = workingRows.map((row) => {
@@ -614,7 +616,7 @@ export function ResearchWorkspacePanel({
           };
         });
         setRows(workingRows);
-        setRunProgress({ completed: completedPapers, total: boundedRows.length, credits: creditsUsed });
+        setRunProgress({ completed: completedPapers, total: boundedRows.length });
         if (authenticated) {
           const state: WorkspaceState = {
             version: "civilmcp-research-workspace-v1", workspaceId, title, template, model,
@@ -633,8 +635,8 @@ export function ResearchWorkspacePanel({
         setStatusText(`Paused after ${completedPapers} of ${boundedRows.length} papers · select remaining papers and run again`);
       } else {
         setStatus("saved");
-        setStatusText(`Review run complete · ${creditsUsed} credits used · verify generated cells`);
-        trackWorkspaceEvent("workspace_run_completed", { papers: boundedRows.length, columns: runColumns.length, credits: creditsUsed });
+        setStatusText("Review run complete · verify generated cells against the linked pages");
+        trackWorkspaceEvent("workspace_run_completed", { papers: boundedRows.length, columns: runColumns.length, model, openAccess: true });
       }
     } catch (error) {
       setRows(workingRows.map((row) => !runSources.has(row.source) ? row : {
@@ -646,8 +648,9 @@ export function ResearchWorkspacePanel({
   };
 
   const saveWorkspace = async () => {
-    if (!proEnabled) {
-      onUpgrade("Research Workspace sync is included in Founder Pro. Sign in or upgrade to continue.");
+    if (!authenticated) {
+      setStatus("saved");
+      setStatusText("Workspace saved locally · sign in only for cross-device sync");
       return;
     }
     setStatus("saving");
@@ -702,7 +705,7 @@ export function ResearchWorkspacePanel({
       const screeningValues = prismaEnabled ? [screening[row.source]?.decision ?? "pending", screening[row.source]?.reason ?? ""] : [];
       lines.push([row.title, row.source, ...screeningValues, ...values].map(csvValue).join(","));
     }
-    downloadText(`civilmcp-research-workspace-${Date.now()}.csv`, lines.join("\n"), "text/csv;charset=utf-8");
+    downloadText(`seed-research-workspace-${Date.now()}.csv`, lines.join("\n"), "text/csv;charset=utf-8");
     setStatusText("Workspace exported with source columns");
     trackWorkspaceEvent("review_exported", { format: "csv", papers: rows.length, template });
     const verifiedCells = rows.flatMap((row) => row.cells).filter((cell) => cell.review === "verified" && cell.evidence.some((item) => item.pageStart != null)).length;
@@ -730,21 +733,21 @@ export function ResearchWorkspacePanel({
     const lines = [
       `# ${title}`,
       "",
-      "> PRISMA-guided scoping review of a bounded CivilMCP candidate set. Human verification is required; this export does not imply PRISMA endorsement or certification.",
+      "> PRISMA-guided scoping review of a bounded Seed Research candidate set. Human verification is required; this export does not imply PRISMA endorsement or certification.",
       "",
       "## Protocol",
       `- Review question: ${reviewProtocol.question.trim()}`,
       `- Search strategy: ${reviewProtocol.searchStrategy.trim()}`,
       `- Inclusion criteria: ${reviewProtocol.inclusion.trim()}`,
       `- Exclusion criteria: ${reviewProtocol.exclusion.trim()}`,
-      "- Database: CivilMCP page-linked Thai civil-engineering corpus",
+      "- Database: Seed Research Thai-first evidence corpus",
       `- Workspace ID: ${workspaceId}`,
       `- Extraction model: ${model}`,
       `- Exported: ${new Date().toISOString()}`,
       "",
       "## Flow",
       `- Candidate records: ${prismaFlow.identified}`,
-      "- Duplicates removed: 0 (candidate sources are unique within CivilMCP)",
+      "- Duplicates removed: 0 (candidate sources are unique within Seed Research)",
       `- Screened: ${prismaFlow.screened}`,
       `- Excluded: ${prismaFlow.excluded}`,
       `- Included for extraction: ${prismaFlow.included}`,
@@ -771,7 +774,7 @@ export function ResearchWorkspacePanel({
       `- Screening complete with exclusion reasons: ${screeningReady ? "yes" : "no"}`,
       `- Included studies extracted: ${runnableRows.length > 0 && runnableRows.every((row) => row.cells.some((cell) => cell.status === "ready" || cell.status === "needs_review")) ? "yes" : "no"}`,
     ];
-    downloadText(`civilmcp-prisma-scoping-review-${Date.now()}.md`, lines.join("\n"), "text/markdown;charset=utf-8");
+    downloadText(`seed-research-prisma-scoping-review-${Date.now()}.md`, lines.join("\n"), "text/markdown;charset=utf-8");
     setStatusText("PRISMA review log exported");
     trackWorkspaceEvent("review_exported", { format: "markdown", papers: rows.length, template });
     const verifiedCells = rows.flatMap((row) => row.cells).filter((cell) => cell.review === "verified" && cell.evidence.some((item) => item.pageStart != null)).length;
@@ -790,13 +793,13 @@ export function ResearchWorkspacePanel({
   ];
 
   return (
-    <section className="researchWorkspace" aria-label="Research Workspace Pro">
+    <section className="researchWorkspace" aria-label="Open Access Research Workspace">
       <div className="workspaceCommandSurface">
         <header className="researchWorkspaceHeader">
           <div>
             <div className="workspaceTitleLine">
               <span className="workspaceEyebrow">Verified Review Project</span>
-              <span className="workspaceProBadge">Pro</span>
+              <span className="workspaceProBadge">Open Access</span>
               {prismaEnabled ? <span className="workspaceStandardBadge">PRISMA-ScR</span> : null}
             </div>
             <input aria-label="Workspace title" value={title} maxLength={160} onChange={(event) => setTitle(event.target.value)} />
@@ -851,11 +854,11 @@ export function ResearchWorkspacePanel({
             className="workspaceRunButton"
             type="button"
             onClick={() => status === "running" ? (stopRunRef.current = true) : void runResearch()}
-            disabled={proEnabled && status !== "running" && (!runnableRows.length || !columns.length)}
+            disabled={status !== "running" && (!accessEnabled || !runnableRows.length || !columns.length)}
           >
             {status === "running" ? <Square size={15} aria-hidden /> : <Sparkles size={16} aria-hidden />}
-            <span>{status === "running" ? "Stop after batch" : proEnabled ? (prismaEnabled ? "Run included" : "Run selected") : "Run with Pro"}</span>
-            {runnableRows.length ? <strong>{estimatedCredits} cr</strong> : null}
+            <span>{status === "running" ? "Stop after batch" : prismaEnabled ? "Run included" : "Run selected"}</span>
+            {runnableRows.length ? <strong>{runnableRows.length} paper{runnableRows.length === 1 ? "" : "s"}</strong> : null}
           </button>
         </div>
       </div>
@@ -913,13 +916,13 @@ export function ResearchWorkspacePanel({
         <div className="workspaceRunProgress" role="status" aria-live="polite">
           <span style={{ width: `${Math.round((runProgress.completed / runProgress.total) * 100)}%` }} />
           <strong>{runProgress.completed}/{runProgress.total} papers</strong>
-          <small>{runProgress.credits} credits used · progress syncs after each batch</small>
+          <small>Bounded batches protect reliability · signed-in progress syncs after each batch</small>
         </div>
       ) : null}
 
       {pickerOpen ? (
         <section className="workspacePaperPicker" aria-label="Add papers to workspace">
-          <div><strong>Add papers</strong><span>Choose up to 50. CivilMCP processes six at a time and saves each batch.</span></div>
+          <div><strong>Add papers</strong><span>Choose up to 50. Seed Research processes six at a time and saves each batch.</span></div>
           <div className="workspacePaperOptions">
             {availablePapers.slice(0, 50).map((paper) => {
               const included = rows.some((row) => row.source === paper.source);
@@ -950,7 +953,7 @@ export function ResearchWorkspacePanel({
               <span><BookOpenCheck size={16} aria-hidden /> Review protocol</span>
               <strong>Screen first. Extract included studies.</strong>
             </div>
-            <small>PRISMA-ScR · CivilMCP corpus</small>
+            <small>PRISMA-ScR · Seed Research corpus</small>
           </header>
 
           <div className="prismaOverview">
@@ -987,7 +990,7 @@ export function ResearchWorkspacePanel({
                 <span className={screeningReady ? "complete" : ""}>{screeningReady ? <Check size={14} aria-hidden /> : <Circle size={14} aria-hidden />}Screening complete</span>
                 <span className={prismaFlow.included > 0 ? "complete" : ""}>{prismaFlow.included > 0 ? <Check size={14} aria-hidden /> : <Circle size={14} aria-hidden />}Studies selected</span>
               </div>
-              <p>Scope: selected CivilMCP papers. Add external databases before treating this as a comprehensive systematic review.</p>
+              <p>Scope: selected Seed Research papers. Add external databases before treating this as a comprehensive systematic review.</p>
             </div>
           </div>
 
@@ -1023,13 +1026,10 @@ export function ResearchWorkspacePanel({
         </section>
       ) : null}
 
-      {!proEnabled ? (
-        <div className="workspaceProNotice" role="note">
-          <ShieldCheck size={18} aria-hidden />
-          <span><strong>Preview for free.</strong> Pro runs batches, syncs work, and unlocks advanced models.</span>
-          <button type="button" onClick={() => onUpgrade("Research Workspace is included in Founder Pro. Sign in or upgrade to continue.")}>View Pro</button>
-        </div>
-      ) : null}
+      <div className="workspaceProNotice workspaceOpenAccessNotice" role="note">
+        <ShieldCheck size={18} aria-hidden />
+        <span><strong>Open Access.</strong> Batch research and every model are unlocked; rate and agent budgets remain for service reliability.</span>
+      </div>
 
       <div className={`workspaceSurface ${activeCell ? "withInspector" : ""}`}>
         <div className="workspaceTableWrap">

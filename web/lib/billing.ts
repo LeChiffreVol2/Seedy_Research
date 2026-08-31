@@ -3,6 +3,7 @@ import { createHmac, timingSafeEqual } from "node:crypto";
 import { createClient } from "@supabase/supabase-js";
 
 import { chatModelRequiresPro, type ChatModel } from "@/lib/chat-models";
+import { CIVILMCP_OPEN_ACCESS } from "@/lib/product-access";
 
 export const FOUNDER_PRO_PRICE_THB = 299;
 export const FREE_WEEKLY_CREDITS = 100;
@@ -18,6 +19,7 @@ export type BillingState = {
   creditsRemaining: number | null;
   resetAt: string | null;
   premiumModels: boolean;
+  openAccess: boolean;
   billingConfigured: boolean;
   priceThb: number;
   hasStripeCustomer: boolean;
@@ -29,7 +31,7 @@ export type CreditReservation = {
   plan: BillingPlan;
   creditsRemaining: number | null;
   resetAt: string | null;
-  reason: "guest" | "consumed" | "already_consumed" | "pro_required" | "credits_exhausted";
+  reason: "guest" | "open_access" | "consumed" | "already_consumed" | "pro_required" | "credits_exhausted";
 };
 
 type BillingRow = {
@@ -83,14 +85,30 @@ export function guestBillingState(): BillingState {
     creditsUsed: null,
     creditsRemaining: null,
     resetAt: null,
-    premiumModels: false,
-    billingConfigured: isStripeConfigured(),
+    premiumModels: CIVILMCP_OPEN_ACCESS,
+    openAccess: CIVILMCP_OPEN_ACCESS,
+    billingConfigured: CIVILMCP_OPEN_ACCESS ? false : isStripeConfigured(),
     priceThb: FOUNDER_PRO_PRICE_THB,
     hasStripeCustomer: false,
   };
 }
 
 export async function getBillingState(userId: string): Promise<BillingState> {
+  if (CIVILMCP_OPEN_ACCESS) {
+    return {
+      plan: "free",
+      status: "active",
+      creditsIncluded: null,
+      creditsUsed: null,
+      creditsRemaining: null,
+      resetAt: null,
+      premiumModels: true,
+      openAccess: true,
+      billingConfigured: false,
+      priceThb: 0,
+      hasStripeCustomer: false,
+    };
+  }
   const { data, error } = await getSupabaseAdmin().rpc("civil_get_billing_state", { p_user_id: userId });
   if (error) throw new Error(`Failed to read billing state: ${error.message}`);
   const row = (Array.isArray(data) ? data[0] : data) as BillingRow | null;
@@ -103,6 +121,7 @@ export async function getBillingState(userId: string): Promise<BillingState> {
     creditsRemaining: number(row.credits_remaining),
     resetAt: text(row.reset_at) || null,
     premiumModels: row.premium_models === true,
+    openAccess: false,
     billingConfigured: isStripeConfigured(),
     priceThb: FOUNDER_PRO_PRICE_THB,
     hasStripeCustomer: Boolean(text(row.stripe_customer_id)),
@@ -126,6 +145,16 @@ export async function reserveAnswerCredits(input: {
   requestId: string;
   contextOnly?: boolean;
 }): Promise<CreditReservation> {
+  if (CIVILMCP_OPEN_ACCESS) {
+    return {
+      allowed: true,
+      charged: 0,
+      plan: input.isAuthenticated ? "free" : "guest",
+      creditsRemaining: null,
+      resetAt: null,
+      reason: "open_access",
+    };
+  }
   if (input.contextOnly) {
     return { allowed: true, charged: 0, plan: input.isAuthenticated ? "free" : "guest", creditsRemaining: null, resetAt: null, reason: "guest" };
   }

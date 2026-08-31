@@ -8,7 +8,6 @@ existing embedding, while changed rows are embedded and upserted.
 from __future__ import annotations
 
 import argparse
-import fnmatch
 import hashlib
 import json
 import os
@@ -25,6 +24,11 @@ from openai import OpenAI
 from openai import RateLimitError
 from supabase import Client, create_client
 
+from evidence_exclusions import (
+    EvidenceExclusionError,
+    load_evidence_exclusion_manifest,
+    select_index_sources,
+)
 from metadata import infer_discipline_from_code
 from text_quality import OCR_CLEANUP_VERSION, clean_markdown_for_index
 
@@ -700,6 +704,23 @@ def run(args: argparse.Namespace) -> None:
     MAX_BATCH_INPUTS_PER_REQUEST = args.max_batch_inputs_per_request
     MAX_BATCH_REQUEST_ESTIMATED_TOKENS = args.max_batch_request_estimated_tokens
 
+    if args.embedding_dimensions != 768:
+        raise RuntimeError("v2 schema expects EMBEDDING_DIMENSIONS=768.")
+    if not args.md_dir.exists():
+        raise FileNotFoundError(f"Markdown directory not found: {args.md_dir}")
+
+    all_files = sorted(args.md_dir.glob("*.md"))
+    try:
+        exclusion_manifest = load_evidence_exclusion_manifest()
+        source_selection = select_index_sources(
+            all_files,
+            args.source_glob,
+            exclusion_manifest,
+        )
+    except EvidenceExclusionError as exc:
+        raise RuntimeError(f"Evidence exclusion policy rejected the index scope: {exc}") from exc
+    files = list(source_selection.eligible_files)
+
     openai_api_key = os.getenv("OPENAI_API_KEY")
     supabase_url = os.getenv("SUPABASE_URL")
     supabase_service_key = os.getenv("SUPABASE_SERVICE_KEY")
@@ -709,10 +730,6 @@ def run(args: argparse.Namespace) -> None:
         raise RuntimeError("OPENAI_API_KEY is not set.")
     if not supabase_url or not supabase_service_key:
         raise RuntimeError("SUPABASE_URL or SUPABASE_SERVICE_KEY is not set.")
-    if args.embedding_dimensions != 768:
-        raise RuntimeError("v2 schema expects EMBEDDING_DIMENSIONS=768.")
-    if not args.md_dir.exists():
-        raise FileNotFoundError(f"Markdown directory not found: {args.md_dir}")
 
     supabase = create_client(supabase_url, supabase_service_key)
     openai_client = None if args.dry_run else OpenAI(api_key=openai_api_key)
@@ -722,16 +739,6 @@ def run(args: argparse.Namespace) -> None:
     )
     title_overrides = load_title_overrides()
 
-    files = sorted(args.md_dir.glob("*.md"))
-    if args.source_glob:
-        files = [
-            path
-            for path in files
-            if any(fnmatch.fnmatch(path.name, pattern) for pattern in args.source_glob)
-        ]
-    if not files:
-        raise RuntimeError(f"No markdown files found in {args.md_dir}")
-
     print(f"Markdown directory    : {args.md_dir}")
     print(f"Embedding model       : {embed_model}")
     print(f"Embedding dimensions  : {args.embedding_dimensions}")
@@ -739,7 +746,14 @@ def run(args: argparse.Namespace) -> None:
     print(f"Collection filter     : {args.collection or 'all'}")
     print(f"Source glob filter    : {', '.join(args.source_glob) if args.source_glob else 'none'}")
     print(f"Dry run               : {args.dry_run}")
-    print(f"Files to index        : {len(files)}")
+    print(f"Source files matched  : {len(source_selection.matched_files)}")
+    print(f"Reviewed exclusions   : {len(source_selection.reviewed_exclusions)}")
+    for exclusion in source_selection.reviewed_exclusions:
+        print(
+            f"  exclude: {exclusion.source} -> {exclusion.canonical_source} "
+            f"(reviewed {exclusion.reviewed_at}, similarity={exclusion.body_similarity:.4f})"
+        )
+    print(f"Files index-eligible  : {len(files)}")
     print("Prefetching existing v2 index status ...", flush=True)
     existing_sections_by_doc = fetch_existing_rows_by_document(supabase, "civil_sections_v2")
     existing_chunks_by_doc = fetch_existing_rows_by_document(supabase, "civil_chunks_v2")
@@ -772,7 +786,11 @@ def run(args: argparse.Namespace) -> None:
         source_pdf = metadata.get("source_pdf") or f"{md_file.stem}.pdf"
         collection = metadata_text(metadata, "collection", "ce_project")
         if collection not in VALID_COLLECTIONS:
-            collection = "ce_project"
+            raise ValueError(
+                f"Unsupported collection {collection!r} in {md_file.name}; "
+                f"expected one of {sorted(VALID_COLLECTIONS)}. "
+                "Unknown sources must be registered and rights-reviewed before indexing."
+            )
         if args.collection and collection != args.collection:
             continue
         source_type = metadata_text(metadata, "source_type", "paper") or "paper"

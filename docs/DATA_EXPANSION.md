@@ -19,23 +19,34 @@ only evidence-index records.
 | --- | --- | --- |
 | Student Transport Projects | Page-preserving hybrid OCR | PDF page parity, non-empty evidence, verified title, exact-page audit |
 | NCCE25/26/29 | Indexed evidence | Existing quality gates |
-| NCCE31 | Indexed evidence: 356 papers | Passed paper boundary/duplicate, discipline/title, page, embedding, and strict data-quality gates on 24 July 2026 |
-| TCI / ThaiJO | Official OAI metadata only | Article/journal license or permission, stable URL, lawful full-text access, page mapping, OCR/text quality |
+| NCCE31 | Production: 356 papers; staged repair: 358 eligible | Non-contiguous reused-code papers split; one 99.88%-similar duplicate is excluded by the same manifest enforced by QA and the indexer; production refresh awaits explicit embedding/cleanup approval |
+| ThaiJO (legacy provider ID `tci_thaijo`) | Official OAI metadata only | Article/asset license or permission, stable URL, lawful full-text access, page mapping, OCR/text quality |
+| TCI Citation Index | Partner metadata/export only | Official agreement, refresh/deletion contract, dedupe against ThaiJO, and publisher-level asset resolution |
+| TNRR | Authenticated `ResearchOutput` metadata only | Approved account and terms; `hasfullReport` is not permission; separate asset rights are required |
+| ThaiLIS / TDC | Partner metadata and institution-mediated links | Metadata denominator agreement; never proxy member authentication; asset-specific permission for native reading |
+| Other Thai conferences / institutional repositories | Provider registry, OAI/export, or organizer deposit | Series/repository denominator, stable identity, explicit asset rights, page and quality gates |
 
-The ThaiJO allowlist stays set-level rather than endpoint-wide. It currently
-contains research/case/technical sets from Geotechnical Engineering Journal,
-the Journal of Thailand Concrete Association, Bulletin of Earth Sciences of
-Thailand, Journal of Spatial Innovation Development, and four reviewed
-multidisciplinary engineering journals. Broad endpoint harvesting remains
-opt-in because ThaiJO endpoint families contain mixed disciplines.
+Reviewed civil sources remain set-level allowlisted. The official registry also
+pins all 36 ThaiJO endpoint families with exact endpoint provenance and a broad
+routing domain. Endpoint-wide harvesting remains an explicit opt-in because one
+family can host mixed disciplines; its output is always metadata-only and must
+pass ID uniqueness, paper-shape, rights, and completeness gates before apply.
 
-Production snapshot, 20 August 2026: the reviewed allowlist contributes 2,380
-active metadata-only records (991 geotechnical, 91 structural/concrete, 177
-surveying/GIS, and 1,121 general engineering), with 2,380 publisher links and
-818 normalized DOI values. Active missing titles and accidental evidence
-promotions are both zero. Thirty-eight provider-deleted records remain only as
-removed audit tombstones. These are discovery coverage metrics, not a claim of
-full-text rights or citation coverage.
+Production snapshot, 31 August 2026: `ph01` contributes 2,380 active records and
+the bounded `sc01` pilot contributes 198 net-new active records, for 2,578
+ThaiJO-hosted discovery records with 2,578 publisher links and 833 normalized
+DOI values. Active missing titles, URLs, authors, and accidental evidence
+promotions are zero in the new batch. Forty-four provider-deleted records remain
+only as removed audit tombstones: 38 from `ph01` and six added by the `sc01`
+pilot. Separately, six `FULL ISSUE` / `ฉบับเต็ม` containers are
+excluded from the paper count. These are discovery coverage metrics, not a claim
+of Thai affiliation, full-text rights, or citation coverage.
+
+ThaiJO and TCI are intentionally separate providers. TNRR, ThaiLIS/TDC,
+conference-series, and institutional-repository coverage are also measured
+independently and reconciled into canonical works rather than added as if every
+record were unique. The reader/access model and completeness tuple are defined
+in [Thai Research Full-Text System](THAI_RESEARCH_FULL_TEXT_SYSTEM.md).
 
 ## Ingestion state machine
 

@@ -1,8 +1,8 @@
-# CivilMCP
+# Seed Research by SEEDY
 
-**Turn Thai civil-engineering research into a defensible literature review—with every supported claim linked to the exact page.** CivilMCP is a Public Research Preview for finding local work global indexes miss, comparing methods and findings, and exporting an auditable review pack.
+**Seed Research turns overlooked Thai research into exact-page evidence that people and AI agents can verify, learn from, and connect to global work.** It is a Public Research Preview powered by the CivilMCP evidence engine, with civil engineering as the first rights-reviewed vertical.
 
-[Open the public preview](https://civil-mcp-web.vercel.app/) · [Connect an AI agent](https://civil-mcp-web.vercel.app/developers) · [Product thesis](docs/PRODUCT_THESIS.md) · [Deep-tech roadmap](docs/THAI_DEEP_TECH_ROADMAP.md) · [Launch readiness](docs/LAUNCH_READINESS.md) · [Data sources and rights](DATA_SOURCES.md)
+[Open the public preview](https://civil-mcp-web.vercel.app/) · [WebMCP Challenge package](docs/WEBMCP_CHALLENGE_SUBMISSION.md) · [Connect an AI agent](https://civil-mcp-web.vercel.app/developers) · [Product thesis](docs/PRODUCT_THESIS.md) · [Full-text and national coverage system](docs/THAI_RESEARCH_FULL_TEXT_SYSTEM.md) · [Launch readiness](docs/LAUNCH_READINESS.md) · [Data sources and rights](DATA_SOURCES.md)
 
 > Research evidence, not professional engineering advice.
 
@@ -17,21 +17,98 @@ into the citable evidence index.
 | --- | ---: | --- |
 | Student Transport Projects | 67 | Student transport research projects, 2019–2024 |
 | NCCE | 1,230 | NCCE25, NCCE26, NCCE29, and NCCE31 proceedings |
-| **Total** | **1,297** | **11,523 active, page-linked sections · 68,614 page-linked evidence chunks** |
+| **Total** | **1,297** | **11,523 active, page-linked sections** |
 
-These public proof metrics intentionally exclude stale or non-page-linked rows.
-The underlying index contains 69,687 active chunk rows; the headline excludes
-1,073 legacy/non-page-linked rows that are not counted as corpus proof.
+The page-linked section count is the current public passage-level proof metric.
+The underlying index still has 1,064 active rows without page ranges plus nine
+paged rows beyond document-declared chunk counts, so the product no longer
+presents every active chunk as exact-page evidence. A staged NCCE31 boundary
+repair now produces 1,300 local markdown paper files and 1,299 index-eligible
+papers after
+one reviewed duplicate exclusion; production remains at 1,297 until the bounded
+152-job embedding refresh and exact duplicate cleanup receive explicit approval.
 
-The separate discovery catalog currently adds **2,380 active ThaiJO journal
-records** from 11 reviewed civil-engineering and multidisciplinary-engineering
-sets, bringing Explore to **3,677 Thai research records**. All 2,380 have a
-publisher link, 818 have a DOI, and none is eligible for AI answers or citations
-until full-text rights and page provenance pass the evidence promotion gates.
-Another 38 provider-deleted records remain only as non-discoverable audit
-tombstones.
+The separate discovery catalog currently adds **2,578 active ThaiJO-hosted
+research metadata records** across 16 contributing OAI set specs in two official
+endpoint families, bringing Explore to **3,875 searchable records**. The
+August 31 `sc01` pilot contributed 198 net-new active records after duplicate and
+whole-issue filtering. All 2,578 have a publisher link, 833 have a DOI, and none
+is eligible for AI answers or citations until full-text rights and page
+provenance pass the evidence promotion gates. Another 44 provider-deleted
+records remain only as non-discoverable audit tombstones: 38 from `ph01` and
+six added by the `sc01` pilot.
 
-The application can search this corpus, synthesize findings across papers, open the exact evidence pages, and translate Thai paper content to English. The source PDFs and extracted corpus are intentionally not redistributed through Git; see [DATA_SOURCES.md](DATA_SOURCES.md).
+The deployed application can search this corpus, synthesize findings across
+papers, reopen exact-page evidence targets, and translate bounded Thai evidence
+to English. Production also exposes the rights-verified native full-paper reader
+described below.
+
+Production includes a deliberately bounded native-reader slice for
+exactly **3 ThaiJO-hosted LEARN Journal papers and 68 page-addressable pages**.
+Their version-of-record assets are checksum-pinned and rights-reviewed against
+the journal's recorded CC BY 4.0 statement. The reader provides native page
+reading, outline and in-paper search, stable anchors, highlights, browser-local
+notes, and citation/source export. It fails closed across `native_verified`,
+`source_hosted`, `restricted`, `metadata_only`, and `unavailable`; only the
+rights-verified native mode receives full page text. The canonical graph
+migration and reader pack are applied to Supabase production, and the matching
+web/MCP releases are deployed on Vercel. Production database checks report three
+native assets, 68 pages, zero page-checksum mismatches, RLS on all six graph
+tables, and no direct `anon` or `authenticated` table reads. The production
+build, rights/integrity units, focused reader/WebMCP browser suites, and repository
+invariants pass. This three-paper proof is not a claim of ThaiJO, TCI,
+TNRR, TDC, conference, or national completeness.
+
+The rights-aware reader and provider-completeness contract is defined in
+[Thai Research Full-Text System](docs/THAI_RESEARCH_FULL_TEXT_SYSTEM.md). General
+source PDFs and the existing extracted corpus remain local-only and are not
+redistributed through Git. The small reader pack keeps only the explicitly
+licensed, checksum-bound page text and rights manifest, not PDF binaries; see
+[DATA_SOURCES.md](DATA_SOURCES.md).
+
+## WebMCP: research with a shared human-agent view
+
+Seed Research exposes five browser-native site tools from the top-level page with `document.modelContext.registerTool(...)`. The tools reuse the same application APIs, signed-in session, validation, evidence boundary, and visible UI that a person uses:
+
+| Site tool | Shared result |
+| --- | --- |
+| `discover_research` | Searches Thai evidence and optional OpenAlex metadata, then updates Explore without confusing discovery records with citable evidence. |
+| `inspect_paper_evidence` | Opens the paper drawer and highlights bounded evidence with its original page for human verification. For a rights-verified reader paper it also reports the lawful access mode and a reopenable verified page anchor, but never returns full page text through WebMCP. |
+| `draft_research_passport` | Turns one to three exact-page anchors already opened in the active Thai paper into a visible Thai → Global Research Passport with bounded English renderings when needed, at most four non-citable OpenAlex leads, and one candidate validation gap. Every selected page must be reopened before the person can acknowledge page review and export Markdown. |
+| `build_research_path` | Creates or adapts a visible four-stage learning path from allow-listed Thai evidence. |
+| `inspect_learning_progress` | Reads checkpoint status and reviewed learning gaps without returning the learner's private free-text answers. |
+
+This is complementary to the remote MCP service: remote MCP works without an open page, while WebMCP lets a browser agent and a person collaborate in the same live research workspace. Inputs are validated again in application code; paper and external metadata outputs are marked as untrusted content; read-only tools are annotated explicitly; registration and in-flight work support cancellation.
+
+### Hero flow: Evidence-bounded Research Passport
+
+The Challenge hero flow begins with an indexed Thai paper, not a generated
+summary. The agent first opens page-linked evidence with
+`inspect_paper_evidence`, then calls `draft_research_passport` with the active
+paper, a bounded focus, one to three visible evidence IDs, and one gap lens.
+The shared page renders three deliberately separate layers:
+
+1. page-linked Thai evidence with exact original pages, retaining the source excerpt and adding a bounded English rendering when translation is available;
+2. up to four OpenAlex discovery leads labelled `metadata only` and never used
+   as CivilMCP evidence; and
+3. one candidate validation gap labelled as inference, with novelty and
+   transferability explicitly not established.
+
+Export stays disabled until the person reopens every selected exact-page anchor
+and acknowledges the page review. That acknowledgment does not validate the
+candidate inference. The exported Markdown preserves the same evidence,
+metadata, and inference boundaries. The Passport audits provenance and frames
+a next verification step; it does not prove scientific correctness, novelty,
+global transferability, or a comprehensive literature gap.
+
+In ChatGPT's built-in browser, use GPT-5.6 Sol or Terra for site-tool invocation. GPT-5.6 Luna remains the bounded default inside Seed Research for path planning, checkpoint assessment, and other server-side product workflows.
+
+Run the browser contract test with:
+
+```bash
+cd web
+npx playwright test tests/e2e/webmcp.spec.ts
+```
 
 ## Flagship: Auditably agentic evidence
 
@@ -47,58 +124,44 @@ Every cited answer also includes a deterministic Evidence Audit: it shows the in
 
 The brief is stored in the existing chat history/share transcript and exports as portable Markdown. `Guided Learning` emphasizes checkpoints; `Quick Answer` preserves the streaming answer path. Agent activity is inspectable, but private reasoning and raw tool payloads are never exposed. See [docs/AGENTIC_EVIDENCE_MISSIONS.md](docs/AGENTIC_EVIDENCE_MISSIONS.md).
 
-Explore remains the feed-first discovery surface: search, filter, inspect a paper, open its evidence, and continue into chat. It keeps page-citable evidence separate from ThaiJO discovery metadata, learns a lightweight `For you` ranking from saved papers, and syncs a personal library with notes, labels/folders, BibTeX, RIS/Zotero export, and related Thai evidence. Users can explicitly expand a query to bounded OpenAlex metadata, inspect a citation neighborhood, and save the query as a Living Review that reports what changed on the next check. OpenAlex records never become CivilMCP evidence implicitly. Indexable `/papers/{source}` pages expose rights-safe metadata, page ranges, and outlines without publishing raw full text.
+Explore remains the feed-first discovery surface: search, filter, inspect a paper, open its evidence, and continue into chat. It keeps page-citable evidence separate from ThaiJO discovery metadata, learns a lightweight `For you` ranking from saved papers, and syncs a personal library with notes, labels/folders, BibTeX, RIS/Zotero export, and related Thai evidence. Users can explicitly expand a query to bounded OpenAlex metadata, inspect a citation neighborhood, and save the query as a Living Review that reports what changed on the next check. OpenAlex records never become CivilMCP evidence implicitly. By default, indexable `/papers/{source}` pages expose rights-safe metadata, page ranges, and outlines without publishing raw full text. The production three-paper reader slice is the narrow exception because those assets have an explicit reviewed native-display decision.
 
-`Research Workspace Pro` is a separate Verified Review Project rather than a chat mode. Papers are rows and bounded AI instructions are columns. A project accepts up to 50 CivilMCP or account-private sources and processes six papers per server request, saving the project after every completed batch. The Scientific Evidence Snapshot template extracts study design, context, method, results, limitations, and Thai applicability with allow-listed page evidence and human-review state. The PRISMA-ScR guided template captures protocol, search strategy, screening decisions, exclusion reasons, extraction matrix, provenance, and review state in a reproducible Markdown pack. PDF uploads stay account-private; DOI and BibTeX/RIS (including Zotero exports) remain metadata-only until page text is available. The current browser orchestrator supports stop-after-batch and durable saved progress, but is not an unattended background job.
+`Research Workspace` is a separate Verified Review Project rather than a chat mode. Papers are rows and bounded AI instructions are columns. Open Access unlocks batch extraction and every model without answer credits or a plan gate; authentication is required so every run has a durable owner. A project accepts up to 50 CivilMCP or account-private sources and processes six papers per server request, saving account-scoped progress after every completed batch. The Scientific Evidence Snapshot template extracts study design, context, method, results, limitations, and Thai applicability with allow-listed page evidence and human-review state. The PRISMA-ScR guided template captures protocol, search strategy, screening decisions, exclusion reasons, extraction matrix, provenance, and review state in a reproducible Markdown pack. PDF uploads stay account-private; DOI and BibTeX/RIS (including Zotero exports) remain metadata-only until page text is available. The current browser orchestrator supports stop-after-batch and durable saved progress, but is not an unattended background job.
 
-`Research Path` adds a different outcome: evidence-grounded learning. Each stage now has a checkpoint; learners mark a concept understood or needing review, and CivilMCP rebuilds the path around those explicit knowledge gaps while keeping the cited Thai evidence visible.
+`Research Path` is the primary evidence-grounded learning loop. GPT-5.6 Luna builds each stage from allow-listed retrieved papers and bounded page-linked excerpts, while a deterministic retrieval plan remains available if the provider is unavailable. Each evidence task gives the learner source links and a claim/evidence/boundary response structure; Luna then evaluates that reasoning only against allow-listed page-linked packets, returns a deterministic mastery status and score, and links the feedback back to the exact source pages. Adaptive rebuilds preserve mastered work, sparse topics expose limited coverage without unrelated filler, provider pressure degrades to an ungraded evidence view, and completed paths can be exported or synthesized into a cited outcome.
 
 Signed-in users can create revocable personal MCP keys from Account or authorize an OAuth-capable client. The public stateless endpoint at `https://civil-mcp-server.vercel.app/v2/mcp` exposes 14 high-level tools for discovery, exact-page reading, selected-paper queries, comparison, citation mapping, private PDFs, and folder-based library workflows. The existing 19-tool low-level contract remains available for CivilMCP web and CityMCP compatibility. Personal tokens are shown once and stored only as SHA-256 hashes.
 
 ## Model behavior
 
-- `deepseek-v4-flash` is the default for answers, retrieval planning, memory compaction, paper translation, and Research Workspace runs.
-- The model picker also offers GPT-5.6 Luna on Free, plus `deepseek-v4-pro`, GPT-5.6 Terra, and GPT-5.6 Sol on Founder Pro.
-- Paper translation uses the same server-side model catalog and defaults to DeepSeek Flash.
+- GPT-5.6 Luna is the default for answers, optional model routing, memory compaction, paper translation, checkpoints, and Research Workspace runs. Deterministic routing is the low-latency default.
+- GPT-5.6 Terra and GPT-5.6 Sol are available for deeper reasoning; DeepSeek Flash and Pro remain optional server-side fallbacks.
+- Open Access removes answer-credit, model, Deep Research, Research Workspace, and public MCP Research Unit plan gates.
 - Retrieval remains bounded by `MAX_AGENT_STEPS`, `MAX_TOOL_CALLS`, `MAX_CONTEXT_CHUNKS`, and `MAX_CONTEXT_TOKENS`.
 
-## Research Preview plans
+## Open Access
 
-- Guest preview: DeepSeek Flash with the public rate limit; no login required.
-- Free account: DeepSeek Flash and GPT-5.6 Luna at 1 credit per answer, synced history, and 100 weighted answer credits per week, resetting Monday at 00:00 UTC.
-- Founder Pro: ฿299/month, the same 100 weekly free credits plus a 500-credit monthly Pro top-up, DeepSeek Pro at 2 credits, GPT-5.6 Terra at 5 credits, GPT-5.6 Sol at 10 credits, and Pro research workflows; unused Pro credits do not roll over.
+- Guests can use Explore, Chat, Research Workspace, Research Path, local history, and Share/Export through a signed guest identity and bounded guest quotas.
+- Open Access includes every answer model and research mode without a paid plan. Sign-in is an identity/privacy boundary for cross-device sync and private research sources, not a model entitlement.
+- Each product surface has independent `enabled` and `requiresAuth` flags. Operators can restore an authenticated-only deployment without changing code.
+- Public per-minute/hour limits and bounded agent, tool, context, paper, and column limits remain operational reliability controls rather than commercial quotas.
+- Billing and Research Unit ledgers remain dormant compatibility infrastructure and can be re-enabled only by setting Open Access off deliberately.
 
-Public MCP/API use has a separate monthly Research Unit wallet so API traffic
-cannot consume chat credits: Free includes 500 units and Founder Pro includes
-5,000. Library organization costs 0; paper/library reads cost 1, evidence
-queries and snapshots cost 2, discovery and citation mapping cost 3, and a
-multi-paper comparison costs 5. Units are reserved atomically before a public
-v2 tool call and restored if that call fails. The planned API Scale launch
-price is ฿999/month for 50,000 units, with 10,000-unit blocks targeted at ฿199;
-it is not purchasable while the service remains on non-commercial Hobby hosting.
-
-Deep Research and Research Workspace batch execution require Founder Pro. Workspace runs charge the selected model weight once per selected paper and remain capped at six papers by six columns per request; there is no unlimited or unattended background-agent quota.
-
-Supabase Auth remains the identity source. Google OAuth and email/password are the primary sign-in paths, with email recovery links for forgotten passwords. Billing uses Stripe-hosted Checkout and Customer Portal; entitlement and credit checks are always enforced on the server.
-
-The current Vercel Hobby launch is a free Research Preview. Founder Pro pricing
-and gates are product-preview surfaces only; Stripe checkout must remain
-unconfigured until the deployment moves to a paid Vercel plan and commercial
-data-rights review is complete.
+Supabase Auth remains the identity source. Google OAuth and email/password are the primary sign-in paths, with email recovery links for forgotten passwords. Stripe endpoints fail closed while Open Access is active.
 
 ## Architecture
 
 ```text
 question
   -> Next.js /api/chat
-  -> DeepSeek V4 Flash retrieval plan
+  -> OpenAI GPT-5.6 Luna retrieval plan
   -> MCP evidence/discovery tools
   -> bounded evidence packet with exact pages
   -> selected answer model / structured Evidence Brief
   -> cited answer + artifact + trace/feedback metadata
 ```
 
-- `web/`: Next.js research feed, chat, Research Workspace Pro, paper detail, translation, history, and feedback.
+- `web/`: Next.js Research Path, research feed, chat, Research Workspace, paper detail, translation, history, and feedback.
 - `mcp-server/`: FastAPI MCP service with a 14-tool public v2 contract plus the 19-tool compatibility contract used by existing first-party consumers.
 - `pipeline/`: provider registry, metadata harvesting, page-preserving PDF/OCR extraction, normalization, chunking, and indexing.
 - `supabase/`: shared schema and additive migration ledger.
@@ -137,7 +200,7 @@ Public MCP v2 also uses `MCP_PUBLIC_URL`, `MCP_OAUTH_AUDIENCE`,
 `MCP_DOCUMENTATION_URL`, and `MCP_OAUTH_ENABLED`. Keep OAuth disabled until the
 Supabase OAuth server and `civil_mcp_access_token_hook` are enabled together.
 
-`DEEPSEEK_API_KEY` powers the default chat, router, translation, and Workspace path. `OPENAI_API_KEY` remains server-only for Pro GPT models and embedding jobs. `OPENALEX_API_KEY` is optional and server-only; without it, Explore and Research Path keep a safe link-only bridge to OpenAlex search. Never expose provider, service-role, or MCP keys through `NEXT_PUBLIC_*` variables.
+`OPENAI_API_KEY` powers the default GPT-5.6 Luna chat, Research Path planning and assessment, translation, Workspace generation, and embedding jobs. `DEEPSEEK_API_KEY` is an optional server-side fallback. `OPENALEX_API_KEY` is optional and server-only; without it, Explore and Research Path keep a safe link-only bridge to OpenAlex search. Never expose provider, service-role, or MCP keys through `NEXT_PUBLIC_*` variables.
 
 Semantic retrieval automatically degrades to a bounded keyword fallback when
 the embedding provider is unavailable. Fallback answers keep exact-page
@@ -153,7 +216,7 @@ Auth session client. Apply
 before enabling account deletion so all first-party account data is removed in
 one database transaction before the Supabase Auth user is deleted.
 
-Founder Pro additionally requires `STRIPE_SECRET_KEY`, `STRIPE_WEBHOOK_SECRET`, and `STRIPE_FOUNDER_PRO_PRICE_ID`. Without them, the free Research Preview remains fully available and the upgrade control shows “opening soon”. Configure Google as a Supabase Auth provider and allow `/auth/callback` on the deployed application origin.
+Open Access is enabled by default with `CIVILMCP_OPEN_ACCESS=true` and `NEXT_PUBLIC_CIVILMCP_OPEN_ACCESS=true`; authenticated feature access is enabled with `NEXT_PUBLIC_CIVILMCP_REQUIRE_AUTH=true`. Stripe variables are dormant compatibility settings and should remain absent. Configure Google as a Supabase Auth provider and allow `/auth/callback` on the deployed application origin before exposing the demo.
 
 Run the services in separate terminals:
 
@@ -187,10 +250,17 @@ python3.10 pipeline/extract_ncce.py --source-glob 'Proceedings_NCCE31.pdf'
 python3.10 pipeline/index.py --mode batch
 ```
 
-TCI/ThaiJO begins as bounded, allowlisted OAI metadata in `civil_source_catalog`; it is not
-page-linked evidence until rights and full-text quality gates pass. NCCE31 is
-indexed as 356 page-citable papers after its extraction, discipline, title,
-page, embedding, and strict data-quality gates passed on 24 July 2026. The
+ThaiJO begins as bounded OAI metadata from reviewed official endpoints in
+`civil_source_catalog`; set-scoped sources remain allowlisted, while an
+endpoint-wide family requires an explicit operator opt-in and the same
+metadata-only release gates. The legacy provider ID `tci_thaijo` does not mean
+that this is the separate TCI citation index; TCI requires its own official
+export or partnership. It is not page-linked evidence until rights and
+full-text quality gates pass. NCCE31 entered production as 356 page-citable
+papers on 24 July 2026 after the then-current extraction, discipline, title,
+page, embedding, and data-quality checks. A later stricter audit found three
+reused footer codes that had merged non-contiguous papers and one duplicate;
+the staged repair described above corrects both before the next refresh. The
 indexer is incremental, does not re-embed unchanged chunks, can resume multiple
 completed Batch API parts, and automatically reduces database upsert size after
 a statement timeout. A synthetic, redistributable schema example is available at
@@ -209,7 +279,10 @@ a statement timeout. A synthetic, redistributable schema example is available at
 python3.10 harness/check_invariants.py
 python3.10 harness/test_ga_security.py
 python3.10 harness/run_data_quality.py --strict
-cd web && npm run build && npm run test:e2e
+python3.10 -m unittest pipeline.test_reader_pack
+(cd web && node --test lib/paper-reader.test.mjs)
+(cd web && npx playwright test tests/e2e/paper-reader.spec.ts)
+(cd web && npm run build && npm run test:e2e)
 python3.10 harness/run_smoke.py --strict
 python3.10 harness/run_eval.py --mode smoke
 python3.10 harness/run_memory_eval.py

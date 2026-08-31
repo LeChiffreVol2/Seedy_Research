@@ -4020,6 +4020,14 @@ button,textarea,input,select { font:inherit; }
   margin:0 0 18px; color:#8a919d; font-size:.68rem; font-weight:600;
   letter-spacing:.01em; text-align:center;
 }
+.webMcpStatus {
+  width:max-content; max-width:100%; margin:-9px auto 18px; display:flex; align-items:center; gap:7px;
+  color:#39705d; font-size:.68rem; font-weight:680; letter-spacing:.01em; text-align:center;
+}
+.webMcpStatus span {
+  width:7px; height:7px; flex:0 0 auto; border-radius:999px; background:#18a875;
+  box-shadow:0 0 0 4px rgba(24,168,117,.11);
+}
 
 .searchComposer {
   min-height:150px; gap:12px; padding:16px; border:1px solid #d9dde4; border-radius:12px;
@@ -4173,10 +4181,25 @@ button,textarea,input,select { font:inherit; }
 .stageStudyAction { min-height:38px; }
 .pathError { margin:0; color:var(--danger); font-size:.8rem; }
 .pathProgress {
-  display:grid; grid-template-columns:auto minmax(120px,1fr) auto; align-items:center; gap:12px;
-  color:#69717d; font-size:.75rem;
+  display:grid; gap:9px; color:#69717d; font-size:.75rem;
 }
-.pathProgress progress { width:100%; height:6px; accent-color:var(--accent); }
+.pathProgressSummary { display:flex; align-items:center; justify-content:space-between; gap:12px; }
+.pathProgressSteps { display:grid; grid-template-columns:repeat(4,minmax(0,1fr)); gap:6px; margin:0; padding:0; list-style:none; }
+.pathProgressSteps li { min-width:0; border-top:3px solid #dfe3e8; }
+.pathProgressSteps li.current,.pathProgressSteps li.draft,.pathProgressSteps li.checking { border-top-color:#4382ba; }
+.pathProgressSteps li.review { border-top-color:#c08a35; }
+.pathProgressSteps li.mastered { border-top-color:#269468; }
+.pathProgressSteps button {
+  width:100%; min-width:0; display:grid; grid-template-columns:auto minmax(0,1fr); gap:2px 6px; border:0;
+  background:transparent; color:#626d79; cursor:pointer; padding:7px 2px 1px; text-align:left;
+}
+.pathProgressSteps button:hover strong { color:#1e526f; }
+.pathProgressSteps button>span { grid-row:1 / span 2; color:#89929d; font-size:.58rem; font-weight:800; }
+.pathProgressSteps button strong { overflow:hidden; color:#4d5865; font-size:.62rem; text-overflow:ellipsis; white-space:nowrap; }
+.pathProgressSteps button small { color:#89929d; font-size:.56rem; }
+.pathProgressSteps li.current button small,.pathProgressSteps li.draft button small,.pathProgressSteps li.checking button small { color:#2d6e9f; }
+.pathProgressSteps li.review button small { color:#9a6820; }
+.pathProgressSteps li.mastered button small { color:#147a5b; }
 .pathAdaptAction { justify-self:start; margin-top:10px; }
 .pathStageList { display:grid; gap:10px; }
 .pathStage {
@@ -4196,12 +4219,17 @@ button,textarea,input,select { font:inherit; }
 .pathStageHeading h3,.pathStageHeading p { margin:0; }
 .pathStageHeading h3 { color:#17191e; font-size:1rem; }
 .pathStageHeading p { margin-top:5px; color:var(--text-sub); font-size:.8rem; line-height:1.5; }
+.pathReadingIntro { display:grid; gap:3px; }
+.pathReadingIntro strong { color:#4c5865; font-size:.66rem; }
+.pathReadingIntro span { color:#7a8490; font-size:.62rem; line-height:1.45; }
 .stageCheck {
   min-height:34px; display:inline-flex; align-items:center; gap:6px; border:1px solid var(--line);
   border-radius:7px; background:#fff; color:#626a78; cursor:pointer; padding:0 9px;
   font-size:.7rem; font-weight:650; white-space:nowrap;
 }
-.stageCheck[aria-pressed="true"] { border-color:#b9dece; background:#eaf7f1; color:#147a5b; }
+.stageCheck:hover:not(:disabled) { border-color:#aeb8c5; background:#f7f9fb; }
+.stageCheck:disabled { cursor:wait; opacity:.68; }
+.stageCheck.completed { border-color:#b9dece; background:#eaf7f1; color:#147a5b; }
 .pathPaperList { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:8px; }
 .pathPaper {
   min-width:0; display:grid; gap:5px; border:1px solid var(--line); border-radius:8px;
@@ -4209,7 +4237,7 @@ button,textarea,input,select { font:inherit; }
 }
 .pathPaper:hover { border-color:#bfc5cf; background:#fff; }
 .pathPaper span { font-size:.78rem; font-weight:650; line-height:1.4; }
-.pathPaper small { color:#777f8b; font-size:.66rem; }
+.pathPaper small { display:inline-flex; align-items:center; gap:5px; color:#667582; font-size:.66rem; }
 .pathCheckpoint {
   display:flex; align-items:flex-start; justify-content:space-between; gap:16px;
   padding-top:13px; border-top:1px solid var(--line);
@@ -4275,8 +4303,7 @@ button,textarea,input,select { font:inherit; }
   .pathPreferences,.pathPaperList { grid-template-columns:1fr; }
   .pathStage { grid-template-columns:1fr; }
   .pathStageIndex { width:32px; height:32px; }
-  .pathProgress { grid-template-columns:1fr auto; }
-  .pathProgress progress { grid-column:1/-1; grid-row:2; }
+  .pathProgressSteps { grid-template-columns:repeat(2,minmax(0,1fr)); row-gap:9px; }
   .accountDangerZone { grid-template-columns:1fr; align-items:stretch; }
   .accountDangerZone .cardAction { justify-self:start; }
 }
@@ -6252,6 +6279,659 @@ body {
   text-decoration:none;
 }
 
+.researchPassport {
+  width:min(100%,980px);
+  position:relative;
+  z-index:1;
+  display:grid;
+  gap:16px;
+  margin:0 auto 14px;
+  padding:20px;
+  border:1px solid rgba(66,83,106,.15);
+  border-radius:14px;
+  background:rgba(255,255,255,.9);
+  box-shadow:0 16px 38px rgba(22,35,54,.07);
+}
+
+.researchPassport.ready {
+  animation:passportReveal .26s var(--ease-spring);
+}
+
+.researchPassport.stale {
+  border-color:rgba(170,112,27,.25);
+}
+
+.passportHeader {
+  display:flex;
+  align-items:flex-start;
+  justify-content:space-between;
+  gap:24px;
+}
+
+.passportHeader>div {
+  min-width:0;
+  display:grid;
+  gap:5px;
+}
+
+.passportEyebrow {
+  display:inline-flex;
+  align-items:center;
+  gap:6px;
+  color:#276d59;
+  font-size:.75rem;
+  font-weight:800;
+  letter-spacing:.075em;
+  text-transform:uppercase;
+}
+
+.passportHeader h2 {
+  margin:0;
+  color:#171b21;
+  font-size:1.08rem;
+  font-weight:760;
+  letter-spacing:-.025em;
+}
+
+.passportHeader p {
+  max-width:660px;
+  margin:0;
+  color:#596574;
+  font-size:.78rem;
+  line-height:1.5;
+}
+
+.passportReviewStatus {
+  flex:0 0 auto;
+  display:inline-flex;
+  align-items:center;
+  min-height:28px;
+  border-radius:999px;
+  padding:0 10px;
+  color:#81591c;
+  background:#fff5df;
+  font-size:.75rem;
+  font-weight:760;
+  white-space:nowrap;
+}
+
+.passportReviewStatus.reviewed {
+  color:#116f53;
+  background:#eaf7f1;
+}
+
+.researchPassport.stale .passportReviewStatus {
+  color:#8b5d18;
+  background:#fff1d2;
+}
+
+.passportInvite,
+.passportLoading,
+.passportError {
+  min-height:64px;
+  display:flex;
+  align-items:center;
+  gap:12px;
+  border-top:1px solid rgba(72,88,109,.12);
+  padding-top:15px;
+}
+
+.passportInvite {
+  display:grid;
+  grid-template-columns:auto minmax(0,1fr);
+  column-gap:14px;
+}
+
+.passportInvite>span {
+  grid-row:1/3;
+  align-self:stretch;
+  display:grid;
+  place-items:center;
+  border-right:1px solid rgba(43,109,89,.18);
+  color:#397663;
+  padding-right:14px;
+  font-size:.75rem;
+  font-weight:800;
+  letter-spacing:.06em;
+  text-transform:uppercase;
+}
+
+.passportInvite strong {
+  color:#29323d;
+  font-size:.8rem;
+  line-height:1.45;
+}
+
+.passportInvite small {
+  color:#5f6976;
+  font-size:.75rem;
+  line-height:1.4;
+}
+
+.passportLoading>div {
+  display:grid;
+  gap:3px;
+}
+
+.passportLoading strong,
+.passportError span {
+  color:#35404c;
+  font-size:.78rem;
+}
+
+.passportLoading span {
+  color:#5f6976;
+  font-size:.75rem;
+}
+
+.passportSpinner {
+  color:var(--accent-ink);
+  animation:translationSpin .9s linear infinite;
+}
+
+.passportError {
+  color:#9a5b28;
+}
+
+.passportError button {
+  margin-left:auto;
+  border:0;
+  background:transparent;
+  color:var(--accent-ink);
+  cursor:pointer;
+  font:inherit;
+  font-size:.75rem;
+  font-weight:760;
+}
+
+.passportMeta {
+  display:flex;
+  align-items:center;
+  gap:0;
+  overflow:auto;
+  border-block:1px solid rgba(72,88,109,.12);
+  padding:10px 0;
+}
+
+.passportMeta span {
+  flex:0 0 auto;
+  color:#5f6976;
+  padding:0 13px;
+  font-size:.75rem;
+  white-space:nowrap;
+}
+
+.passportMeta span:first-child {
+  padding-left:0;
+}
+
+.passportMeta span+span {
+  border-left:1px solid rgba(72,88,109,.14);
+}
+
+.passportMeta strong {
+  color:#2d3540;
+  font-weight:800;
+}
+
+.passportLedger {
+  display:grid;
+  grid-template-columns:1.03fr .94fr 1.03fr;
+  border-block:1px solid rgba(72,88,109,.12);
+}
+
+.passportLedger>section {
+  min-width:0;
+  display:grid;
+  align-content:start;
+  gap:12px;
+  padding:18px;
+  animation:passportStage .28s var(--ease-spring) both;
+}
+
+.passportLedger>section:first-child {
+  padding-left:0;
+}
+
+.passportLedger>section:last-child {
+  padding-right:0;
+}
+
+.passportLedger>section+section {
+  border-left:1px solid rgba(72,88,109,.12);
+}
+
+.passportLedger>section:nth-child(2) {
+  animation-delay:70ms;
+}
+
+.passportLedger>section:nth-child(3) {
+  animation-delay:130ms;
+}
+
+.passportSectionHeading {
+  display:flex;
+  align-items:center;
+  gap:9px;
+}
+
+.passportStep {
+  display:grid;
+  place-items:center;
+  width:28px;
+  height:28px;
+  border-radius:50%;
+  color:#176f54;
+  background:#eaf7f1;
+  font-size:.65rem;
+  font-weight:820;
+}
+
+.passportInferenceColumn .passportStep {
+  color:#875817;
+  background:#fff3da;
+}
+
+.passportGlobalColumn .passportStep {
+  color:#245e9d;
+  background:#eaf3ff;
+}
+
+.passportSectionHeading>div {
+  display:grid;
+  gap:1px;
+}
+
+.passportSectionHeading strong {
+  color:#2a333e;
+  font-size:.78rem;
+  font-weight:800;
+}
+
+.passportSectionHeading small {
+  color:#5f6976;
+  font-size:.75rem;
+}
+
+.passportEvidenceColumn h3 {
+  margin:0;
+  color:#1d252e;
+  font-size:.87rem;
+  line-height:1.35;
+}
+
+.passportEvidenceColumn>p {
+  margin:-6px 0 0;
+  color:#5f6976;
+  font-size:.75rem;
+}
+
+.passportEvidenceList {
+  display:grid;
+}
+
+.passportEvidenceList button {
+  min-height:72px;
+  display:grid;
+  gap:4px;
+  border:0;
+  border-top:1px solid rgba(28,112,82,.13);
+  background:transparent;
+  color:inherit;
+  cursor:pointer;
+  padding:11px 2px;
+  text-align:left;
+  transition:background .16s ease,transform .16s ease;
+}
+
+.passportEvidenceList button:last-child {
+  border-bottom:1px solid rgba(28,112,82,.13);
+}
+
+.passportEvidenceList button:hover,
+.passportEvidenceList button:focus-visible {
+  background:#f5fbf8;
+  transform:translateX(2px);
+}
+
+.passportEvidenceList button:focus-visible,
+.passportGlobalColumn li a:focus-visible,
+.passportGlobalSearch:focus-visible,
+.passportRun summary:focus-visible {
+  border-radius:4px;
+  outline:2px solid #176f54;
+  outline-offset:3px;
+}
+
+.passportEvidenceList button>span {
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  gap:8px;
+}
+
+.passportEvidenceList strong {
+  color:#126e52;
+  font-size:.75rem;
+}
+
+.passportEvidenceList em {
+  color:#526d63;
+  font-size:.75rem;
+  font-style:normal;
+  font-weight:730;
+}
+
+.passportEvidenceList small {
+  color:#5d6874;
+  font-size:.75rem;
+  font-weight:700;
+}
+
+.passportEvidenceExcerpt {
+  display:-webkit-box;
+  overflow:hidden;
+  color:#596574;
+  font-size:.75rem;
+  line-height:1.42;
+  -webkit-box-orient:vertical;
+  -webkit-line-clamp:2;
+}
+
+.passportEvidenceTranslation {
+  display:grid;
+  gap:3px;
+  border-left:2px solid rgba(36,94,157,.25);
+  color:#344f6e;
+  margin-top:3px;
+  padding-left:8px;
+  font-size:.75rem;
+  line-height:1.42;
+}
+
+.passportEvidenceTranslation em {
+  color:#245e9d;
+  font-size:.75rem;
+  font-style:normal;
+  font-weight:800;
+  letter-spacing:.035em;
+  text-transform:uppercase;
+}
+
+.passportInferenceColumn blockquote {
+  margin:0;
+  border-left:2px solid #d9a657;
+  color:#4e3b20;
+  padding-left:10px;
+  font-size:.78rem;
+  font-weight:730;
+  line-height:1.45;
+}
+
+.passportInferenceColumn>p {
+  margin:0;
+  color:#555f6b;
+  font-size:.75rem;
+  line-height:1.52;
+}
+
+.passportInferenceColumn>.passportCandidateBasis {
+  border-left:2px solid rgba(168,111,31,.35);
+  color:#755322;
+  padding-left:9px;
+  font-weight:700;
+}
+
+.passportGapWarning {
+  display:flex;
+  align-items:flex-start;
+  gap:7px;
+  color:#84591d;
+  background:#fff8e9;
+  padding:10px;
+  font-size:.75rem;
+  line-height:1.45;
+}
+
+.passportGapWarning svg {
+  flex:0 0 auto;
+  margin-top:1px;
+}
+
+.passportInferenceColumn dl {
+  display:grid;
+  gap:9px;
+  margin:0;
+}
+
+.passportInferenceColumn dl>div {
+  display:grid;
+  gap:3px;
+  border-top:1px solid rgba(130,96,43,.13);
+  padding-top:8px;
+}
+
+.passportInferenceColumn dt {
+  color:#866333;
+  font-size:.75rem;
+  font-weight:800;
+  letter-spacing:.05em;
+  text-transform:uppercase;
+}
+
+.passportInferenceColumn dd {
+  margin:0;
+  color:#5c6672;
+  font-size:.75rem;
+  line-height:1.42;
+}
+
+.passportGlobalColumn ol {
+  display:grid;
+  gap:0;
+  margin:0;
+  padding:0;
+  list-style:none;
+}
+
+.passportGlobalColumn li+li {
+  border-top:1px solid rgba(39,101,164,.12);
+}
+
+.passportGlobalColumn li a {
+  display:grid;
+  gap:4px;
+  color:inherit;
+  padding:9px 0;
+  text-decoration:none;
+  transition:transform .16s ease;
+}
+
+.passportGlobalColumn li a:hover,
+.passportGlobalColumn li a:focus-visible {
+  transform:translateX(2px);
+}
+
+.passportGlobalColumn li a>span {
+  display:flex;
+  align-items:center;
+  gap:4px;
+  color:#2c659f;
+  font-size:.75rem;
+  font-weight:800;
+  letter-spacing:.035em;
+  text-transform:uppercase;
+}
+
+.passportGlobalColumn li strong {
+  display:-webkit-box;
+  overflow:hidden;
+  color:#2b3541;
+  font-size:.75rem;
+  line-height:1.38;
+  -webkit-box-orient:vertical;
+  -webkit-line-clamp:2;
+}
+
+.passportGlobalColumn li small {
+  overflow:hidden;
+  color:#5f6976;
+  font-size:.75rem;
+  text-overflow:ellipsis;
+  white-space:nowrap;
+}
+
+.passportNoGlobal {
+  display:flex;
+  align-items:flex-start;
+  gap:8px;
+  color:#6e7986;
+  padding:8px 0;
+}
+
+.passportNoGlobal p {
+  margin:0;
+  font-size:.75rem;
+  line-height:1.45;
+}
+
+.passportGlobalStatus {
+  margin:0;
+  border-left:2px solid #7aa6d5;
+  color:#355d87;
+  padding-left:9px;
+  font-size:.75rem;
+  font-weight:700;
+  line-height:1.4;
+}
+
+.passportGlobalStatus.rate_limited,
+.passportGlobalStatus.unavailable,
+.passportGlobalStatus.disabled {
+  border-left-color:#d09a49;
+  color:#755322;
+}
+
+.passportGlobalSearch {
+  display:inline-flex;
+  align-items:center;
+  gap:5px;
+  justify-self:start;
+  color:#245e9d;
+  font-size:.75rem;
+  font-weight:750;
+  text-decoration:none;
+}
+
+.passportBoundary {
+  display:flex;
+  align-items:flex-start;
+  gap:10px;
+  color:#176f54;
+  background:#f3faf7;
+  padding:12px 14px;
+}
+
+.passportBoundary svg {
+  flex:0 0 auto;
+}
+
+.passportBoundary>div {
+  display:grid;
+  gap:2px;
+}
+
+.passportBoundary strong {
+  font-size:.78rem;
+}
+
+.passportBoundary span {
+  color:#5d736b;
+  font-size:.75rem;
+  line-height:1.42;
+}
+
+.passportActions {
+  display:flex;
+  flex-wrap:wrap;
+  gap:8px;
+}
+
+.passportRun {
+  border-top:1px solid rgba(72,88,109,.12);
+  padding-top:12px;
+}
+
+.passportRun summary {
+  display:flex;
+  align-items:center;
+  gap:7px;
+  color:#5e6874;
+  cursor:pointer;
+  font-size:.75rem;
+  font-weight:740;
+  list-style:none;
+}
+
+.passportRun summary::-webkit-details-marker {
+  display:none;
+}
+
+.passportRun summary strong {
+  margin-left:auto;
+  color:#5f6976;
+  font-size:.75rem;
+}
+
+.passportRun summary svg:last-child {
+  transition:transform .16s ease;
+}
+
+.passportRun[open] summary svg:last-child {
+  transform:rotate(180deg);
+}
+
+.passportRun ol {
+  display:grid;
+  margin:10px 0 0;
+  padding:0;
+  list-style:none;
+}
+
+.passportRun li {
+  display:grid;
+  grid-template-columns:minmax(150px,.55fr) minmax(0,1fr) auto;
+  gap:10px;
+  border-top:1px solid rgba(72,88,109,.1);
+  padding:8px 0;
+  font-size:.75rem;
+}
+
+.passportRun code {
+  color:#276d59;
+  font-size:.75rem;
+}
+
+.passportRun li span {
+  color:#66717d;
+}
+
+.passportRun time {
+  color:#646e7b;
+  font-size:.75rem;
+  white-space:nowrap;
+}
+
+@keyframes passportReveal {
+  from { opacity:0; transform:translateY(5px); }
+  to { opacity:1; transform:translateY(0); }
+}
+
+@keyframes passportStage {
+  from { opacity:0; transform:translateY(4px); }
+  to { opacity:1; transform:translateY(0); }
+}
+
 @media (max-width:760px) {
   .discoveryTrustBar,
   .globalWorkGrid {
@@ -6286,80 +6966,100 @@ body {
     width:100%;
     margin-left:25px;
   }
+
+  .researchPassport {
+    padding:17px 15px;
+    border-radius:13px;
+  }
+
+  .passportHeader {
+    align-items:stretch;
+    flex-direction:column;
+    gap:10px;
+  }
+
+  .passportReviewStatus {
+    align-self:flex-start;
+  }
+
+  .passportInvite {
+    grid-template-columns:1fr;
+  }
+
+  .passportInvite>span {
+    grid-row:auto;
+    justify-self:start;
+    border-right:0;
+    border-bottom:1px solid rgba(43,109,89,.18);
+    padding:0 0 7px;
+  }
+
+  .passportLedger {
+    grid-template-columns:1fr;
+  }
+
+  .passportMeta {
+    flex-wrap:wrap;
+    gap:8px 0;
+    overflow:visible;
+  }
+
+  .passportLedger>section,
+  .passportLedger>section:first-child,
+  .passportLedger>section:last-child {
+    padding:17px 0;
+  }
+
+  .passportLedger>section+section {
+    border-top:1px solid rgba(72,88,109,.12);
+    border-left:0;
+  }
+
+  .passportEvidenceList button,
+  .passportGlobalColumn li a {
+    min-height:44px;
+  }
+
+  .passportActions {
+    display:grid;
+    grid-template-columns:1fr;
+  }
+
+  .passportActions .cardAction {
+    width:100%;
+    min-height:44px;
+    justify-content:center;
+  }
+
+  .passportRun li {
+    grid-template-columns:1fr;
+    gap:4px;
+  }
 }
 
 @media (prefers-reduced-motion:reduce) {
   .globalDiscoveryPanel,
-  .globalWorkCard {
+  .globalWorkCard,
+  .researchPassport,
+  .researchPassport.ready,
+  .passportSpinner,
+  .passportLedger>section {
     animation:none;
     transition:none;
   }
-}
-.activationGuide {
-  display: grid;
-  grid-template-columns: minmax(190px, 1fr) minmax(360px, 1.8fr) auto;
-  align-items: center;
-  gap: 20px;
-  margin: 0 0 16px;
-  padding: 16px 18px;
-  border: 1px solid rgba(35, 99, 235, 0.14);
-  border-radius: 18px;
-  background: linear-gradient(120deg, rgba(255, 255, 255, 0.82), rgba(237, 246, 255, 0.74));
-  box-shadow: 0 16px 40px rgba(45, 79, 125, 0.08);
-  backdrop-filter: blur(18px) saturate(140%);
-}
 
-.activationGuide > div:first-child { display: grid; gap: 3px; }
-.activationGuide > div:first-child > strong { color: var(--ink); font-size: 0.94rem; }
-.activationGuide > div:first-child > small { color: var(--muted); }
-.activationGuide ol { display: flex; gap: 8px; margin: 0; padding: 0; list-style: none; }
-.activationGuide li {
-  display: inline-flex;
-  align-items: center;
-  gap: 7px;
-  min-height: 34px;
-  padding: 7px 10px;
-  border: 1px solid rgba(93, 111, 137, 0.14);
-  border-radius: 999px;
-  color: var(--muted);
-  font-size: 0.76rem;
-  font-weight: 700;
-  background: rgba(255, 255, 255, 0.62);
-}
+  .passportEvidenceList button,
+  .passportGlobalColumn li a,
+  .passportRun summary svg:last-child {
+    transition:none;
+  }
 
-.activationGuide li > span {
-  display: grid;
-  place-items: center;
-  width: 18px;
-  height: 18px;
-  border-radius: 50%;
-  background: rgba(88, 104, 128, 0.1);
-  font-size: 0.65rem;
-}
-
-.activationGuide li.complete { color: #08795a; border-color: rgba(8, 121, 90, 0.18); }
-.activationActions { display: flex; align-items: center; gap: 8px; }
-.activationActions .cardAction { white-space: nowrap; }
-.activationDismiss { border: 0; background: transparent; color: var(--muted); font-weight: 700; cursor: pointer; }
-
-@media (max-width: 1180px) {
-  .activationGuide { grid-template-columns: 1fr; gap: 12px; }
-  .activationGuide ol { flex-wrap: wrap; }
-  .activationActions { justify-content: flex-start; }
-}
-@media (max-width: 680px) {
-  .activationGuide { gap: 9px; padding: 12px; border-radius: 14px; }
-  .activationGuide > div:first-child { grid-template-columns: 1fr auto; align-items: center; }
-  .activationGuide > div:first-child > span { grid-column: 1 / -1; }
-  .activationGuide > div:first-child > small { text-align: right; }
-  .activationGuide ol { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 5px; }
-  .activationGuide li { min-height: 64px; flex-direction: column; justify-content: center; gap: 4px; border-radius: 10px; padding: 6px 4px; font-size: .61rem; line-height: 1.25; text-align: center; }
-  .activationActions { gap: 5px; }
-  .activationActions .cardAction { min-height: 34px; padding: 0 8px; font-size: .65rem; }
-  .activationDismiss { min-height: 34px; }
-}
-@media (max-width: 520px) {
-  .activationGuide { display: none; }
+  .passportEvidenceList button:hover,
+  .passportEvidenceList button:focus-visible,
+  .passportGlobalColumn li a:hover,
+  .passportGlobalColumn li a:focus-visible {
+    transform:none;
+  }
 }
 .verifiedReviewFlow {
   display: flex;
@@ -6532,4 +7232,748 @@ body {
 @media (max-width: 700px) {
   .mcpAccessCard > header { align-items: stretch; flex-direction: column; }
   .mcpEndpoint,.mcpTokenReveal { grid-template-columns: 1fr; }
+}
+
+/* Open-access learning loop: answer -> evidence-grounded feedback -> source page. */
+.visuallyHidden {
+  position: absolute !important; width: 1px !important; height: 1px !important; overflow: hidden !important;
+  clip: rect(0 0 0 0) !important; clip-path: inset(50%) !important; white-space: nowrap !important;
+}
+.pathHeaderActions { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+.pathHeaderActions .textAction { display: inline-flex; align-items: center; gap: 6px; padding: 0 9px; }
+.pathCoverageNotice {
+  display: flex; align-items: flex-start; gap: 8px; margin-top: 10px; padding: 10px 12px;
+  border: 1px solid rgba(181, 126, 43, .2); border-radius: 10px; background: rgba(255, 249, 239, .72);
+  color: #6f5b32; font-size: .7rem; line-height: 1.5;
+}
+.pathCoverageNotice svg { flex: 0 0 auto; margin-top: 1px; }
+.pathPlanningProvenance { margin: 10px 0 0; color: #707a87; font-size: .64rem; line-height: 1.45; }
+.pathInlineError { padding: 10px 12px; border: 1px solid rgba(190, 61, 50, .18); border-radius: 10px; background: rgba(255, 244, 242, .78); }
+.pathCheckpoint { display: grid; gap: 12px; }
+.pathCheckpointPrompt { display: grid; gap: 10px; }
+.pathCheckpointHeader { display: flex; align-items: flex-start; gap: 9px; }
+.pathCheckpointHeader > svg { flex: 0 0 auto; margin-top: 1px; color: #526273; }
+.pathCheckpointHeader > div { display: grid; gap: 5px; }
+.pathCheckpointHeader span { color: #4f5d6d; font-size: .64rem; font-weight: 800; letter-spacing: .07em; text-transform: uppercase; }
+.pathCheckpointHeader p { color: #26313d; font-size: .8rem; font-weight: 650; line-height: 1.5; }
+.pathCheckpointSteps {
+  counter-reset: evidence-step; display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 7px;
+  margin: 0; padding: 0; list-style: none;
+}
+.pathCheckpointSteps li {
+  counter-increment: evidence-step; min-width: 0; display: grid; grid-template-columns: 22px minmax(0, 1fr); gap: 2px 7px;
+  align-content: start; padding: 9px; border: 1px solid rgba(83, 105, 132, .12); border-radius: 9px; background: #f8fafb;
+}
+.pathCheckpointSteps li::before {
+  content: counter(evidence-step); grid-row: 1 / span 2; width: 21px; height: 21px; display: grid; place-items: center;
+  border-radius: 50%; background: #e8edf2; color: #44515e; font-size: .61rem; font-weight: 800;
+}
+.pathCheckpointSteps strong { color: #374250; font-size: .65rem; line-height: 1.35; }
+.pathCheckpointSteps span { color: #727d89; font-size: .6rem; line-height: 1.4; }
+.pathDraftHeader { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-top: 2px; }
+.pathDraftHeader > div { display: grid; gap: 2px; }
+.pathDraftHeader strong { color: #384451; font-size: .68rem; }
+.pathDraftHeader > div span { color: #7a8490; font-size: .59rem; }
+.pathStartTask { min-height: 34px; display: inline-flex; align-items: center; gap: 6px; flex: 0 0 auto; }
+.pathCheckpointPrompt > label { display: grid; gap: 6px; }
+.pathCheckpointPrompt > label > span { color: #5f6977; font-size: .66rem; font-weight: 760; }
+.pathCheckpointPrompt textarea {
+  width: 100%; min-height: 104px; resize: vertical; border: 1px solid rgba(83, 105, 132, .16);
+  border-radius: 11px; outline: none; background: rgba(255, 255, 255, .82); color: #252d37;
+  padding: 11px 12px; font: inherit; font-size: .74rem; line-height: 1.55;
+}
+.pathCheckpointPrompt textarea:focus { border-color: rgba(0, 122, 255, .42); box-shadow: 0 0 0 3px rgba(0, 122, 255, .08); }
+.pathCheckpointActions { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.pathCheckpointActions .primaryAction { min-height: 36px; }
+.pathCheckpointActions small { color: #737d8a; font-size: .62rem; }
+.stageCheck { cursor: pointer; }
+.pathAssessment { display: grid; gap: 10px; padding: 13px; border: 1px solid rgba(181, 126, 43, .2); border-radius: 12px; background: rgba(255, 249, 239, .72); }
+.pathAssessment.understood { border-color: rgba(38, 148, 104, .24); background: rgba(239, 251, 246, .78); }
+.pathAssessment.partial { border-color: rgba(0, 122, 255, .2); background: rgba(240, 247, 255, .74); }
+.pathAssessment > header { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.pathAssessment > header span { color: #6d5832; font-size: .64rem; font-weight: 820; letter-spacing: .06em; text-transform: uppercase; }
+.pathAssessment.understood > header span { color: #147a5b; }
+.pathAssessment.partial > header span { color: var(--accent-ink); }
+.pathAssessment > header strong { color: #242c36; font-size: .88rem; }
+.pathAssessment > p { max-width: none; color: #3e4855; font-size: .72rem; }
+.pathAssessment > div:not(.pathAssessmentEvidence) { display: grid; gap: 4px; }
+.pathAssessment > div > strong { color: #4b5563; font-size: .65rem; }
+.pathAssessment ul { display: grid; gap: 3px; margin: 0; padding-left: 18px; color: #596472; font-size: .68rem; line-height: 1.45; }
+.pathNextStep span { color: #424d5a; font-size: .7rem; line-height: 1.45; }
+.pathContinueTask { justify-self: start; display: inline-flex; align-items: center; gap: 7px; margin-top: 2px; }
+.pathAssessmentEvidence { display: grid; gap: 6px; padding-top: 9px; border-top: 1px solid rgba(83, 105, 132, .12); }
+.pathAssessmentEvidence > div { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 6px; }
+.pathAssessmentEvidence button { min-width: 0; display: grid; gap: 3px; border: 1px solid rgba(83, 105, 132, .13); border-radius: 9px; background: rgba(255, 255, 255, .76); color: #303a46; padding: 9px; cursor: pointer; text-align: left; }
+.pathAssessmentEvidence button:hover { border-color: rgba(0, 122, 255, .28); background: #fff; }
+.pathAssessmentEvidence button span { overflow: hidden; font-size: .64rem; font-weight: 760; text-overflow: ellipsis; white-space: nowrap; }
+.pathAssessmentEvidence button small { display: -webkit-box; overflow: hidden; color: #707b88; font-size: .59rem; line-height: 1.4; -webkit-box-orient: vertical; -webkit-line-clamp: 2; }
+.pathCompletion {
+  display: flex; align-items: center; justify-content: space-between; gap: 18px; padding: 18px 20px;
+  border: 1px solid rgba(38, 148, 104, .24); border-radius: 14px;
+  background: linear-gradient(145deg, rgba(247, 255, 251, .9), rgba(233, 249, 242, .72));
+}
+.pathCompletion h3,.pathCompletion p { margin: 0; }
+.pathCompletion h3 { margin-top: 5px; color: #173b31; font-size: 1rem; }
+.pathCompletion>div>p:last-child { margin-top: 6px; max-width: 610px; color: #5e756d; font-size: .72rem; line-height: 1.5; }
+.pathCompletion .primaryAction { flex: 0 0 auto; }
+.openAccessCard { border-color: rgba(10, 145, 102, .2); background: linear-gradient(145deg, rgba(247, 255, 251, .84), rgba(240, 247, 255, .76)); }
+.openAccessPrice { display: flex; align-items: baseline; gap: 8px; }
+.openAccessPrice strong { color: #147a5b; }
+.workspaceOpenAccessNotice { border-color: rgba(10, 145, 102, .18); background: rgba(238, 250, 246, .7); }
+.mcpOpenAccess { display: flex; align-items: flex-start; gap: 9px; border: 1px solid rgba(10, 145, 102, .18); border-radius: 10px; background: rgba(238, 250, 246, .72); color: #18765a; padding: 10px; }
+.mcpOpenAccess > div { display: grid; gap: 2px; }
+.mcpOpenAccess strong { font-size: .7rem; }
+.mcpOpenAccess span { color: #68776f; font-size: .62rem; }
+
+@media (max-width: 760px) {
+  .pathCheckpointSteps { grid-template-columns: 1fr; }
+  .pathDraftHeader { align-items: flex-start; flex-direction: column; }
+  .pathAssessmentEvidence > div { grid-template-columns: 1fr; }
+  .pathCheckpointActions { align-items: stretch; flex-direction: column; }
+  .pathCheckpointActions .primaryAction { justify-content: center; }
+  .pathHeaderActions { align-self: flex-start; }
+  .pathCompletion { align-items: stretch; flex-direction: column; }
+  .pathCompletion .primaryAction { width: 100%; justify-content: center; }
+}
+
+/* Account entry: a focused auth surface with Open Access as context, not an upsell. */
+.guestAuthWorkspace {
+  width: min(100%, 980px);
+  gap: 12px;
+}
+
+.guestAuthGrid {
+  min-height: 610px;
+  grid-template-columns: minmax(0, 1.08fr) minmax(360px, .92fr);
+  gap: 0;
+  overflow: hidden;
+  border: 1px solid #dfe3e8;
+  border-radius: 18px;
+  background: #fff;
+  box-shadow: 0 26px 70px rgba(17, 24, 39, .1);
+  animation: authSurfaceEnter .42s var(--ease-spring) both;
+}
+
+.guestAuthGrid .authFormCard {
+  order: 2;
+  align-content: center;
+  gap: 17px;
+  border: 0;
+  border-radius: 0;
+  background: #fff;
+  box-shadow: none;
+  padding: clamp(38px, 5.4vw, 64px);
+}
+
+.guestAuthGrid .authFormHeader {
+  gap: 7px;
+  margin-bottom: 8px;
+}
+
+.guestAuthGrid .authFormHeader p {
+  color: #78818e;
+  font-size: .66rem;
+  font-weight: 700;
+  letter-spacing: .13em;
+}
+
+.guestAuthGrid .authFormHeader h2 {
+  margin: 0;
+  color: #111318;
+  font-family: var(--font-heading), var(--font-body), sans-serif;
+  font-size: clamp(1.8rem, 3vw, 2.35rem);
+  font-weight: 700;
+  letter-spacing: -.035em;
+  line-height: 1.05;
+}
+
+.authFormSubtitle {
+  max-width: 380px;
+  color: #687180;
+  font-size: .84rem;
+  font-weight: 500;
+  line-height: 1.55;
+}
+
+.guestAuthGrid .googleAuthAction {
+  position: relative;
+  border-color: #d8dce3;
+  background: #fff;
+  color: #20242c;
+}
+
+.guestAuthGrid .googleAuthAction:hover {
+  border-color: #b8bec8;
+  background: #f8f9fb;
+}
+
+.googleAuthMark {
+  width: 18px;
+  height: 18px;
+  flex: 0 0 auto;
+}
+
+.guestAuthGrid .authDivider {
+  color: #9299a4;
+  font-size: .66rem;
+  font-weight: 600;
+}
+
+.guestAuthGrid .accountCard label,
+.guestAuthGrid .authFieldHeader label {
+  color: #444b57;
+  font-size: .75rem;
+  font-weight: 650;
+}
+
+.guestAuthGrid .accountCard input {
+  min-height: 48px;
+  border-color: #d8dce3;
+  border-radius: 9px;
+  padding-right: 14px;
+  padding-left: 14px;
+}
+
+.guestAuthGrid .passwordField input {
+  padding-right: 50px;
+}
+
+.guestAuthGrid .forgotPasswordButton {
+  min-height: 32px;
+  color: #505966;
+  font-size: .72rem;
+  font-weight: 650;
+}
+
+.guestAuthGrid .forgotPasswordButton:hover {
+  color: #111318;
+}
+
+.guestAuthGrid .accountActions {
+  margin-top: 3px;
+}
+
+.guestAuthGrid .authPrimaryAction {
+  width: 100%;
+  min-height: 48px;
+  justify-content: center;
+  border-radius: 9px;
+}
+
+.guestAuthGrid .authSwitchBottom {
+  color: #747c88;
+  font-size: .76rem;
+  font-weight: 550;
+}
+
+.guestAuthGrid .authSwitchBottom button {
+  color: #242a33;
+  font-weight: 700;
+}
+
+.guestAuthGrid .openAccessCard {
+  order: 1;
+  min-height: 610px;
+  align-content: space-between;
+  gap: 26px;
+  overflow: hidden;
+  position: relative;
+  isolation: isolate;
+  border: 0;
+  border-radius: 0;
+  background: #15241f;
+  box-shadow: none;
+  padding: clamp(38px, 5.2vw, 58px);
+}
+
+.guestAuthGrid .openAccessCard::before,
+.guestAuthGrid .openAccessCard::after {
+  position: absolute;
+  z-index: -1;
+  border-radius: 999px;
+  content: "";
+  pointer-events: none;
+}
+
+.guestAuthGrid .openAccessCard::before {
+  width: 430px;
+  height: 430px;
+  right: -240px;
+  bottom: -230px;
+  border: 1px solid rgba(173, 226, 203, .16);
+  box-shadow: 0 0 0 80px rgba(173, 226, 203, .025), 0 0 0 160px rgba(173, 226, 203, .018);
+}
+
+.guestAuthGrid .openAccessCard::after {
+  width: 210px;
+  height: 210px;
+  top: -130px;
+  left: -100px;
+  background: rgba(183, 226, 205, .055);
+}
+
+.openAccessBrand {
+  display: flex;
+  align-items: center;
+  gap: 11px;
+}
+
+.openAccessBrand img {
+  width: 38px;
+  height: 38px;
+  display: block;
+}
+
+.openAccessBrand > span {
+  display: grid;
+  gap: 2px;
+}
+
+.openAccessBrand strong {
+  color: #17231f;
+  font-family: var(--font-heading), var(--font-body), sans-serif;
+  font-size: .87rem;
+  letter-spacing: .02em;
+  line-height: 1;
+}
+
+.openAccessBrand small {
+  color: #718078;
+  font-size: .62rem;
+  font-weight: 600;
+}
+
+.openAccessLead {
+  display: grid;
+  gap: 14px;
+}
+
+.openAccessStatus {
+  width: fit-content;
+  min-height: 27px;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  margin: 0;
+  border: 1px solid rgba(24, 122, 87, .22);
+  border-radius: 999px;
+  background: rgba(229, 247, 239, .78);
+  color: #176f53;
+  padding: 0 10px;
+  font-size: .63rem;
+  font-weight: 750;
+  letter-spacing: .08em;
+  text-transform: uppercase;
+}
+
+.openAccessLead h3 {
+  margin: 0;
+}
+
+.openAccessNote {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  margin: 0;
+  color: #6b786f;
+  font-size: .69rem;
+  font-weight: 550;
+  line-height: 1.48;
+}
+
+.openAccessNote svg {
+  flex: 0 0 auto;
+  margin-top: 1px;
+  color: #318169;
+}
+
+.openAccessNote span,
+.openAccessNote small,
+.openAccessNote strong {
+  display: block;
+}
+
+.openAccessNote small {
+  color: inherit;
+  font: inherit;
+}
+
+.openAccessNote strong {
+  margin-bottom: 2px;
+  color: #27372f;
+  font-size: .7rem;
+}
+
+.guestAuthGrid .openAccessBrand strong,
+.guestAuthGrid .openAccessLead h3,
+.guestAuthGrid .authFeatureRow strong,
+.guestAuthGrid .openAccessNote strong {
+  color: #f4f7f5;
+}
+
+.guestAuthGrid .openAccessBrand small,
+.guestAuthGrid .authBenefitIntro,
+.guestAuthGrid .authFeatureRow,
+.guestAuthGrid .authFeatureRow small,
+.guestAuthGrid .openAccessNote {
+  color: #aebbb4;
+}
+
+.guestAuthGrid .openAccessLead h3 {
+  max-width: 470px;
+  font-size: clamp(1.9rem, 3.7vw, 2.8rem);
+  font-weight: 600;
+  letter-spacing: -.045em;
+  line-height: 1.04;
+}
+
+.guestAuthGrid .authBenefitIntro {
+  max-width: 440px;
+  font-size: .82rem;
+  font-weight: 450;
+  line-height: 1.62;
+}
+
+.guestAuthGrid .openAccessStatus {
+  border-color: rgba(171, 232, 205, .2);
+  background: rgba(171, 232, 205, .09);
+  color: #b7e2cd;
+}
+
+.guestAuthGrid .authFeatureList {
+  margin: 0;
+  border-top-color: rgba(223, 237, 230, .13);
+}
+
+.guestAuthGrid .authFeatureRow {
+  grid-template-columns: 28px minmax(0, 1fr);
+  gap: 12px;
+  border-bottom-color: rgba(223, 237, 230, .1);
+  padding: 14px 0;
+}
+
+.guestAuthGrid .authFeatureRow svg {
+  color: #8dc7ad;
+}
+
+.guestAuthGrid .authFeatureRow strong {
+  font-size: .78rem;
+  font-weight: 650;
+}
+
+.guestAuthGrid .authFeatureRow small {
+  margin-top: 4px;
+  font-size: .69rem;
+  font-weight: 450;
+  line-height: 1.5;
+}
+
+.guestAuthGrid .openAccessNote {
+  padding-top: 2px;
+}
+
+.guestAuthGrid .openAccessNote svg {
+  color: #8dc7ad;
+}
+
+.guestAuthWorkspace .accountLegalLinks {
+  justify-content: flex-end;
+  padding-right: 4px;
+}
+
+@keyframes authSurfaceEnter {
+  from { opacity: 0; transform: translateY(12px) scale(.99); }
+  to { opacity: 1; transform: translateY(0) scale(1); }
+}
+
+@media (max-width: 900px) {
+  .guestAuthGrid {
+    min-height: 0;
+    grid-template-columns: 1fr;
+    border-radius: 14px;
+  }
+
+  .guestAuthGrid .authFormCard {
+    order: 1;
+    min-height: 540px;
+    padding: clamp(30px, 8vw, 52px);
+  }
+
+  .guestAuthGrid .openAccessCard {
+    order: 2;
+    min-height: 0;
+    padding: clamp(30px, 8vw, 48px);
+  }
+}
+
+@media (max-width: 520px) {
+  .guestAuthGrid {
+    border-radius: 12px;
+    box-shadow: 0 16px 42px rgba(17, 24, 39, .08);
+  }
+
+  .guestAuthGrid .authFormCard,
+  .guestAuthGrid .openAccessCard {
+    padding: 28px 22px;
+  }
+
+  .guestAuthGrid .authFormCard {
+    min-height: 0;
+  }
+
+  .guestAuthGrid .authFormHeader h2 {
+    font-size: 1.75rem;
+  }
+
+  .guestAuthGrid .openAccessLead h3 {
+    font-size: 1.85rem;
+  }
+
+  .guestAuthGrid .openAccessBrand {
+    display: none;
+  }
+
+  .guestAuthGrid .openAccessCard {
+    gap: 18px;
+  }
+
+  .guestAuthWorkspace .accountLegalLinks {
+    justify-content: center;
+  }
+}
+
+/* Auth-gated demo navigation and per-feature access flags. */
+.navItemIcon {
+  width: 22px;
+  height: 22px;
+  position: relative;
+  display: inline-grid;
+  flex: 0 0 auto;
+  place-items: center;
+}
+
+.sidebarNavItem.locked:not(.selected) {
+  color: #697382;
+}
+
+.mobileBottomNav .navItemIcon {
+  width: 20px;
+  height: 20px;
+}
+
+.authAccessFlags {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 7px;
+}
+
+.authAccessFlags > span {
+  min-width: 0;
+  min-height: 34px;
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  border: 1px solid rgba(39, 76, 61, .12);
+  border-radius: 8px;
+  background: rgba(238, 247, 242, .72);
+  color: #35715b;
+  padding: 7px 9px;
+}
+
+.authAccessFlags strong {
+  overflow: hidden;
+  color: #2d4338;
+  font-size: .64rem;
+  font-weight: 650;
+  line-height: 1.2;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.authAccessFlags svg {
+  flex: 0 0 auto;
+}
+
+.guestAuthGrid .authAccessFlags > span {
+  border-color: rgba(216, 235, 225, .1);
+  background: rgba(216, 235, 225, .045);
+  color: #8dc7ad;
+}
+
+.guestAuthGrid .authAccessFlags strong {
+  color: #cbd8d1;
+}
+
+@media (max-width: 520px) {
+  .authAccessFlags {
+    grid-template-columns: 1fr;
+  }
+}
+
+/* Signed-in account settings: compact, task-first, and free of acquisition copy. */
+.signedInAccountGrid {
+  grid-template-columns: minmax(0, 1fr);
+  align-items: start;
+}
+
+.signedInAccountGrid .accountCard {
+  gap: 20px;
+  padding: 26px;
+}
+
+.signedInAccountGrid .accountSignedIn {
+  min-height: 74px;
+  padding: 14px 16px;
+}
+
+.accountSignedIn .authAvatar {
+  display: inline-grid !important;
+  place-items: center;
+  margin: 0;
+  padding: 0;
+  color: #fff;
+  font-size: 1rem;
+  line-height: 1;
+  text-align: center;
+}
+
+.accountSyncPill {
+  min-height: 28px;
+  display: inline-flex !important;
+  align-items: center;
+  gap: 5px;
+  margin: 0 0 0 auto !important;
+  border: 1px solid rgba(17, 122, 84, .18);
+  border-radius: 999px;
+  background: rgba(255, 255, 255, .72);
+  color: #177154 !important;
+  padding: 0 10px;
+  font-size: .64rem !important;
+  font-weight: 750 !important;
+  letter-spacing: .02em;
+  white-space: nowrap;
+}
+
+.accountProfileEditor {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: end;
+  gap: 12px;
+}
+
+.accountProfileEditor .accountActions,
+.accountProfileEditor .cardAction {
+  min-height: 44px;
+}
+
+.accountDangerZone.accountDangerDisclosure {
+  display: block;
+  margin-top: 0;
+  padding-top: 0;
+  border: 1px solid #e5e6e9;
+  border-radius: 10px;
+  background: #fff;
+  overflow: hidden;
+}
+
+.accountDangerDisclosure > summary {
+  min-height: 58px;
+  display: grid;
+  grid-template-columns: 30px minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 10px;
+  cursor: pointer;
+  list-style: none;
+  padding: 10px 14px;
+}
+
+.accountDangerDisclosure > summary::-webkit-details-marker {
+  display: none;
+}
+
+.accountDangerDisclosure > summary:hover {
+  background: #fafafa;
+}
+
+.accountDangerIcon {
+  width: 30px;
+  height: 30px;
+  display: inline-grid !important;
+  place-items: center;
+  border-radius: 8px;
+  background: #f7f0f1;
+  color: #8c3942 !important;
+}
+
+.accountDangerCopy {
+  min-width: 0;
+}
+
+.accountDangerCopy strong,
+.accountDangerCopy small {
+  display: block;
+}
+
+.accountDangerCopy strong {
+  color: #633239;
+  font-size: .73rem;
+}
+
+.accountDangerCopy small {
+  margin-top: 2px;
+  color: #7b8089;
+  font-size: .66rem;
+  font-weight: 550;
+  line-height: 1.4;
+}
+
+.accountDangerManage {
+  color: #777e88 !important;
+  font-size: .66rem !important;
+  font-weight: 650;
+}
+
+.accountDangerZone > .accountDangerControls {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(190px, .65fr) auto;
+  align-items: end;
+  gap: 10px;
+  border-top: 1px solid #e5e6e9;
+  background: #fffafa;
+  padding: 14px;
+}
+
+@media (max-width: 680px) {
+  .signedInAccountGrid .accountCard {
+    padding: 18px;
+  }
+
+  .accountProfileEditor,
+  .accountDangerZone > .accountDangerControls {
+    grid-template-columns: 1fr;
+  }
+
+  .accountProfileEditor .cardAction {
+    width: 100%;
+    justify-content: center;
+  }
+
+  .accountDangerZone > .accountDangerControls .cardAction {
+    width: 100%;
+    justify-content: center;
+  }
+}
+
+@media (max-width: 440px) {
+  .accountSyncPill {
+    display: none !important;
+  }
+
+  .accountDangerDisclosure > summary {
+    grid-template-columns: 30px minmax(0, 1fr);
+  }
+
+  .accountDangerManage {
+    display: none !important;
+  }
 }

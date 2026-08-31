@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 
-import { applyChatIdentityCookies, chatIdentityErrorResponse, resolveChatIdentity } from "@/lib/chat-auth";
+import { applyChatIdentityCookies, chatIdentityErrorResponse, featureAccessDeniedResponse, resolveChatIdentity } from "@/lib/chat-auth";
 import {
   SESSION_COOKIE_NAME,
   consumeChatQuota,
@@ -31,6 +31,8 @@ export async function POST(request: NextRequest) {
     return chatIdentityErrorResponse(error, request);
   }
   const { identity, applyAuthCookies } = resolved;
+  const accessDenied = featureAccessDeniedResponse("shared", identity, applyAuthCookies);
+  if (accessDenied) return accessDenied;
   const rate = await consumeChatQuota({
     scope: "share_write",
     userId: identity.userId,
@@ -91,6 +93,8 @@ export async function DELETE(request: NextRequest) {
     return chatIdentityErrorResponse(error, request);
   }
   const { identity, applyAuthCookies } = resolved;
+  const accessDenied = featureAccessDeniedResponse("shared", identity, applyAuthCookies);
+  if (accessDenied) return accessDenied;
   const rate = await consumeChatQuota({
     scope: "share_write",
     userId: identity.userId,

@@ -14,10 +14,56 @@ python3.10 harness/run_smoke.py --strict
 python3.10 harness/run_memory_eval.py
 python3.10 harness/run_eval.py --mode smoke
 python3.10 harness/score_quality.py
-cd web && npm run harness:web-smoke
+python3.10 -m unittest pipeline.test_reader_pack
+(cd web && npm run harness:web-smoke)
+(cd web && node --test lib/paper-reader.test.mjs)
+(cd web && npx playwright test tests/e2e/paper-reader.spec.ts)
+(cd web && npx playwright test tests/e2e/webmcp.spec.ts)
 ```
 
 Use the root `Makefile` for normal release work. The direct harness commands remain useful when debugging a specific failing suite.
+
+## WebMCP browser contract
+
+`web/tests/e2e/webmcp.spec.ts` installs a deterministic browser-side `document.modelContext` host before application hydration. It requires the exact five-tool contract, checks read-only and untrusted-content annotations, then executes discovery, exact-page evidence opening, Research Passport drafting/review/export, Research Path creation, and progress inspection. The test must verify the corresponding visible UI state; a source-string assertion alone is not sufficient.
+
+The Passport assertions are part of the release contract: a metadata-only
+record cannot be opened as evidence; the draft must reject an evidence ID that
+is not visible in the active paper; returned OpenAlex leads remain
+`citable: false`; the UI states that novelty and transferability are not
+established; page-review acknowledgment is disabled until every selected anchor
+has been reopened; export is enabled only after that acknowledgment while the
+candidate inference remains unvalidated; bounded Thai-to-English rendering retains both source and translation; and the downloaded Markdown plus visible WebMCP activity trace
+preserve the same boundary.
+
+Before a challenge release, also run one manual pass in ChatGPT's built-in browser with GPT-5.6 Sol or Terra and one pass in Chrome with WebMCP testing enabled. Record the deployed URL, candidate SHA, tool list, prompt, result, and any confirmation shown. The deterministic E2E proves application behavior; the manual pass proves compatibility with the actual challenge host.
+
+## Rights-reviewed paper-reader contract
+
+`pipeline.test_reader_pack` verifies the local CC BY 4.0 candidate contains
+exactly three distinct ThaiJO papers and 68 checksum-bound pages, that every
+page has a stable anchor and integrity hash, and that native display fails unless
+all required asset actions and rights provenance are present. It also validates
+the canonical work, provider record, asset, and page rows without writing a
+database.
+
+`web/lib/paper-reader.test.mjs` covers source/alias resolution, fail-closed native
+rights, bounded page pagination, and the reader response contract.
+`web/tests/e2e/paper-reader.spec.ts` exercises native reading, outline/search,
+page navigation, stable anchors, highlighting, browser-local notes, citation
+copy/export, mobile controls, reduced motion, and non-native fallbacks. The mode
+matrix is `native_verified`, `source_hosted`, `restricted`, `metadata_only`, and
+`unavailable`; only a rights-verified native asset may return full page text.
+
+These suites verify the implementation contract; by themselves they are not
+evidence of a database apply, deployment, or national Thai research coverage.
+The August 31 production promotion separately recorded migration
+`20260831120000`, 3 rights-verified assets, 68 checksum-valid pages, service-only
+table grants, and READY Vercel deployments. For later releases, rerun the focused
+suites against the frozen candidate and manually
+confirm that `inspect_paper_evidence` reports the lawful access state and verified reader anchor without
+including full page text and that the page still registers exactly five WebMCP
+site tools.
 
 ## Report Contract
 Every harness command writes JSON to `harness/reports/` with:
@@ -72,7 +118,12 @@ python3.10 harness/run_smoke.py --strict
 
 The smoke suite now includes negative checks for unauthenticated MCP `/tools/call`, both unauthenticated mounted transports, and invalid/oversized `/api/chat` payloads. It also initializes the stateless public `/v2/mcp` transport and requires the exact 14-tool public contract before a candidate can be promoted. Eval checks citation correctness by ensuring `[E#]` markers map back to returned evidence items, not only that citation markers exist.
 
-Latency SLOs are report-first by default. Set `HARNESS_ENFORCE_SLO=true` to make latency violations fail eval.
+Latency SLOs are report-first by default. The demo/readiness defaults are
+`HARNESS_MAX_P95_LATENCY_MS=25000`, `HARNESS_MAX_LATENCY_MS=30000`, and
+`HARNESS_MAX_CONTEXT_P95_LATENCY_MS=8000`. The context-only threshold keeps a
+slow retrieval layer visible even when model generation still fits inside the
+end-to-end budget. Set `HARNESS_ENFORCE_SLO=true` to make latency violations
+fail eval.
 
 ## CityMCP boundary
 

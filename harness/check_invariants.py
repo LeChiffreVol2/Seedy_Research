@@ -13,6 +13,7 @@ REQUIRED_DOCS = [
     "docs/HARNESS.md",
     "docs/QUALITY_SCORE.md",
     "docs/OPERATIONS.md",
+    "docs/WEBMCP_CHALLENGE_SUBMISSION.md",
 ]
 REQUIRED_ENV_KEYS = [
     "OPENAI_API_KEY",
@@ -24,6 +25,9 @@ REQUIRED_ENV_KEYS = [
     "MCP_CLIENT_KEYS_JSON",
     "GUEST_SESSION_HMAC_KEY",
     "AGENTIC_CONTEXT_ENABLED",
+    "FAST_RETRIEVAL_ENABLED",
+    "FAST_RETRIEVAL_MAX_RESULTS",
+    "LLM_ROUTER_ENABLED",
     "ROUTER_PROVIDER",
     "ROUTER_MODEL",
     "MAX_AGENT_STEPS",
@@ -36,6 +40,9 @@ REQUIRED_ENV_KEYS = [
     "CHAT_AUTH_REQUESTS_PER_MINUTE",
     "CHAT_AUTH_REQUESTS_PER_HOUR",
     "ANSWER_MAX_TOKENS",
+    "MCP_TOOL_TIMEOUT_MS",
+    "MAX_ACTIVE_PATH_BUILDS",
+    "MAX_ACTIVE_CHECKPOINTS",
 ]
 SERVER_SECRET_KEYS = [
     "OPENAI_API_KEY",
@@ -68,6 +75,13 @@ EXPECTED_TOOLS = [
 EXPECTED_WRITE_TOOLS = {
     "save_library_item": "WRITE_ANNOTATIONS",
     "remove_library_item": "DELETE_ANNOTATIONS",
+}
+EXPECTED_WEBMCP_TOOLS = {
+    "discover_research",
+    "inspect_paper_evidence",
+    "draft_research_passport",
+    "build_research_path",
+    "inspect_learning_progress",
 }
 
 
@@ -144,6 +158,84 @@ def check_mcp_tool_annotations() -> Check:
             "Ensure MCP tools declare the correct read, write, or destructive annotations.",
         )
     return Check("mcp_tool_annotations", "pass", "MCP tools declare explicit read, write, and destructive annotations.")
+
+
+def check_webmcp_contract() -> Check:
+    bridge_path = ROOT / "web" / "lib" / "webmcp.ts"
+    page_path = ROOT / "web" / "app" / "page.tsx"
+    e2e_path = ROOT / "web" / "tests" / "e2e" / "webmcp.spec.ts"
+    next_config_path = ROOT / "web" / "next.config.ts"
+    if not bridge_path.exists() or not e2e_path.exists():
+        return Check(
+            "webmcp_contract",
+            "fail",
+            "WebMCP bridge or browser contract test is missing.",
+            "Restore the top-level WebMCP bridge and its end-to-end execution test.",
+        )
+    bridge = bridge_path.read_text(encoding="utf-8", errors="replace")
+    page = page_path.read_text(encoding="utf-8", errors="replace")
+    e2e = e2e_path.read_text(encoding="utf-8", errors="replace")
+    next_config = next_config_path.read_text(encoding="utf-8", errors="replace")
+    declared = set(re.findall(r'name:\s*"([a-z_]+)"', bridge))
+    missing = sorted(EXPECTED_WEBMCP_TOOLS - declared)
+    unexpected = sorted(declared - EXPECTED_WEBMCP_TOOLS)
+    required_markers = {
+        "browser_registration": "document.modelContext.registerTool" in bridge,
+        "registration_cleanup": "AbortController" in bridge and "registration?.abort()" in page,
+        "exact_tool_count": len(declared) == len(EXPECTED_WEBMCP_TOOLS),
+        "strict_schemas": bridge.count("additionalProperties: false") >= len(EXPECTED_WEBMCP_TOOLS),
+        "read_and_untrusted_hints": "readOnlyHint" in bridge and bridge.count("untrustedContentHint: true") >= len(EXPECTED_WEBMCP_TOOLS),
+        "wired_to_page": "registerSeedResearchWebMcpTools(proxy)" in page and "WebMCP active · 5 site tools" in page,
+        "active_visible_exact_page_evidence": all(
+            marker in page
+            for marker in (
+                "webMcpEvidenceContextRef.current = { ...enrichedDetail, evidence: visibleEvidence }",
+                "detail.evidence.slice(0, 8)",
+                "activeDetail.document.source !== input.source",
+                "Every evidenceId must be visible in the active paper.",
+                "item.pageStart == null || item.pageEnd == null",
+            )
+        ) and "visible in the active paper" in e2e,
+        "private_and_metadata_boundary": all(
+            marker in page
+            for marker in (
+                'input.source.startsWith("private:")',
+                "Private paper sources cannot be included in a public Research Passport.",
+                'activeDetail.document.citable !== true || activeDetail.document.discoveryLayer === "thai_discovery"',
+                "Discovery-only records cannot be used as Research Passport evidence.",
+            )
+        ) and "discovery-only" in e2e,
+        "review_before_export_and_global_non_citable": all(
+            marker in page
+            for marker in (
+                "artifact.openedEvidenceIds.includes(item.id)",
+                "artifact.stale || !allEvidenceOpened",
+                "Review the current Research Passport before exporting it.",
+                "globalResponse.works.slice(0, 4)",
+                'status: "unavailable"',
+                "researchContextRevisionRef.current !== contextRevision",
+                "Promise.all([globalRequest, translationRequest])",
+                "englishSnippet: englishByEvidenceId.get(item.id) ?? null",
+                "citable: false",
+                "global records used as evidence: 0",
+            )
+        ) and all(marker in e2e for marker in ("toBeDisabled()", "Mark pages reviewed", "toBeEnabled()", "citable).toBe(false)", "provider unavailable", "bounded English rendering")),
+        "webmcp_headers": "tools=(self)" in next_config and 'Origin-Agent-Cluster", value: "?1"' in next_config,
+        "browser_execution_test": all(tool in e2e for tool in EXPECTED_WEBMCP_TOOLS) and ".execute(" in e2e,
+    }
+    failed = [name for name, present in required_markers.items() if not present]
+    if missing or unexpected or failed:
+        return Check(
+            "webmcp_contract",
+            "fail",
+            f"missing_tools={missing}; unexpected_tools={unexpected}; failed={failed}",
+            "Expose the bounded WebMCP tool suite from the top-level page and keep the execution test green.",
+        )
+    return Check(
+        "webmcp_contract",
+        "pass",
+        "Five bounded WebMCP tools are wired to visible UI state with exact-page Passport evidence, review gating, annotations, cleanup, and browser execution coverage.",
+    )
 
 
 def check_agent_bounds_and_annotations() -> Check:
@@ -246,7 +338,8 @@ def check_backbone_guardrails() -> Check:
         ),
         "research_path_distributed_quota": (
             "resolveChatIdentity" in research_path_text
-            and 'scope: "research_path"' in research_path_text
+            and '"research_path_checkpoint"' in research_path_text
+            and '"research_path"' in research_path_text
             and "consumeChatQuota" in research_path_text
         ),
         "private_library_owner_boundary": (
@@ -392,6 +485,7 @@ def check_product_contract() -> Check:
     stripe_idempotency = (ROOT / "supabase" / "migrations" / "20260813120000_civil_stripe_event_idempotency.sql").read_text(encoding="utf-8", errors="replace")
     billing_period_guard = (ROOT / "supabase" / "migrations" / "20260720163000_civil_billing_period_guards.sql").read_text(encoding="utf-8", errors="replace")
     model_policy_migration = (ROOT / "supabase" / "migrations" / "20260725120000_civil_deepseek_default_and_pro_models.sql").read_text(encoding="utf-8", errors="replace")
+    openai_default_migration = (ROOT / "supabase" / "migrations" / "20260829072758_default_openai_luna.sql").read_text(encoding="utf-8", errors="replace")
     credit_ladder_migration = (ROOT / "supabase" / "migrations" / "20260814100000_civil_terra_sol_credit_correction.sql").read_text(encoding="utf-8", errors="replace")
     public_mcp_v2_tools = set(re.findall(r'@_mcp_v2_tool_decorator\("([a-z_]+)"\)', mcp_server))
     expected_public_mcp_v2_tools = {
@@ -401,20 +495,35 @@ def check_product_contract() -> Check:
         "save_papers", "move_papers", "remove_papers", "list_private_sources",
     }
     required = {
-        "deepseek_default": 'DEFAULT_CHAT_MODEL: ChatModel = "deepseek-v4-flash"' in models,
+        "openai_default": 'DEFAULT_CHAT_MODEL: ChatModel = "gpt-5.6-luna"' in models,
         "gpt_5_6_picker": all(model in models for model in ("gpt-5.6-luna", "gpt-5.6-terra", "gpt-5.6-sol")),
-        "deepseek_router": "process.env.ROUTER_MODEL ?? DEFAULT_CHAT_MODEL" in chat,
-        "deepseek_translation": "process.env.TRANSLATION_MODEL ?? DEFAULT_CHAT_MODEL" in translation,
-        "gpt_5_6_credit_ladder": all(
+        "openai_router": "process.env.ROUTER_MODEL ?? DEFAULT_CHAT_MODEL" in chat,
+        "openai_translation": "process.env.TRANSLATION_MODEL ?? DEFAULT_CHAT_MODEL" in translation,
+        "gpt_5_6_open_access": all(
             marker in models
             for marker in (
                 '"gpt-5.6-luna", label: "GPT-5.6 Luna", provider: "openai", credits: 1, requiresPro: false',
-                '"gpt-5.6-terra", label: "GPT-5.6 Terra", provider: "openai", credits: 5, requiresPro: true',
-                '"gpt-5.6-sol", label: "GPT-5.6 Sol", provider: "openai", credits: 10, requiresPro: true',
+                '"gpt-5.6-terra", label: "GPT-5.6 Terra", provider: "openai", credits: 5, requiresPro: false',
+                '"gpt-5.6-sol", label: "GPT-5.6 Sol", provider: "openai", credits: 10, requiresPro: false',
             )
         ),
-        "deepseek_pro_gate": '"deepseek-v4-pro", label: "DeepSeek V4 Pro", provider: "deepseek", credits: 2, requiresPro: true' in models,
+        "deepseek_optional_open_access": all(
+            marker in models
+            for marker in (
+                '"deepseek-v4-flash", label: "DeepSeek V4 Flash", provider: "deepseek", credits: 1, requiresPro: false',
+                '"deepseek-v4-pro", label: "DeepSeek V4 Pro", provider: "deepseek", credits: 2, requiresPro: false',
+            )
+        ),
+        "open_access_policy": (
+            (ROOT / "web" / "lib" / "product-access.ts").exists()
+            and "CIVILMCP_OPEN_ACCESS" in billing
+            and 'reason: "open_access"' in billing
+            and "if (!CIVILMCP_OPEN_ACCESS" in chat
+            and "CIVILMCP_OPEN_ACCESS" in research_workspace
+            and "CIVILMCP_OPEN_ACCESS" in mcp_server
+        ),
         "database_model_policy": "alter column model set default 'deepseek-v4-flash'" in model_policy_migration
+        and "alter column model set default 'gpt-5.6-luna'" in openai_default_migration
         and all(marker in credit_ladder_migration for marker in (
             "when 'deepseek-v4-pro' then 2",
             "when 'gpt-5.6-terra' then 5",
@@ -434,6 +543,10 @@ def check_product_contract() -> Check:
             )
         ),
         "explicit_paper_routing": all(marker in chat for marker in ("explicitPaperSources", "fetch_civil_paper", "exactPaperMatches")),
+        "demo_fast_retrieval": all(marker in chat for marker in (
+            "FAST_RETRIEVAL_ENABLED", "LLM_ROUTER_ENABLED", "MCP_TOOL_TIMEOUT_MS",
+            'callTool("search_civil_knowledge"',
+        )),
         "city_directory": (ROOT / "citymcp" / "ops-dashboard").exists(),
         "city_ci": (ROOT / ".github" / "workflows" / "citymcp-ci.yml").exists(),
         "city_release": (ROOT / ".github" / "workflows" / "citymcp-release.yml").exists(),
@@ -486,8 +599,17 @@ def check_product_contract() -> Check:
         ),
         "personalized_research_path": all(
             marker in research_path
-            for marker in ("civilmcp-research-path-v2", "Map the field", "discoverOpenAlex", "readBoundedJson", "knowledgeGaps", "checkpointQuestion")
-        ) and all(marker in page for marker in ("PersonalizedResearchPathPanel", 'label: "Research Path"', "Need review", "adaptResearchPath")),
+            for marker in (
+                "civilmcp-research-path-v2", "Map the field", "discoverOpenAlex", "knowledgeGaps",
+                'z.literal("assess_checkpoint")', "checkpointResultSchema", "getPaperDetail", "CHECKPOINT_MODEL",
+                'score >= 75 ? "understood"', "ALLOW-LISTED EVIDENCE",
+                "includeFacets: false", "MAX_ACTIVE_PATH_BUILDS", "gradeAvailable: false",
+            )
+        ) and all(marker in page for marker in (
+            "PersonalizedResearchPathPanel", 'label: "Research Path"',
+            "ResearchPathCheckpointAssessment", "onOpenEvidence", "adaptResearchPath",
+            "preserveMastered", "Export cited path", "seed-research-path-",
+        )) and any(marker in page for marker in ("Check against evidence", "Check understanding")),
         "private_project_library": all(
             marker in private_library for marker in ("extractPdf", "crossrefMetadata", 'scope: "private_library_import"', "12 * 1024 * 1024", "300_000")
         ) and "Private Project Library" in research_workspace_ui,
@@ -510,16 +632,15 @@ def check_product_contract() -> Check:
             and (ROOT / "web" / "app" / "oauth" / "consent" / "page.tsx").exists()
             and (ROOT / "web" / "app" / "developers" / "page.tsx").exists()
         ),
-        "deep_research_pro_gate": all(
-            marker in chat
-            for marker in ('experience === "research"', "getBillingState(userId)", 'billingState.plan !== "founder_pro"')
-        ) and all(marker in page for marker in ('label: "Deep Research"', "Deep Research is included in Founder Pro")),
+        "deep_research_open_access": all(
+            marker in chat for marker in ('experience === "research"', "!CIVILMCP_OPEN_ACCESS")
+        ) and all(marker in page for marker in ('label: "Deep Research"', 'badge: "OpenAI"')),
         "automated_research_workspace": all(
             marker in research_workspace
             for marker in (
                 'rows: z.array(workspaceRowSchema).min(1).max(6)',
                 'columns: z.array(workspaceColumnSchema).min(1).max(6)',
-                'billing.plan !== "founder_pro"',
+                "!CIVILMCP_OPEN_ACCESS",
                 "reserveAnswerCredits",
                 "refundAnswerCredits",
                 '`P${paperIndex + 1}E${evidenceIndex + 1}`',
@@ -529,7 +650,7 @@ def check_product_contract() -> Check:
         ) and all(
             marker in research_workspace_ui
             for marker in (
-                'aria-label="Research Workspace Pro"',
+                'aria-label="Open Access Research Workspace"',
                 "Run selected",
                 "Exact-page evidence",
                 "Export CSV",
@@ -540,7 +661,7 @@ def check_product_contract() -> Check:
     missing = [name for name, present in required.items() if not present]
     if missing:
         return Check("product_contract", "fail", f"missing={missing}", "Restore the approved product, model, and release contract.")
-    return Check("product_contract", "pass", "DeepSeek defaults, GPT Pro gates, corpus proof, data rights, and Civil/City boundaries are present.")
+    return Check("product_contract", "pass", "OpenAI-first Open Access, assessed learning, corpus proof, data rights, and Civil/City boundaries are present.")
 
 
 def check_no_static_feed() -> Check:
@@ -567,6 +688,7 @@ def main() -> None:
         check_env_example(),
         check_secret_exposure(),
         check_mcp_tool_annotations(),
+        check_webmcp_contract(),
         check_agent_bounds_and_annotations(),
         check_backbone_guardrails(),
         check_generated_feed_artifacts(),

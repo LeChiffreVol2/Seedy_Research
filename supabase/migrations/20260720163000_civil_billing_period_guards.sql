@@ -1,10 +1,21 @@
 begin;
 
-alter function public.civil_get_billing_state(text)
-rename to civil_get_billing_state_unchecked;
+-- Some early preview environments received the unchecked implementations
+-- directly before migration history was enabled. Keep the clean-database path
+-- while making the migration safe for those already-reconciled environments.
+do $$
+begin
+  if to_regprocedure('public.civil_get_billing_state_unchecked(text)') is null then
+    alter function public.civil_get_billing_state(text)
+      rename to civil_get_billing_state_unchecked;
+  end if;
 
-alter function public.civil_consume_answer_credits(text, text, text)
-rename to civil_consume_answer_credits_unchecked;
+  if to_regprocedure('public.civil_consume_answer_credits_unchecked(text,text,text)') is null then
+    alter function public.civil_consume_answer_credits(text, text, text)
+      rename to civil_consume_answer_credits_unchecked;
+  end if;
+end;
+$$;
 
 create or replace function public.civil_expire_billing_account(p_user_id text)
 returns void

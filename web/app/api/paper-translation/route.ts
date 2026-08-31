@@ -3,7 +3,7 @@ import { generateObject } from "ai";
 import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 
-import { applyChatIdentityCookies, chatIdentityErrorResponse, resolveChatIdentity } from "@/lib/chat-auth";
+import { applyChatIdentityCookies, chatIdentityErrorResponse, featureAccessDeniedResponse, resolveChatIdentity } from "@/lib/chat-auth";
 import { consumeChatQuota } from "@/lib/chat-store";
 import {
   DEFAULT_CHAT_MODEL,
@@ -97,6 +97,8 @@ export async function POST(request: NextRequest) {
   }
   const { identity, applyAuthCookies } = resolved;
   const finalize = (response: NextResponse) => applyChatIdentityCookies(response, identity, applyAuthCookies);
+  const accessDenied = featureAccessDeniedResponse("explore", identity, applyAuthCookies);
+  if (accessDenied) return accessDenied;
 
   const rate = await consumeChatQuota({
     scope: "paper_translation",
@@ -150,7 +152,7 @@ export async function POST(request: NextRequest) {
       model: translationModel(selectedModel),
       schema: TranslationResultSchema,
       system:
-        "You translate Thai civil-engineering paper content into precise, natural English. " +
+        "You translate Thai research-paper content into precise, natural English. Preserve discipline-specific terminology. " +
         "Translate only; never summarize, explain, omit, or add claims. Preserve identifiers, citations, equations, units, numeric values, headings, and proper nouns. " +
         "Keep text that is already English when it is part of a mixed-language segment. Return exactly one translation for every supplied segment id.",
       prompt: JSON.stringify({ targetLanguage: body.targetLanguage, segments: thaiSegments }),

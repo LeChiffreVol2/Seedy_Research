@@ -1,4 +1,5 @@
 import { getPaperDetail, type PaperEvidenceTarget } from "@/lib/research-feed";
+import { safeTraceId } from "@/lib/server-guards";
 
 export const runtime = "nodejs";
 export const preferredRegion = ["sin1"];
@@ -36,14 +37,19 @@ export async function GET(request: Request, context: RouteContext) {
 
     return Response.json(payload, {
       headers: {
-        "Cache-Control": "private, max-age=0, s-maxage=60, stale-while-revalidate=300",
+        "Cache-Control": "public, max-age=0, s-maxage=60, stale-while-revalidate=300",
       },
     });
   } catch (error) {
+    const traceId = safeTraceId();
+    console.error("civilmcp_paper_detail_failed", {
+      traceId,
+      error: error instanceof Error ? error.message : "Unknown error",
+    });
     return Response.json(
       {
         error: "Failed to load paper detail.",
-        detail: error instanceof Error ? error.message : "Unknown error",
+        traceId,
         generatedAt: new Date().toISOString(),
       },
       { status: 500, headers: { "Cache-Control": "no-store" } },

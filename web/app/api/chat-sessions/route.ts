@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 
-import { applyChatIdentityCookies, chatIdentityErrorResponse, resolveChatIdentity } from "@/lib/chat-auth";
+import { applyChatIdentityCookies, chatIdentityErrorResponse, featureAccessDeniedResponse, resolveChatIdentity } from "@/lib/chat-auth";
 import {
   archiveChatSession,
   createChatSession,
@@ -39,6 +39,8 @@ export async function GET(request: NextRequest) {
   const result = await resolveUserOrResponse(request);
   if (result.response) return result.response;
   const { userId, user, isAuthenticated, applyAuthCookies } = result.resolved!;
+  const accessDenied = featureAccessDeniedResponse("history", { userId, isAuthenticated }, applyAuthCookies);
+  if (accessDenied) return accessDenied;
   const sessions = await listChatSessions(userId);
   const response = NextResponse.json({ user, sessions, authenticated: isAuthenticated });
   return applyChatIdentityCookies(response, { userId, isAuthenticated }, applyAuthCookies);
@@ -49,6 +51,8 @@ export async function POST(request: NextRequest) {
   const result = await resolveUserOrResponse(request);
   if (result.response) return result.response;
   const { userId, user, isAuthenticated, applyAuthCookies } = result.resolved!;
+  const accessDenied = featureAccessDeniedResponse("history", { userId, isAuthenticated }, applyAuthCookies);
+  if (accessDenied) return accessDenied;
   if (payload.action !== "create") {
     return NextResponse.json({ error: "Unsupported action." }, { status: 400 });
   }
@@ -64,6 +68,8 @@ export async function DELETE(request: NextRequest) {
   const result = await resolveUserOrResponse(request);
   if (result.response) return result.response;
   const { userId, isAuthenticated, applyAuthCookies } = result.resolved!;
+  const accessDenied = featureAccessDeniedResponse("history", { userId, isAuthenticated }, applyAuthCookies);
+  if (accessDenied) return accessDenied;
   const sessionId = request.nextUrl.searchParams.get("sessionId")?.trim();
   if (!sessionId) {
     return NextResponse.json({ error: "sessionId is required." }, { status: 400 });

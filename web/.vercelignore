@@ -1,0 +1,6 @@
+.next
+.next-build
+test-results
+playwright-report
+tsconfig.tsbuildinfo
+.DS_Store

@@ -175,7 +175,7 @@ class GASecurityContracts(unittest.TestCase):
         self.assertIn('.eq("user_id", feedback.userId)', store)
         self.assertIn("Feedback session does not match its trace.", store)
 
-    def test_founder_pro_entitlement_and_credit_paths_are_server_enforced(self) -> None:
+    def test_open_access_bypasses_entitlements_while_legacy_billing_stays_fail_closed(self) -> None:
         models = source("web/lib/chat-models.ts")
         chat = source("web/app/api/chat/route.ts")
         billing = source("web/lib/billing.ts")
@@ -183,15 +183,23 @@ class GASecurityContracts(unittest.TestCase):
         migration = source("supabase/migrations/20260720160000_civil_founder_pro.sql")
         period_guard = source("supabase/migrations/20260720163000_civil_billing_period_guards.sql")
         model_policy = source("supabase/migrations/20260725120000_civil_deepseek_default_and_pro_models.sql")
+        openai_default_policy = source("supabase/migrations/20260829072758_default_openai_luna.sql")
         weekly_policy = source("supabase/migrations/20260725203000_civil_free_weekly_credits.sql")
         pro_top_up_policy = source("supabase/migrations/20260725205900_civil_founder_pro_500_credits.sql")
         stripe_idempotency = source("supabase/migrations/20260813120000_civil_stripe_event_idempotency.sql")
         credit_ladder = source("supabase/migrations/20260814100000_civil_terra_sol_credit_correction.sql")
-        self.assertIn('"deepseek-v4-pro", label: "DeepSeek V4 Pro", provider: "deepseek", credits: 2, requiresPro: true', models)
+        policy = source("web/lib/product-access.ts")
+        self.assertIn('DEFAULT_CHAT_MODEL: ChatModel = "gpt-5.6-luna"', models)
+        self.assertIn('"deepseek-v4-pro", label: "DeepSeek V4 Pro", provider: "deepseek", credits: 2, requiresPro: false', models)
         self.assertIn('"gpt-5.6-luna", label: "GPT-5.6 Luna", provider: "openai", credits: 1, requiresPro: false', models)
-        self.assertIn('"gpt-5.6-terra", label: "GPT-5.6 Terra", provider: "openai", credits: 5, requiresPro: true', models)
-        self.assertIn('"gpt-5.6-sol", label: "GPT-5.6 Sol", provider: "openai", credits: 10, requiresPro: true', models)
+        self.assertIn('"gpt-5.6-terra", label: "GPT-5.6 Terra", provider: "openai", credits: 5, requiresPro: false', models)
+        self.assertIn('"gpt-5.6-sol", label: "GPT-5.6 Sol", provider: "openai", credits: 10, requiresPro: false', models)
+        self.assertIn('CIVILMCP_OPEN_ACCESS', policy)
+        self.assertIn('if (CIVILMCP_OPEN_ACCESS)', billing)
+        self.assertIn('reason: "open_access"', billing)
+        self.assertIn('if (!CIVILMCP_OPEN_ACCESS', chat)
         self.assertIn("alter column model set default 'deepseek-v4-flash'", model_policy)
+        self.assertIn("alter column model set default 'gpt-5.6-luna'", openai_default_policy)
         self.assertIn("p_model in ('deepseek-v4-pro', 'gpt-5.6-terra', 'gpt-5.6-sol')", credit_ladder)
         self.assertIn("if (chatModelRequiresPro(input.model))", billing)
         self.assertIn('reason: "pro_required"', billing)
@@ -289,6 +297,69 @@ class GASecurityContracts(unittest.TestCase):
         self.assertIn("answerValidationFailed", chat)
         self.assertNotIn("? buildFallbackResearchBrief(latestUserForTrace, builtContext)\n        : generatedAnswer;\n      const usage", chat)
 
+    def test_webmcp_research_passport_is_bounded_visible_and_review_gated(self) -> None:
+        bridge = source("web/lib/webmcp.ts")
+        page = source("web/app/page.tsx")
+        e2e = source("web/tests/e2e/webmcp.spec.ts")
+
+        for tool in (
+            "discover_research",
+            "inspect_paper_evidence",
+            "draft_research_passport",
+            "build_research_path",
+            "inspect_learning_progress",
+        ):
+            self.assertIn(f'"{tool}"', bridge)
+        self.assertIn("rawEvidenceIds.length < 1 || rawEvidenceIds.length > 3", bridge)
+        self.assertIn('focus: requiredText(record, "focus", 8, 180)', bridge)
+        self.assertIn('source: requiredText(record, "source", 1, 320)', bridge)
+        self.assertIn("if (new Set(evidenceIds).size !== evidenceIds.length)", bridge)
+        passport_tool_marker = 'name: "draft_research_passport"'
+        next_tool_marker = 'name: "build_research_path"'
+        self.assertIn(passport_tool_marker, bridge)
+        passport_tool = bridge.partition(passport_tool_marker)[2].partition(next_tool_marker)[0]
+        self.assertIn("minItems: 1, maxItems: 3, uniqueItems: true", passport_tool)
+        self.assertIn('annotations: { readOnlyHint: false, untrustedContentHint: true }', passport_tool)
+
+        handler_marker = "draftResearchPassport: async (input, signal) => {"
+        next_handler_marker = "buildResearchPath: async (input, signal) => {"
+        self.assertIn(handler_marker, page)
+        passport_handler = page.partition(handler_marker)[2].partition(next_handler_marker)[0]
+        self.assertIn("webMcpEvidenceContextRef.current", passport_handler)
+        self.assertIn("activeDetail.document.source !== input.source", passport_handler)
+        self.assertIn("Every evidenceId must be visible in the active paper.", passport_handler)
+        self.assertIn("item.pageStart == null || item.pageEnd == null", passport_handler)
+        self.assertIn("Research Passport evidence must resolve to original source pages.", passport_handler)
+        self.assertIn('input.source.startsWith("private:")', passport_handler)
+        self.assertIn("Private paper sources cannot be included in a public Research Passport.", passport_handler)
+        self.assertIn('activeDetail.document.citable !== true || activeDetail.document.discoveryLayer === "thai_discovery"', passport_handler)
+        self.assertIn("Discovery-only records cannot be used as Research Passport evidence.", passport_handler)
+        self.assertIn("globalResponse.works.slice(0, 4)", passport_handler)
+        self.assertIn("researchContextRevisionRef.current !== contextRevision", passport_handler)
+        self.assertIn('status: "unavailable"', passport_handler)
+        self.assertIn("Promise.all([globalRequest, translationRequest])", passport_handler)
+        self.assertIn("thaiEvidence = exactEvidence.filter", passport_handler)
+        self.assertIn("englishSnippet: englishByEvidenceId.get(item.id) ?? null", passport_handler)
+        self.assertIn("citable: false", passport_handler)
+        self.assertIn("reviewRequired: true", passport_handler)
+        self.assertIn('status: "unsupported_candidate"', passport_handler)
+        self.assertIn("evidenceRelationValidated: false", passport_handler)
+        self.assertIn("OpenAlex records are metadata-only leads", passport_handler)
+        for private_state in ("libraryNote", "workspaceItems", "pathCheckpointAnswers"):
+            self.assertNotIn(private_state, passport_handler)
+
+        self.assertIn("artifact.openedEvidenceIds.includes(item.id)", page)
+        self.assertIn("artifact.stale || !allEvidenceOpened", page)
+        self.assertIn("Review the current Research Passport before exporting it.", page)
+        self.assertIn('disabled={!reviewed || artifact.stale}', page)
+        self.assertIn("global records used as evidence: 0", page)
+        self.assertIn("provenance is not scientific correctness", page)
+        self.assertIn("visible in the active paper", e2e)
+        self.assertIn("expect(passport.globalLeads?.[0]?.citable).toBe(false)", e2e)
+        self.assertIn("expect(exportPassport).toBeDisabled()", e2e)
+        self.assertIn('getByRole("button", { name: "Mark pages reviewed" })', e2e)
+        self.assertIn("expect(exportPassport).toBeEnabled()", e2e)
+
     def test_public_read_errors_are_redacted_and_cacheable(self) -> None:
         feed = source("web/app/api/research-feed/route.ts")
         papers = source("web/app/api/papers/route.ts")
@@ -297,7 +368,7 @@ class GASecurityContracts(unittest.TestCase):
             self.assertIn("safeTraceId()", route)
             self.assertNotIn("detail: error instanceof Error", route)
 
-    def test_deep_research_entitlement_and_research_path_boundaries(self) -> None:
+    def test_deep_research_open_access_and_assessed_research_path_boundaries(self) -> None:
         chat = source("web/app/api/chat/route.ts")
         path = source("web/app/api/research-path/route.ts")
         openalex = source("web/lib/openalex.ts")
@@ -307,18 +378,37 @@ class GASecurityContracts(unittest.TestCase):
         self.assertIn("fallbackAutomationProgram", chat)
         self.assertIn("finalizeAutomationProgram", chat)
         self.assertIn('experience === "automated"', chat)
+        self.assertIn("if (!CIVILMCP_OPEN_ACCESS", chat)
         self.assertIn("getBillingState(userId)", chat)
         self.assertIn('billingState.plan !== "founder_pro"', chat)
-        self.assertIn("readBoundedJson<PathRequest>(request, 8_192)", path)
+        self.assertIn("readBoundedJson<PathRequest>(request, 24_000)", path)
         self.assertIn("goal.length < 8", path)
         self.assertIn("discoverOpenAlex", path)
         self.assertIn("research-to-project brief", path)
         self.assertIn("Do not infer technology readiness", path)
         self.assertIn("await resolveChatIdentity(request)", path)
         self.assertIn("await consumeChatQuota({", path)
-        self.assertIn('scope: "research_path"', path)
+        self.assertIn('scope: isCheckpoint ? "research_path_checkpoint" : "research_path"', path)
         self.assertIn("applyChatIdentityCookies(response, identity, applyAuthCookies)", path)
         self.assertNotIn('detail: error instanceof Error', path)
+        for contract in (
+            'z.literal("assess_checkpoint")',
+            'const CHECKPOINT_MODEL = "gpt-5.6-luna"',
+            "checkpointResultSchema",
+            "getPaperDetail",
+            "AbortSignal.timeout(CHECKPOINT_TIMEOUT_MS)",
+            'score >= 75 ? "understood"',
+            "evidence.get(id)",
+            "ALLOW-LISTED EVIDENCE",
+        ):
+            self.assertIn(contract, path)
+        page = source("web/app/page.tsx")
+        self.assertTrue(
+            "Check against evidence" in page or "Check understanding" in page,
+            "Research Path must expose an evidence-grounded checkpoint action.",
+        )
+        self.assertNotIn(">Need review</button>", page)
+        self.assertNotIn(">Understood</button>", page)
         self.assertIn("const OPENALEX_TIMEOUT_MS = 8_000", openalex)
         self.assertIn("AbortSignal.timeout(OPENALEX_TIMEOUT_MS)", openalex)
         self.assertIn("process.env.OPENALEX_API_KEY", openalex)
@@ -338,14 +428,14 @@ class GASecurityContracts(unittest.TestCase):
         self.assertNotIn("abstract_local text", migration)
         self.assertNotIn("abstract_en text", migration)
 
-    def test_research_workspace_is_pro_gated_bounded_and_citation_allowlisted(self) -> None:
+    def test_research_workspace_is_open_access_bounded_and_citation_allowlisted(self) -> None:
         workspace = source("web/app/api/research-workspaces/route.ts")
         workspace_store = source("web/lib/research-workspaces.ts")
         workspace_ui = source("web/components/research-workspace.tsx")
         page = source("web/app/page.tsx")
         self.assertIn('rows: z.array(workspaceRowSchema).min(1).max(6)', workspace)
         self.assertIn('columns: z.array(workspaceColumnSchema).min(1).max(6)', workspace)
-        self.assertIn('billing.plan !== "founder_pro"', workspace)
+        self.assertIn('if (!CIVILMCP_OPEN_ACCESS)', workspace)
         self.assertIn('scope: "research_workspace_run"', workspace)
         self.assertIn("await reserveAnswerCredits({", workspace)
         self.assertIn("refundAnswerCredits", workspace)
@@ -362,15 +452,16 @@ class GASecurityContracts(unittest.TestCase):
         self.assertIn('existing.owner_id !== input.ownerId', workspace_store)
         self.assertIn('.eq("workspace_id", workspaceId).eq("owner_id", input.ownerId)', workspace_store)
         self.assertIn('.eq("owner_id", ownerId)', workspace_store)
-        self.assertIn('aria-label="Research Workspace Pro"', workspace_ui)
+        self.assertIn('aria-label="Open Access Research Workspace"', workspace_ui)
+        self.assertIn('<strong>Open Access.</strong>', workspace_ui)
         self.assertIn('"prisma_scoping"', workspace_ui)
         self.assertIn('aria-label="PRISMA-guided scoping review"', workspace_ui)
         self.assertIn('PRISMA-ScR', workspace_ui)
         self.assertIn('screening[row.source]?.decision === "included"', workspace_ui)
         self.assertIn('label: "Workspace"', page)
-        self.assertNotIn('label: "Automated Research"', page)
+        self.assertIn('label: "Automated Research"', page)
 
-    def test_public_mcp_units_are_atomic_server_owned_and_separate_from_ai_credits(self) -> None:
+    def test_public_mcp_units_are_dormant_in_open_access_and_legacy_ledger_stays_atomic(self) -> None:
         server = source("mcp-server/server.py")
         migration = source("supabase/migrations/20260815150000_civil_mcp_research_units.sql")
         access = source("web/app/api/mcp-access/route.ts")
@@ -390,11 +481,13 @@ class GASecurityContracts(unittest.TestCase):
         ):
             self.assertIn(contract, migration)
         self.assertIn('request_id = f"mcp_{uuid.uuid4()}"', server)
+        self.assertIn('if CIVILMCP_OPEN_ACCESS:', server)
         self.assertIn("refund_public_mcp_units(reservation)", server)
         self.assertIn('meta["research_units"]', server)
         self.assertIn("_meta=meta", server)
         self.assertNotIn("        meta=meta,", server)
         self.assertIn('client.rpc("civil_get_mcp_usage"', access)
+        self.assertIn('if (CIVILMCP_OPEN_ACCESS)', access)
         for unchanged_weight in (
             'id: "gpt-5.6-luna", label: "GPT-5.6 Luna", provider: "openai", credits: 1',
             'id: "gpt-5.6-terra", label: "GPT-5.6 Terra", provider: "openai", credits: 5',

@@ -1,4 +1,6 @@
-# Build Week Submission Runbook
+# Historical Build Week Submission Runbook
+
+> This file records the earlier OpenAI Build Week package and is not the WebMCP Challenge submission. For the current public-repository requirements, browser-native tool implementation, judge flow, and video script, use [WEBMCP_CHALLENGE_SUBMISSION.md](WEBMCP_CHALLENGE_SUBMISSION.md). Do not copy the private-repository or 941-paper details below into the WebMCP entry.
 
 ## Devpost package
 

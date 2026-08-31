@@ -84,7 +84,7 @@ function searchUrlFor(query: string): string {
 
 export async function discoverOpenAlex(
   rawQuery: unknown,
-  options: { maxResults?: number } = {},
+  options: { maxResults?: number; timeoutMs?: number } = {},
 ): Promise<OpenAlexDiscoveryResult> {
   const query = normalizeOpenAlexQuery(rawQuery);
   const searchUrl = searchUrlFor(query);
@@ -96,6 +96,9 @@ export async function discoverOpenAlex(
 
   try {
     const limit = boundedResultCount(options.maxResults);
+    const timeoutMs = Number.isFinite(options.timeoutMs)
+      ? Math.max(1_000, Math.min(OPENALEX_TIMEOUT_MS, Math.floor(options.timeoutMs ?? OPENALEX_TIMEOUT_MS)))
+      : OPENALEX_TIMEOUT_MS;
     const url = new URL("https://api.openalex.org/works");
     url.searchParams.set("search", query);
     url.searchParams.set("per-page", String(limit));
@@ -103,7 +106,7 @@ export async function discoverOpenAlex(
     url.searchParams.set("api_key", apiKey);
     const response = await fetch(url, {
       cache: "no-store",
-      signal: AbortSignal.timeout(OPENALEX_TIMEOUT_MS),
+      signal: AbortSignal.timeout(timeoutMs),
     });
     if (response.status === 429) return { status: "rate_limited", searchUrl, works: [] };
     if (!response.ok) return { status: "unavailable", searchUrl, works: [] };

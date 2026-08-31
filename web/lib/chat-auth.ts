@@ -14,6 +14,7 @@ import {
   signedGuestIdFromRequest,
 } from "@/lib/chat-cookies";
 import { isPlaceholderSecret } from "@/lib/server-guards";
+import { CIVILMCP_FEATURE_ACCESS, CIVILMCP_OPEN_ACCESS, type CivilMcpFeature } from "@/lib/product-access";
 
 type CookieSet = {
   name: string;
@@ -177,12 +178,52 @@ export function applyChatIdentityCookies(
   return applyIdentityCookie(response, identity);
 }
 
+export function featureAccessDeniedResponse(
+  feature: CivilMcpFeature,
+  identity: Pick<ChatIdentity, "userId" | "isAuthenticated">,
+  applyAuthCookies: (response: NextResponse) => NextResponse,
+): NextResponse | null {
+  const access = CIVILMCP_FEATURE_ACCESS[feature];
+  if (!access.enabled) {
+    return applyChatIdentityCookies(
+      NextResponse.json(
+        { error: `${access.label} is not enabled in this environment.`, code: "feature_disabled", feature },
+        { status: 404, headers: { "Cache-Control": "private, no-store" } },
+      ),
+      identity,
+      applyAuthCookies,
+    );
+  }
+  if (!CIVILMCP_OPEN_ACCESS && access.requiresAuth && !identity.isAuthenticated) {
+    return applyChatIdentityCookies(
+      NextResponse.json(
+        { error: `Sign in to use ${access.label}.`, code: "auth_required", feature },
+        { status: 401, headers: { "Cache-Control": "private, no-store" } },
+      ),
+      identity,
+      applyAuthCookies,
+    );
+  }
+  return null;
+}
+
 export async function resolveChatIdentity(request: NextRequest): Promise<{
   identity: ChatIdentity;
   applyAuthCookies: (response: NextResponse) => NextResponse;
 }> {
   assertGuestCookieConfigured();
-  const authenticated = await getAuthenticatedChatUser(request);
+  let authenticated: Awaited<ReturnType<typeof getAuthenticatedChatUser>>;
+  try {
+    authenticated = await getAuthenticatedChatUser(request);
+  } catch (error) {
+    if (!CIVILMCP_OPEN_ACCESS || hasSupabaseAuthCookie(request)) throw error;
+    console.warn("civilmcp_guest_auth_degraded", error instanceof Error ? error.message : String(error));
+    authenticated = {
+      authUser: null,
+      user: null,
+      applyCookies: (response) => response,
+    };
+  }
   if (authenticated.authUser && authenticated.user) {
     return {
       identity: {

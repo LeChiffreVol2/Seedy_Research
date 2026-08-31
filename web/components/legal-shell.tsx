@@ -14,8 +14,8 @@ export function LegalShell({
 }) {
   return (
     <main className="legalPage">
-      <nav className="legalNav" aria-label="CivilMCP legal and support">
-        <Link className="legalBrand" href="/">CivilMCP</Link>
+      <nav className="legalNav" aria-label="SEEDY legal and support">
+        <Link className="legalBrand" href="/">SEEDY</Link>
         <div>
           <Link href="/privacy">Privacy</Link>
           <Link href="/terms">Terms</Link>

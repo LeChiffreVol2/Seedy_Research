@@ -1,12 +1,11 @@
 import type { Metadata } from "next";
 import { ArrowLeft, BookOpenCheck, Braces, Database, Gauge, KeyRound, Network, ShieldCheck } from "lucide-react";
 
-import { MCP_API_SCALE_PREVIEW, MCP_FOUNDER_MONTHLY_UNITS, MCP_FREE_MONTHLY_UNITS, MCP_TOOL_UNIT_PRICING } from "@/lib/mcp-pricing";
 import styles from "./developers.module.css";
 
 export const metadata: Metadata = {
-  title: "API & MCP | CivilMCP",
-  description: "Connect research agents to Thai page-cited civil-engineering evidence through CivilMCP MCP v2.",
+  title: "WebMCP & Research API | Seed Research by SEEDY",
+  description: "Collaborate with browser agents through WebMCP or connect independent clients to Thai page-cited evidence through the Seed Research MCP API.",
 };
 
 const endpoint = "https://civil-mcp-server.vercel.app/v2/mcp";
@@ -22,38 +21,46 @@ const tools = [
 export default function DevelopersPage() {
   return (
     <main className={styles.page}>
-      <nav className={styles.nav}><a href="/"><ArrowLeft size={15} aria-hidden /> Back to CivilMCP</a><span>Research API</span></nav>
+      <nav className={styles.nav}><a href="/"><ArrowLeft size={15} aria-hidden /> Back to SEEDY</a><span>WebMCP + Research API</span></nav>
       <section className={styles.hero}>
-        <p className={styles.eyebrow}>CivilMCP v2</p>
-        <h1>Thai research evidence for any AI agent.</h1>
-        <p>Discover local work global indexes miss, retrieve claim-ready pages, and organize a private research library through one bounded MCP endpoint.</p>
+        <p className={styles.eyebrow}>SEEDY · Seed Research</p>
+        <h1>Thai research evidence for people and agents.</h1>
+        <p>Collaborate with an agent in the live page through five browser-native WebMCP tools—including an evidence-bounded Thai → Global Research Passport—or connect an independent research client to the bounded remote MCP endpoint.</p>
         <div className={styles.endpoint}><div><span>Streamable HTTP</span><code>{endpoint}</code></div><a href="/?view=settings">Create personal key</a></div>
       </section>
 
-      <section className={styles.proof} aria-label="CivilMCP API trust model">
-        <article><Database size={18} aria-hidden /><strong>Thai-first corpus</strong><span>NCCE and student research plus rights-reviewed Thai journal discovery.</span></article>
+      <section className={styles.proof} aria-label="Seed Research API trust model">
+        <article><Database size={18} aria-hidden /><strong>Thai-first corpus</strong><span>NCCE and student research plus reviewed-source Thai journal metadata.</span></article>
         <article><BookOpenCheck size={18} aria-hidden /><strong>Exact-page evidence</strong><span>Evidence packets remain separate from metadata-only discovery records.</span></article>
         <article><ShieldCheck size={18} aria-hidden /><strong>Owner-scoped access</strong><span>Revocable personal keys today; OAuth 2.1 for supported interactive clients.</span></article>
       </section>
 
-      <section className={styles.section} id="pricing">
-        <div><p className={styles.eyebrow}>Research Units</p><h2>Predictable API usage, separate from AI credits.</h2><p className={styles.sectionLead}>A unit prices the research workload, not tokens. Failed tool calls are restored automatically.</p></div>
-        <div className={styles.pricingGrid}>
-          <article><span>Free</span><h3>฿0</h3><strong>{MCP_FREE_MONTHLY_UNITS.toLocaleString()} units / month</strong><p>Personal MCP key, OAuth, exact-page evidence, and private library tools.</p></article>
-          <article className={styles.featuredPlan}><span>Founder Pro</span><h3>฿299 <small>/ month</small></h3><strong>{MCP_FOUNDER_MONTHLY_UNITS.toLocaleString()} units / month</strong><p>Included with Founder Pro. The existing 100 weekly + 500 monthly AI credits stay separate.</p></article>
-          <article><span>API Scale · preview</span><h3>฿{MCP_API_SCALE_PREVIEW.priceThb.toLocaleString()} <small>/ month</small></h3><strong>{MCP_API_SCALE_PREVIEW.monthlyUnits.toLocaleString()} units / month</strong><p>Planned after paid infrastructure launch; extra {MCP_API_SCALE_PREVIEW.extraUnits.toLocaleString()} units target ฿{MCP_API_SCALE_PREVIEW.extraPriceThb}.</p></article>
+      <section className={styles.section}>
+        <div><p className={styles.eyebrow}>Two agent surfaces</p><h2>Share the page, or work remotely.</h2><p className={styles.sectionLead}>WebMCP and remote MCP reuse the same evidence rules but solve different jobs.</p></div>
+        <div className={styles.connectGrid}>
+          <article><Network size={19} aria-hidden /><h3>WebMCP · shared browser</h3><p>Open Explore with ChatGPT or Chrome. Five site tools discover research, open exact-page evidence, draft a review-gated Research Passport, build a Research Path, and inspect learning progress while the person watches and verifies the same page.</p><a href="/?view=explore">Open the WebMCP research surface</a></article>
+          <article><Braces size={19} aria-hidden /><h3>Remote MCP · independent client</h3><p>Use the stateless endpoint for agents that need research and library tools without an open Seed Research page.</p><code>{endpoint}</code></article>
         </div>
       </section>
 
-      <section className={styles.unitSchedule} aria-label="Research Unit tool pricing">
+      <section className={styles.section} id="access">
+        <div><p className={styles.eyebrow}>Open Access</p><h2>The complete research API is unlocked.</h2><p className={styles.sectionLead}>There are no Research Unit or paid-plan gates. Sign in to create a revocable personal key and protect owner-scoped data.</p></div>
+        <div className={styles.pricingGrid}>
+          <article className={styles.featuredPlan}><span>Research API</span><h3>฿0</h3><strong>All 14 tools</strong><p>Discovery, comparison, exact-page evidence, citation mapping, and library workflows.</p></article>
+          <article><span>Identity</span><h3>Yours</h3><strong>Revocable access</strong><p>Personal keys are shown once, hashed at rest, owner-scoped, and independently revocable.</p></article>
+          <article><span>Reliability</span><h3>Bounded</h3><strong>Stable by design</strong><p>Per-client rate limits and fixed tool/evidence budgets protect availability without creating a paid tier.</p></article>
+        </div>
+      </section>
+
+      <section className={styles.unitSchedule} aria-label="Research API reliability limits">
         <Gauge size={19} aria-hidden />
-        <div><strong>Per successful call</strong><p>{MCP_TOOL_UNIT_PRICING.map((item) => `${item.label} ${item.units}`).join(" · ")}</p></div>
+        <div><strong>Operational guardrails only</strong><p>Safety rate limits, exact-page evidence allow lists, and bounded context keep public access auditable and reliable.</p></div>
       </section>
 
       <section className={styles.section}>
         <div><p className={styles.eyebrow}>Connect</p><h2>One endpoint, two secure paths.</h2></div>
         <div className={styles.connectGrid}>
-          <article><Network size={19} aria-hidden /><h3>Interactive agents</h3><p>Add the endpoint to an OAuth-capable MCP client. The client opens CivilMCP sign-in and asks for explicit consent.</p><code>{endpoint}</code></article>
+          <article><Network size={19} aria-hidden /><h3>Interactive agents</h3><p>Add the endpoint to an OAuth-capable MCP client. The client opens SEEDY sign-in and asks for explicit consent.</p><code>{endpoint}</code></article>
           <article><KeyRound size={19} aria-hidden /><h3>CLI and automation</h3><p>Create a personal key in Account and send it as a Bearer token. Keys are displayed once and can be revoked at any time.</p><pre>{`Authorization: Bearer cvmcp_…`}</pre></article>
         </div>
       </section>
@@ -65,10 +72,10 @@ export default function DevelopersPage() {
 
       <section className={styles.boundary}>
         <Braces size={21} aria-hidden />
-        <div><h2>Evidence and metadata never blur together.</h2><p>Indexed CivilMCP packets may support claims with their returned pages. ThaiJO and OpenAlex records remain discovery metadata until rights, extraction, provenance, and page-mapping gates pass.</p></div>
+        <div><h2>Evidence and metadata never blur together.</h2><p>Indexed Seed Research packets may support claims with their returned pages. ThaiJO and OpenAlex records remain discovery metadata until rights, extraction, provenance, and page-mapping gates pass.</p></div>
       </section>
 
-      <footer className={styles.footer}><span>Research evidence, not professional engineering advice.</span><div><a href="/privacy">Privacy</a><a href="/terms">Terms</a><a href="/support">Support</a></div></footer>
+      <footer className={styles.footer}><span>Research evidence, not professional advice.</span><div><a href="/privacy">Privacy</a><a href="/terms">Terms</a><a href="/support">Support</a></div></footer>
     </main>
   );
 }

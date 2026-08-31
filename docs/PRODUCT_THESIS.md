@@ -11,8 +11,9 @@ search engine.
 The product promise is:
 
 > Discover Thai research that global indexes miss, learn from evidence that can
-> be reopened at the source page, and turn verified findings into research and
-> deep-tech project decisions.
+> be reopened at the source page, read every lawful manifestation available to
+> the user, and turn verified findings into research and deep-tech project
+> decisions.
 
 CivilMCP remains the product and proof vertical during this phase. A broader
 parent brand is a later decision, after a second domain and a university pilot
@@ -36,6 +37,7 @@ intellectual-property status, or commercial viability without attributed data.
 | Layer | User promise | Existing foundation | Next proof |
 | --- | --- | --- | --- |
 | **Explore** | Search Thai and global research without confusing discovery with evidence | `civil_source_catalog`, indexed CivilMCP evidence, ThaiJO metadata, OpenAlex bridge | Unified result ranking with visible provider, rights, and citable status |
+| **Read** | Open the best lawful full-text manifestation without hiding access or reuse limits | Exact-page evidence drawer, source links, page provenance, private PDF extraction | Rights-aware native/source-hosted/institution-mediated reader with stable annotations |
 | **Learn** | Build prerequisites and understanding from inspectable evidence | Four-stage Research Path and Tutor Mission | Diagnostic entry point, checkpoints, and a paper-to-project exercise |
 | **Research** | Compare papers and export an auditable research artifact | Evidence Mission, Research Workspace, PRISMA-ScR guided pack | Living review updates, clearer coverage limits, and pilot templates |
 | **Translate** | Move from findings to a testable deep-tech project question | Evidence matrices, Thailand-to-world transfer checks, and the Research Path `Project brief` outcome | Validate the brief with a named university or lab cohort and one bounded partner problem |
@@ -47,20 +49,23 @@ citation.
 ## The database is the product advantage
 
 The defensible asset is not a model or chat interface. It is a governed research
-graph assembled from six connected records:
+graph assembled from seven connected records:
 
 1. **Source and rights ledger** — provider identity, canonical record, access,
    license or permission, evidence status, hashes, freshness, and takedown state.
-2. **Document provenance** — stable document, section, chunk, and original-page
+2. **Canonical work and asset graph** — one deduplicated intellectual work linked
+   to every Thai/global provider record and every PDF/HTML/version asset, with a
+   separate reader mode and action-level rights decision for each asset.
+3. **Document provenance** — stable document, section, chunk, and original-page
    identity across extraction and re-indexing.
-3. **Thai-English domain ontology** — concepts, synonyms, standards, methods,
+4. **Thai-English domain ontology** — concepts, synonyms, standards, methods,
    materials, hazards, and domain relationships reviewed per vertical.
-4. **Research identity graph** — deduplicated authors, institutions, papers, and
+5. **Research identity graph** — deduplicated authors, institutions, papers, and
    citations for provenance and filtering, with uncertainty retained rather than
    silently merged; this is not a social-network product surface.
-5. **Claim-to-evidence graph** — answer or workspace claims linked to allow-listed
+6. **Claim-to-evidence graph** — answer or workspace claims linked to allow-listed
    evidence packets, exact pages, scope, and human-review state.
-6. **Learning and workflow signals** — privacy-bounded saves, evidence opens,
+7. **Learning and workflow signals** — privacy-bounded saves, evidence opens,
    checkpoints, exports, corrections, and evaluation outcomes without storing raw
    research queries in product analytics.
 
@@ -143,7 +148,8 @@ include the [ThaiJO OAI service](https://www.tci-thaijo.org/public/oai.html),
 - replacing TNRR, ThaiJO, university repositories, or global scholarly indexes;
 - building researcher/organization profile networks, public following, or social discussion;
 - reproducing paper code, provisioning cloud compute, or operating experiment sandboxes;
-- ingesting every Thai discipline or scraping full text at national scale;
+- claiming national or disciplinary completeness before provider denominators,
+  deduplication, access states, and dated coverage audits are measurable;
 - claiming a comprehensive systematic review from the current candidate set;
 - unattended autonomous research, scientific validation, or professional
   engineering advice;

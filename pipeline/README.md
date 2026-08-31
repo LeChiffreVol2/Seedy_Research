@@ -68,9 +68,12 @@ python3.10 pipeline/sync_extracted_catalog.py \
 คำสั่ง sync ลงทะเบียน candidate เป็น `evidence_status=extracted` เท่านั้นและ
 ไม่เรียก embedding provider. เติม `--apply` เมื่อต้องการเขียน source catalog.
 
-## TCI / ThaiJO Metadata Catalog
+## ThaiJO Metadata Catalog
 
-TCI เริ่มที่ metadata catalog เท่านั้น ไม่ download PDF และไม่ส่ง record เข้า
+คำสั่งนี้เก็บ metadata จากแพลตฟอร์ม ThaiJO โดยใช้ provider ID เดิม
+`tci_thaijo`; ไม่ใช่ TCI citation index. TCI จะใช้ provider แยก
+`tci_citation` หลังมี official export/partnership. ThaiJO เริ่มที่ metadata
+catalog เท่านั้น ไม่ download PDF และไม่ส่ง record เข้า
 page-linked evidence index จนกว่าสิทธิ์ full text และ page provenance จะผ่าน
 review:
 
@@ -105,6 +108,32 @@ python3.10 pipeline/harvest_tci_oai.py \
 Default delay 6.2 วินาทีต่อ request อยู่ใต้ published limit 10 requests/minute.
 ต้องเลือก journal set ที่ review แล้ว; endpoint-wide harvesting ต้อง opt in ด้วย
 `--allow-unscoped` เพื่อกันวารสารนอก civil engineering ปน catalog.
+endpoint ทางการทั้ง 36 families จาก [ThaiJO OAI service](https://www.tci-thaijo.org/public/oai.html)
+ถูกตรึงแบบ versioned ไว้ใน `pipeline/tci_official_endpoint_registry.json`.
+เมื่อใช้ `--allow-unscoped` กับ endpoint ที่ match registry แบบ exact และไม่ได้ระบุ
+`--discipline` ตัว harvester จะใช้ broad domain ที่ปลอดภัย (`science`,
+`life_sciences`, `physical_sciences`, `health_sciences`, `social_sciences`) และ
+บันทึก registry version, family, endpoint และ source URL ใน
+`raw_metadata.discipline_provenance`. ตัวอย่าง dry harvest ที่ไม่แตะฐานข้อมูล:
+
+```bash
+python3.10 pipeline/harvest_tci_oai.py \
+  --endpoint 'https://sc01.tci-thaijo.org/index.php/index/oai' \
+  --allow-unscoped \
+  --max-records 25 \
+  --output pipeline/data/catalog/tci_sc01_metadata.jsonl
+```
+
+exact endpoint/set ใน allowlist ยังมี priority สูงกว่า broad domain และ
+`--discipline` ที่ระบุเองยัง override fallback ได้เพื่อรักษา CLI เดิม. endpoint
+ที่ไม่อยู่ใน registry จะไม่รับ broad domain อัตโนมัติ และ endpoint-wide harvest
+ยังต้องมี `--allow-unscoped` อย่างชัดเจนเสมอ.
+ผลลัพธ์ทุกโหมดต้องมี `provider_record_id` ไม่ซ้ำก่อนเขียน JSONL หรือ upsert:
+ระเบียนซ้ำที่ hash เดียวกันจะถูกรวม, datestamp ใหม่กว่าจะชนะ, tombstone ชนะเมื่อ
+datestamp เท่ากัน และ payload active ที่ขัดกันใน datestamp เดียวกันจะหยุดให้คนตรวจ
+แทนการเลือกแบบเงียบ ๆ. รายการระดับทั้งฉบับที่ ThaiJO ส่งเป็น `FULL ISSUE` /
+`ฉบับเต็ม` ไม่ถูกนับเป็น research paper แต่ deleted headers ยังคงเก็บเป็น tombstone
+เพื่อ reconciliation และ audit.
 ชุดเริ่มต้นที่ตรวจชื่อและ scope แล้วอยู่ใน
 `pipeline/tci_source_allowlist.json`; การเพิ่ม set ใหม่ต้อง review ชื่อวารสาร,
 scope, duplicate behavior, และ rights policy ก่อน.
@@ -124,6 +153,84 @@ hard-delete metadata/evidence, ไม่เปลี่ยนสิทธิ์�
 `document_id`; audit อยู่ใน `raw_metadata.oai_tombstone` และ counts ของ
 `civil_ingest_runs`. การรัน tombstone เดิมซ้ำให้ผลสถานะเดิม ส่วนการนำ record
 กลับเข้า discovery/evidence หลัง provider ประกาศลบต้องผ่าน review โดยตั้งใจ.
+
+## TNRR Metadata Connector
+
+`harvest_tnrr.py` ใช้ endpoint `ResearchOutput` ตามคู่มือทางการและรับ bearer
+token ที่ออกให้แล้วจาก environment ฝั่ง server เท่านั้น. ตัว connector ไม่รับ
+username/password, ไม่พิมพ์ token, ไม่เก็บ abstract และไม่เรียกหรือดาวน์โหลด
+รายงานฉบับเต็ม; `hasfullReport` ถูกเก็บเป็น availability flag เท่านั้น.
+
+เริ่มด้วยช่วงเวลาและขอบเขตเล็กก่อน โดยไม่ใช้ `--apply`:
+
+```bash
+TNRR_API_TOKEN='<issued token>' python3.10 pipeline/harvest_tnrr.py \
+  --update-from 20260801 \
+  --update-until 20260831 \
+  --max-pages 2 \
+  --max-records 200 \
+  --output pipeline/data/catalog/tnrr_august.jsonl
+```
+
+ตรวจ JSONL และข้อตกลงการใช้ข้อมูลก่อนเติม `--apply`. แม้ record จะระบุ
+`hasfullReport=true` ก็ยังคงเป็น `metadata_only`; การเปิด native reader,
+extraction, embedding, translation หรือ redistribution ต้องมีสิทธิ์ระดับ asset
+แยกต่างหาก.
+
+## Rights-Reviewed ThaiJO Reader Pack
+
+candidate ฝั่ง local มีบทความ LEARN Journal บน ThaiJO **3 เรื่อง รวม 68 หน้า**
+ที่บันทึกหลักฐานสิทธิ์ CC BY 4.0 ระดับวารสาร, checksum ของ PDF, page count,
+attribution และสิทธิ์แยกตาม action. ชุดนี้เป็น proof ที่ตั้งใจให้เล็ก ไม่ใช่
+ตัวแทน coverage ของ ThaiJO, TCI หรือ Thai research ทั้งประเทศ และยังไม่ได้
+apply เข้า database หรือ deploy ขึ้น production.
+
+ไฟล์ PDF ต้นฉบับไม่ commit เข้า repository. หากต้อง rebuild ให้เตรียมไฟล์จาก
+official publisher ตามชื่อที่ builder กำหนด แล้วรัน:
+
+```bash
+python3.10 pipeline/build_reader_pack.py \
+  --source-dir /path/to/verified-learn-journal-pdfs
+```
+
+builder ต้องพบ `pdfinfo` และ `pdftotext` และจะหยุดทันทีถ้า checksum หรือจำนวน
+หน้าไม่ตรงกับ manifest ที่ review แล้ว. output default คือ
+`web/data/reader-papers/` ซึ่งเก็บ manifest กับ page-addressable text และ hash
+รายหน้า ไม่เก็บ PDF binary.
+
+ตรวจ pack และ row mapping แบบไม่เขียน database:
+
+```bash
+python3.10 -m unittest pipeline.test_reader_pack
+python3.10 pipeline/ingest_reader_pack.py
+```
+
+คำสั่ง ingest เป็น dry-run โดย default และควรรายงาน 3 papers, 3 assets, 68
+pages และ 0 full-text downloads. `--apply` เป็นการเขียน Supabase จริง จึงใช้ได้
+หลัง review migration
+`supabase/migrations/20260831120000_civil_research_graph_assets.sql`, ตรวจ
+environment ฝั่ง server (`SUPABASE_URL`, `SUPABASE_SERVICE_KEY`) และได้รับ
+อนุมัติการ apply สำหรับ target นั้นแล้วเท่านั้น:
+
+```bash
+python3.10 pipeline/ingest_reader_pack.py --apply
+```
+
+ตรวจ reader contract และ browser flow จาก repository root:
+
+```bash
+(cd web && node --test lib/paper-reader.test.mjs)
+(cd web && npx playwright test tests/e2e/paper-reader.spec.ts)
+(cd web && npx playwright test tests/e2e/webmcp.spec.ts)
+```
+
+ชุด WebMCP ต้องคงจำนวน site tools ที่ห้าตัว และ
+`inspect_paper_evidence` ส่งเพียง access mode, สถานะการอ่าน และ stable reader
+anchor ที่ตรวจแล้ว โดยไม่ส่ง full page text กลับใน tool result.
+
+อย่าใช้ service-role key ใน browser หรือ `NEXT_PUBLIC_*`. การมี asset ใน pack
+ไม่ได้อนุญาต paper อื่นใน ThaiJO โดยอัตโนมัติ และ mode ที่สิทธิ์ไม่ครบต้องลดเป็น
+`source_hosted`, `restricted`, `metadata_only` หรือ `unavailable` แทน native.
 
 ## v2 Indexing
 
@@ -175,6 +282,19 @@ Indexer เป็น incremental:
 - `--dry-run` แสดงจำนวน docs/sections/chunks/jobs โดยไม่เรียก OpenAI และไม่เขียน DB
 - effective titles มาจาก `web/lib/paper-title-overrides.json` source เดียวกัน
   และถูก sync เข้า `civil_source_catalog`
+- `evidence_exclusions.json` คือ manifest แบบ versioned สำหรับ duplicate ที่ผ่าน human review;
+  `index.py` validate manifest แล้วตัด excluded source ออกจากแผนจริงเสมอ การระบุ
+  `--source-glob` ที่ตรงเฉพาะไฟล์ excluded จะหยุดพร้อม error และชี้ canonical source
+
+ตรวจ cleanup ของ duplicate ที่ review แล้ว (dry-run และ read-only โดย default):
+
+```bash
+.venv310/bin/python pipeline/cleanup_reviewed_duplicate.py
+```
+
+ใช้ `--apply` เฉพาะหลังตรวจ dry-run: script จะ validate exact canonical/document/catalog
+IDs ก่อนเขียน audit tombstone ลง `civil_source_catalog` แล้วลบเฉพาะ duplicate document;
+sections/chunks ของเอกสารนั้น cascade ตาม foreign key และการรันซ้ำเป็น idempotent
 
 Sync title catalog โดยไม่ re-embed:
 

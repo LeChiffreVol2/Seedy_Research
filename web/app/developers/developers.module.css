@@ -36,6 +36,7 @@
 .connectGrid svg { color: #1768d4; }
 .connectGrid h3 { margin: 20px 0 8px; }
 .connectGrid p, .toolList p, .boundary p { color: #687589; line-height: 1.6; font-size: 13px; }
+.connectGrid a { display: inline-flex; margin-top: 16px; color: #1768d4; font-size: 13px; font-weight: 700; text-underline-offset: 3px; }
 .connectGrid code, .connectGrid pre { display: block; overflow: auto; margin: 16px 0 0; padding: 11px; border-radius: 9px; color: #245da5; background: #eef4fb; font: 500 12px/1.5 ui-monospace, monospace; }
 .toolList { border-top: 1px solid #dfe5ed; }
 .toolList article { display: grid; grid-template-columns: 100px 1fr; gap: 18px; padding: 20px 0; border-bottom: 1px solid #dfe5ed; }

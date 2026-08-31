@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 
-import { applyChatIdentityCookies, chatIdentityErrorResponse, resolveChatIdentity } from "@/lib/chat-auth";
+import { applyChatIdentityCookies, chatIdentityErrorResponse, featureAccessDeniedResponse, resolveChatIdentity } from "@/lib/chat-auth";
 import {
   DEFAULT_CHAT_MODE,
   SESSION_COOKIE_NAME,
@@ -56,17 +56,18 @@ async function resolveUserOrResponse(request: NextRequest) {
 
 export async function GET(request: NextRequest) {
   const shareId = request.nextUrl.searchParams.get("share")?.trim();
-  if (shareId) {
-    const shared = await getChatSessionByShareId(shareId);
-    if (!shared) {
-      return NextResponse.json({ error: "Shared session not found." }, { status: 404 });
-    }
-    return NextResponse.json(shared);
-  }
-
   const result = await resolveUserOrResponse(request);
   if (result.response) return result.response;
   const { userId, profile, isNew, isAuthenticated, applyAuthCookies } = result.resolved!;
+  const accessDenied = featureAccessDeniedResponse(shareId ? "shared" : "history", { userId, isAuthenticated }, applyAuthCookies);
+  if (accessDenied) return accessDenied;
+  if (shareId) {
+    const shared = await getChatSessionByShareId(shareId);
+    if (!shared) {
+      return applyChatIdentityCookies(NextResponse.json({ error: "Shared session not found." }, { status: 404 }), { userId, isAuthenticated }, applyAuthCookies);
+    }
+    return applyChatIdentityCookies(NextResponse.json(shared), { userId, isAuthenticated }, applyAuthCookies);
+  }
   const requestedSessionId = request.nextUrl.searchParams.get("session")?.trim();
   if (requestedSessionId) {
     const requested = await getChatSessionForOwner(requestedSessionId, userId);
@@ -106,6 +107,8 @@ export async function POST(request: NextRequest) {
   const result = await resolveUserOrResponse(request);
   if (result.response) return result.response;
   const { userId, isNew, isAuthenticated, applyAuthCookies } = result.resolved!;
+  const accessDenied = featureAccessDeniedResponse("history", { userId, isAuthenticated }, applyAuthCookies);
+  if (accessDenied) return accessDenied;
   const payload = parsed.data;
   let rate: Awaited<ReturnType<typeof consumeChatQuota>>;
   try {

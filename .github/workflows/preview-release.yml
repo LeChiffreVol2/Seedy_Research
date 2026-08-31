@@ -162,6 +162,9 @@ jobs:
           psql "$SUPABASE_PREVIEW_DB_URL" -v ON_ERROR_STOP=1 -f supabase/migrations/20260815130000_civil_mcp_v2_library.sql
           psql "$SUPABASE_PREVIEW_DB_URL" -v ON_ERROR_STOP=1 -f supabase/migrations/20260815140000_civil_mcp_oauth_audience_hook.sql
           psql "$SUPABASE_PREVIEW_DB_URL" -v ON_ERROR_STOP=1 -f supabase/migrations/20260815150000_civil_mcp_research_units.sql
+          psql "$SUPABASE_PREVIEW_DB_URL" -v ON_ERROR_STOP=1 -f supabase/migrations/20260829072758_default_openai_luna.sql
+          psql "$SUPABASE_PREVIEW_DB_URL" -v ON_ERROR_STOP=1 -f supabase/migrations/20260829110000_civil_learning_checkpoint_events.sql
+          psql "$SUPABASE_PREVIEW_DB_URL" -v ON_ERROR_STOP=1 -f supabase/migrations/20260831120000_civil_research_graph_assets.sql
           test "$(psql "$SUPABASE_PREVIEW_DB_URL" -v ON_ERROR_STOP=1 -Atqc "$CIVIL_DATA_RPC_STATE_SQL")" = "ready"
 
   deploy-mcp-preview:
@@ -332,6 +335,9 @@ jobs:
           psql "$SUPABASE_DB_URL" -v ON_ERROR_STOP=1 -f supabase/migrations/20260815130000_civil_mcp_v2_library.sql
           psql "$SUPABASE_DB_URL" -v ON_ERROR_STOP=1 -f supabase/migrations/20260815140000_civil_mcp_oauth_audience_hook.sql
           psql "$SUPABASE_DB_URL" -v ON_ERROR_STOP=1 -f supabase/migrations/20260815150000_civil_mcp_research_units.sql
+          psql "$SUPABASE_DB_URL" -v ON_ERROR_STOP=1 -f supabase/migrations/20260829072758_default_openai_luna.sql
+          psql "$SUPABASE_DB_URL" -v ON_ERROR_STOP=1 -f supabase/migrations/20260829110000_civil_learning_checkpoint_events.sql
+          psql "$SUPABASE_DB_URL" -v ON_ERROR_STOP=1 -f supabase/migrations/20260831120000_civil_research_graph_assets.sql
           test "$(psql "$SUPABASE_DB_URL" -v ON_ERROR_STOP=1 -Atqc "$CIVIL_DATA_RPC_STATE_SQL")" = "ready"
       - name: Stage MCP production deployment
         id: stage_mcp

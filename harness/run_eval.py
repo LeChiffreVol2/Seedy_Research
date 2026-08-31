@@ -72,12 +72,12 @@ def evaluate_question(web_url: str, env: dict[str, str], question: dict[str, Any
     collection = question.get("collection", "")
     body = {
         "mode": "mcp",
-        "model": env.get("MODEL", "deepseek-v4-flash"),
+        "model": env.get("MODEL", "gpt-5.6-luna"),
         "collection": collection,
         "debug": True,
         "contextOnly": context_only,
-        "routerProvider": env.get("ROUTER_PROVIDER", "deepseek"),
-        "routerModel": env.get("ROUTER_MODEL", "deepseek-v4-flash"),
+        "routerProvider": env.get("ROUTER_PROVIDER", "openai"),
+        "routerModel": env.get("ROUTER_MODEL", "gpt-5.6-luna"),
         "messages": [{"id": f"harness-{question['id']}", "role": "user", "parts": [{"type": "text", "text": question["question"]}]}],
     }
     started = time.perf_counter()
@@ -190,25 +190,36 @@ def avg_metric(checks: list[Check], key: str) -> float | None:
 
 def slo_metrics(checks: list[Check], env: dict[str, str]) -> dict[str, Any]:
     latencies = [float(check.latency_ms or 0) for check in checks if check.latency_ms is not None]
-    p95_limit = float(env.get("HARNESS_EVAL_P95_LATENCY_MS", "45000") or 45000)
-    max_limit = float(env.get("HARNESS_EVAL_MAX_LATENCY_MS", "60000") or 60000)
+    context_latencies = [
+        float(check.metrics["contextLatencyMs"])
+        for check in checks
+        if isinstance(check.metrics.get("contextLatencyMs"), (int, float))
+    ]
+    p95_limit = float(env.get("HARNESS_EVAL_P95_LATENCY_MS", "25000") or 25000)
+    max_limit = float(env.get("HARNESS_EVAL_MAX_LATENCY_MS", "30000") or 30000)
+    context_p95_limit = float(env.get("HARNESS_EVAL_CONTEXT_P95_MS", "8000") or 8000)
     enforced = env.get("HARNESS_ENFORCE_SLO", "false").lower() == "true"
     p95 = percentile(latencies, 0.95)
+    context_p95 = percentile(context_latencies, 0.95)
     max_latency = round(max(latencies), 2) if latencies else None
     violations: list[str] = []
     if p95 is not None and p95 > p95_limit:
         violations.append(f"p95 latency {p95}ms > {p95_limit}ms")
     if max_latency is not None and max_latency > max_limit:
         violations.append(f"max latency {max_latency}ms > {max_limit}ms")
+    if context_p95 is not None and context_p95 > context_p95_limit:
+        violations.append(f"context p95 latency {context_p95}ms > {context_p95_limit}ms")
     return {
         "latency": {
             "p50Ms": percentile(latencies, 0.5),
             "p95Ms": p95,
             "maxMs": max_latency,
+            "contextP95Ms": context_p95,
         },
         "slo": {
             "latencyP95Ms": p95_limit,
             "maxLatencyMs": max_limit,
+            "contextLatencyP95Ms": context_p95_limit,
             "latencySloMet": not violations,
             "enforced": enforced,
             "violations": violations,

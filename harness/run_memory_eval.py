@@ -30,13 +30,13 @@ def post_chat(web_url: str, body: dict[str, Any], timeout: int = 150) -> tuple[i
 def base_body(env: dict[str, str], messages: list[dict[str, Any]], force_compact: bool = False) -> dict[str, Any]:
     return {
         "mode": "mcp",
-        "model": env.get("MODEL", "deepseek-v4-flash"),
+        "model": env.get("MODEL", "gpt-5.6-luna"),
         "collection": "ce_project",
         "debug": True,
         "contextOnly": True,
         "forceCompact": force_compact,
-        "routerProvider": env.get("ROUTER_PROVIDER", "deepseek"),
-        "routerModel": env.get("ROUTER_MODEL", "deepseek-v4-flash"),
+        "routerProvider": env.get("ROUTER_PROVIDER", "openai"),
+        "routerModel": env.get("ROUTER_MODEL", "gpt-5.6-luna"),
         "messages": messages,
     }
 

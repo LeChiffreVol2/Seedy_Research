@@ -10,9 +10,22 @@ alter table public.civil_billing_accounts
   add column if not exists pro_credits_included integer not null default 0
     check (pro_credits_included between 0 and 100000),
   add column if not exists pro_credits_used integer not null default 0
-    check (pro_credits_used between 0 and 100000),
-  add constraint civil_billing_accounts_free_period_check
-    check (free_period_end > free_period_start);
+    check (pro_credits_used between 0 and 100000);
+
+do $$
+begin
+  if not exists (
+    select 1
+    from pg_constraint
+    where conrelid = 'public.civil_billing_accounts'::regclass
+      and conname = 'civil_billing_accounts_free_period_check'
+  ) then
+    alter table public.civil_billing_accounts
+      add constraint civil_billing_accounts_free_period_check
+      check (free_period_end > free_period_start);
+  end if;
+end;
+$$;
 
 alter table public.civil_credit_ledger
   add column if not exists credit_pool text not null default 'legacy'

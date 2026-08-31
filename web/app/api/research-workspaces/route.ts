@@ -3,7 +3,7 @@ import { generateObject } from "ai";
 import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 
-import { applyChatIdentityCookies, chatIdentityErrorResponse, resolveChatIdentity } from "@/lib/chat-auth";
+import { applyChatIdentityCookies, chatIdentityErrorResponse, featureAccessDeniedResponse, resolveChatIdentity } from "@/lib/chat-auth";
 import { getBillingState, refundAnswerCredits, reserveAnswerCredits } from "@/lib/billing";
 import { consumeChatQuota } from "@/lib/chat-store";
 import {
@@ -20,6 +20,7 @@ import {
   upsertResearchWorkspace,
 } from "@/lib/research-workspaces";
 import { clampEnvNumber, getRequestIp, rateLimitHeaders, readBoundedJson, safeTraceId } from "@/lib/server-guards";
+import { CIVILMCP_OPEN_ACCESS } from "@/lib/product-access";
 
 export const runtime = "nodejs";
 export const maxDuration = 60;
@@ -109,16 +110,16 @@ async function resolveIdentityOrResponse(request: NextRequest) {
   }
 }
 
-async function consumeWorkspaceRunQuota(request: NextRequest, userId: string) {
+async function consumeWorkspaceRunQuota(request: NextRequest, userId: string, isAuthenticated: boolean) {
   return consumeChatQuota({
     scope: "research_workspace_run",
     userId,
     ipAddress: getRequestIp(request),
-    isAuthenticated: true,
-    guestMinuteLimit: 1,
-    guestHourLimit: 1,
-    authenticatedMinuteLimit: 3,
-    authenticatedHourLimit: 20,
+    isAuthenticated,
+    guestMinuteLimit: 2,
+    guestHourLimit: 12,
+    authenticatedMinuteLimit: 5,
+    authenticatedHourLimit: 40,
   });
 }
 
@@ -181,7 +182,7 @@ async function buildWorkspaceRun(input: RunRequest, ownerId: string) {
     abortSignal: AbortSignal.timeout(WORKSPACE_GENERATION_TIMEOUT_MS),
     schema: generatedWorkspaceSchema,
     system: [
-      "You are CivilMCP's bounded batch research agent.",
+      "You are Seed Research by SEEDY, a bounded batch research agent.",
       "Populate a research matrix using only the supplied page-linked evidence packets.",
       "Return one row per supplied source and one cell per requested column.",
       "Every factual cell must cite 1-4 evidence IDs from its own paper. Never cite another paper's packet in that row.",
@@ -266,6 +267,8 @@ export async function GET(request: NextRequest) {
   const identityResult = await resolveIdentityOrResponse(request);
   if (identityResult.response) return identityResult.response;
   const { identity, applyAuthCookies } = identityResult.resolved!;
+  const accessDenied = featureAccessDeniedResponse("workspace", identity, applyAuthCookies);
+  if (accessDenied) return accessDenied;
   if (!identity.isAuthenticated) {
     return applyChatIdentityCookies(NextResponse.json({ workspaces: [] }), identity, applyAuthCookies);
   }
@@ -288,21 +291,28 @@ export async function POST(request: NextRequest) {
   if (identityResult.response) return identityResult.response;
   const { identity, applyAuthCookies } = identityResult.resolved!;
   const finalize = (response: NextResponse) => applyChatIdentityCookies(response, identity, applyAuthCookies);
-  if (!identity.isAuthenticated) {
+  const accessDenied = featureAccessDeniedResponse("workspace", identity, applyAuthCookies);
+  if (accessDenied) return accessDenied;
+  if (!CIVILMCP_OPEN_ACCESS && !identity.isAuthenticated) {
     return finalize(NextResponse.json({ error: "Research Workspace Pro requires sign in and Founder Pro.", code: "pro_required" }, { status: 402 }));
   }
 
-  let billing;
-  try {
-    billing = await getBillingState(identity.userId);
-  } catch {
-    return finalize(NextResponse.json({ error: "Research Workspace access is temporarily unavailable." }, { status: 503 }));
-  }
-  if (billing.plan !== "founder_pro" || !billing.premiumModels) {
-    return finalize(NextResponse.json({ error: "Research Workspace is included in Founder Pro. Upgrade to continue.", code: "pro_required" }, { status: 402 }));
+  if (!CIVILMCP_OPEN_ACCESS) {
+    let billing;
+    try {
+      billing = await getBillingState(identity.userId);
+    } catch {
+      return finalize(NextResponse.json({ error: "Research Workspace access is temporarily unavailable." }, { status: 503 }));
+    }
+    if (billing.plan !== "founder_pro" || !billing.premiumModels) {
+      return finalize(NextResponse.json({ error: "Research Workspace is included in Founder Pro. Upgrade to continue.", code: "pro_required" }, { status: 402 }));
+    }
   }
 
   if (parsed.data.action === "save") {
+    if (!identity.isAuthenticated) {
+      return finalize(NextResponse.json({ error: "Sign in to sync this workspace. Local workspace use remains available." }, { status: 401 }));
+    }
     try {
       const workspace = await upsertResearchWorkspace({
         workspaceId: parsed.data.workspaceId,
@@ -318,7 +328,7 @@ export async function POST(request: NextRequest) {
     }
   }
 
-  const rate = await consumeWorkspaceRunQuota(request, identity.userId).catch(() => null);
+  const rate = await consumeWorkspaceRunQuota(request, identity.userId, identity.isAuthenticated).catch(() => null);
   if (!rate) return finalize(NextResponse.json({ error: "Workspace quota service is temporarily unavailable." }, { status: 503 }));
   if (!rate.allowed) return finalize(NextResponse.json({ error: "Too many research workspace runs." }, { status: 429, headers: rateLimitHeaders(rate) }));
 
@@ -330,7 +340,7 @@ export async function POST(request: NextRequest) {
     const requestId = `${billingExecutionId}:paper:${index + 1}`;
     const reservation = await reserveAnswerCredits({
       userId: identity.userId,
-      isAuthenticated: true,
+      isAuthenticated: identity.isAuthenticated,
       model: parsed.data.model as ChatModel,
       requestId,
     }).catch(() => null);
@@ -380,6 +390,8 @@ export async function DELETE(request: NextRequest) {
   const identityResult = await resolveIdentityOrResponse(request);
   if (identityResult.response) return identityResult.response;
   const { identity, applyAuthCookies } = identityResult.resolved!;
+  const accessDenied = featureAccessDeniedResponse("workspace", identity, applyAuthCookies);
+  if (accessDenied) return accessDenied;
   const finalize = (response: NextResponse) => applyChatIdentityCookies(response, identity, applyAuthCookies);
   if (!identity.isAuthenticated) return finalize(NextResponse.json({ error: "Sign in to delete a saved workspace." }, { status: 401 }));
   try {

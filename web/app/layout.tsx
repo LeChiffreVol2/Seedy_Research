@@ -15,8 +15,8 @@ const body = IBM_Plex_Sans_Thai({
 });
 
 export const metadata: Metadata = {
-  title: "CivilMCP | Civil Engineering Research",
-  description: "Search civil engineering papers and ask questions with cited evidence.",
+  title: "Seed Research by SEEDY | Verifiable Thai Research",
+  description: "Discover Thai research, learn from evidence, and verify every AI answer against the original page.",
   icons: {
     icon: "/icon.svg",
   },

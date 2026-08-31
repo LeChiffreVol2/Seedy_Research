@@ -1,0 +1,408 @@
+{
+  "version": 1,
+  "as_of": "2026-08-31",
+  "scope": "Thai research discovery, lawful reading, and page-citable evidence",
+  "completeness_policy": {
+    "claim": "No provider or combined corpus is represented as complete unless its official denominator, harvest window, deletions, deduplication, rights review, and quality audit are all measured for the same dated snapshot.",
+    "catalog_is_not_evidence": true,
+    "unknown_rights_default": "deny_full_text_actions",
+    "global_indexes_are_enrichment_only": true
+  },
+  "live_baseline": {
+    "searchable_records": 3875,
+    "page_citable_evidence_records": 1297,
+    "metadata_only_discovery_records": 2578,
+    "thaijo_endpoint_families_registered": 36,
+    "thaijo_endpoint_families_active": 2,
+    "coverage_claim": "bounded_live_snapshot_not_national_completeness"
+  },
+  "local_reader_candidate": {
+    "state": "implemented_not_deployed_or_database_applied",
+    "pack_version": "civilmcp-rights-reviewed-reader-pack-v1",
+    "provider": "tci_thaijo",
+    "journal": "LEARN Journal: Language Education and Acquisition Research Network",
+    "license_expression": "CC-BY-4.0",
+    "rights_basis": "official_journal_license_statement_with_asset_checksums_and_action_manifest",
+    "papers": 3,
+    "assets": 3,
+    "page_addressable_pages": 68,
+    "source_pdf_binaries_committed": false,
+    "capabilities": [
+      "native_page_reading",
+      "outline",
+      "in_paper_search",
+      "stable_page_anchors",
+      "highlights",
+      "browser_local_notes",
+      "citation_and_source_export"
+    ],
+    "fail_closed_reader_modes": [
+      "native_verified",
+      "source_hosted",
+      "restricted",
+      "metadata_only",
+      "unavailable"
+    ],
+    "webmcp": {
+      "registered_site_tools": 5,
+      "inspect_enrichment": "access_mode_capabilities_and_page_counts_only",
+      "full_page_text_returned_by_tool": false
+    },
+    "verification_status": "focused_build_and_tests_in_progress",
+    "coverage_claim": "rights_reviewed_local_proof_not_national_completeness"
+  },
+  "providers": [
+    {
+      "id": "tci_thaijo",
+      "label": "ThaiJO",
+      "role": "primary_thai_journal_host_and_metadata_source",
+      "protocol": {
+        "metadata": ["OAI-PMH", "Dublin Core"],
+        "full_text": ["publisher article page", "publisher PDF or HTML when offered"],
+        "rate_limit": "Official guidance states 10 metadata requests per minute per user/IP, throttling to 3 before temporary blocking."
+      },
+      "auth": {
+        "metadata": "none_for_public_oai",
+        "full_text": "publisher_and_article_specific"
+      },
+      "current_status": {
+        "state": "bounded_metadata_pilot_live",
+        "active_records": 2578,
+        "endpoint_families_active": 2,
+        "endpoint_families_registered": 36,
+        "evidence_promotions": 0,
+        "local_native_reader_candidate_records": 3,
+        "local_native_reader_candidate_pages": 68,
+        "local_native_reader_candidate_state": "implemented_not_deployed_or_database_applied",
+        "note": "The deployed provider id remains tci_thaijo for compatibility, but the product label and source identity are ThaiJO."
+      },
+      "access_modes": [
+        "metadata_catalog",
+        "publisher_deep_link",
+        "native_verified_reader_after_asset_level_rights_and_page_checks"
+      ],
+      "rights_posture": {
+        "metadata": "public_oai_with_rate_limits",
+        "abstract": "verify_record_or_journal_terms",
+        "full_text": "article_and_asset_specific",
+        "storage_display_transformation_redistribution": "default_denied_until_each_action_is_verified",
+        "warning": "A visible PDF button or open article page is not a corpus-wide redistribution license."
+      },
+      "coverage_denominator": {
+        "unit": "official_oai_endpoint_family",
+        "known_total": 36,
+        "active_observed": 2,
+        "secondary_units_required": ["sets", "journals", "issues", "article_records", "deletions"],
+        "complete": false
+      },
+      "official_url": "https://www.tci-thaijo.org/public/oai.html",
+      "required_next_action": "Harvest the remaining 34 endpoint families as bounded metadata-only jobs, record set-level denominators and tombstones, then resolve license and asset rights per article before any reader or evidence promotion."
+    },
+    {
+      "id": "tci_citation",
+      "label": "Thai-Journal Citation Index (TCI)",
+      "role": "national_journal_quality_citation_and_record_reconciliation_source",
+      "protocol": {
+        "metadata": ["TCI partner export or approved API", "Fast-Track indexing workflow"],
+        "full_text": ["resolve to publisher manifestation; TCI identity does not itself grant paper rights"]
+      },
+      "auth": {
+        "metadata": "partnership_or_approved_credentials_required_for_repeatable_bulk_access",
+        "full_text": "publisher_specific"
+      },
+      "current_status": {
+        "state": "not_connected_as_a_distinct_provider",
+        "active_records": 0,
+        "note": "ThaiJO-hosted records must not be relabelled or double-counted as distinct TCI records."
+      },
+      "access_modes": [
+        "metadata_catalog_after_agreement",
+        "citation_and_journal_tier_enrichment",
+        "publisher_resolution"
+      ],
+      "rights_posture": {
+        "metadata": "requires_agreed_usage_terms",
+        "citation_data": "requires_agreed_usage_terms",
+        "full_text": "not_inferred_from_tci_index_membership",
+        "storage_display_transformation_redistribution": "default_denied_until_source_asset_rights_are_verified"
+      },
+      "coverage_denominator": {
+        "unit": "dated_official_tci_journal_and_article_export",
+        "known_total": null,
+        "observed": 0,
+        "dedupe_against": ["tci_thaijo", "doi", "publisher_record", "canonical_work_fingerprint"],
+        "complete": false
+      },
+      "official_url": "https://tci-thailand.org/journal_list",
+      "required_next_action": "Request a documented partner export or API agreement from TCI, including allowed fields, refresh cadence, citation use, journal-tier history, deletion handling, and reconciliation keys for ThaiJO and non-ThaiJO journals."
+    },
+    {
+      "id": "tnrr",
+      "label": "Thai National Research Repository (TNRR)",
+      "role": "national_research_output_metadata_and_public_resolver",
+      "protocol": {
+        "metadata": ["REST ResearchOutput API"],
+        "full_text": ["linkPublic resolver", "hasfullReport availability flag"],
+        "documented_fields": ["bibid", "title", "authorTeam", "department", "year", "doi", "docType", "abstractTH", "abstractEN", "OECD fields", "linkPublic", "hasfullReport"]
+      },
+      "auth": {
+        "metadata": "Bearer token obtained from an approved NRIIS user account",
+        "full_text": "record_and_destination_specific"
+      },
+      "current_status": {
+        "state": "documented_not_connected",
+        "active_records": 0,
+        "note": "The API manual documents metadata and a full-report availability flag; no CivilMCP bulk harvest is active."
+      },
+      "access_modes": [
+        "metadata_catalog_after_credential_and_terms_review",
+        "public_record_deep_link",
+        "native_verified_reader_only_after_separate_asset_permission"
+      ],
+      "rights_posture": {
+        "metadata": "requires_authenticated_access_and_usage_review",
+        "abstract": "requires_usage_review",
+        "full_text": "hasfullReport_means_availability_not_permission",
+        "storage_display_transformation_redistribution": "default_denied_until_explicitly_authorized"
+      },
+      "coverage_denominator": {
+        "unit": "dated_researchoutput_api_snapshot",
+        "known_total": null,
+        "observed": 0,
+        "required_slices": ["docType", "department", "year", "OECD field", "hasfullReport"],
+        "complete": false
+      },
+      "official_url": "https://tnrr.nriis.go.th/",
+      "required_next_action": "Obtain an approved service account and written usage terms, run a metadata-only count and dedupe pilot by bibid/DOI, and negotiate separate display, extraction, and citation permissions for assets reached through linkPublic."
+    },
+    {
+      "id": "thailis_tdc",
+      "label": "ThaiLIS Digital Collection (TDC)",
+      "role": "national_network_discovery_for_theses_research_articles_and_conference_material",
+      "protocol": {
+        "metadata": ["web portal", "advertised OAI-PMH, Z39.50, or web service subject to partner confirmation"],
+        "full_text": ["member-library or record-specific access"]
+      },
+      "auth": {
+        "metadata": "public_search_or_partnership_specific",
+        "full_text": "member_institution_login_or_explicit_permission"
+      },
+      "current_status": {
+        "state": "not_connected",
+        "active_records": 0,
+        "note": "The official portal exposes national collection categories, but CivilMCP has no approved repeatable feed or full-text agreement."
+      },
+      "access_modes": [
+        "metadata_catalog_after_partner_agreement",
+        "institution_or_tdc_deep_link",
+        "restricted_access_instructions",
+        "native_verified_reader_only_for_separately_cleared_assets"
+      ],
+      "rights_posture": {
+        "metadata": "terms_and_feed_scope_must_be_agreed",
+        "full_text": "member_or_record_restricted_by_default",
+        "storage_display_transformation_redistribution": "default_denied_without_thailis_and_rightsholder_authorization",
+        "warning": "Do not proxy or bypass institution authentication."
+      },
+      "coverage_denominator": {
+        "unit": "dated_tdc_partner_export_by_contributing_institution_and_document_type",
+        "known_total": null,
+        "observed": 0,
+        "required_slices": ["institution", "thesis", "research_report", "academic_article", "conference_presentation", "access_status"],
+        "complete": false
+      },
+      "official_url": "https://tdc.thailis.or.th/",
+      "required_next_action": "Open a ThaiLIS partnership track for a metadata feed and denominator, document member-access behavior, and keep full text in institution-mediated mode unless an asset-specific permission permits native display."
+    },
+    {
+      "id": "ncce",
+      "label": "National Convention on Civil Engineering (NCCE) Proceedings",
+      "role": "curated_thai_conference_full_text_evidence_vertical",
+      "protocol": {
+        "metadata": ["official conference issue and article pages", "curated local manifests"],
+        "full_text": ["official proceedings PDF", "paper-level PDF where available", "page-preserving extraction"]
+      },
+      "auth": {
+        "metadata": "public_source",
+        "full_text": "public_source_but_actions_follow_reviewed_manifest"
+      },
+      "current_status": {
+        "state": "live_page_citable_evidence_subset",
+        "active_editions": [25, 26, 29, 31],
+        "note": "NCCE is part of the 1,297-record page-citable baseline; it is not evidence that all Thai conferences or all NCCE editions are covered."
+      },
+      "access_modes": [
+        "native_verified_reader_for_manifest_allowed_actions",
+        "exact_page_evidence",
+        "official_source_deep_link"
+      ],
+      "rights_posture": {
+        "metadata": "allowed_by_reviewed_source_manifest",
+        "full_text": "controlled_evidence_use",
+        "display": "only_as_allowed_by_reviewed_source_manifest",
+        "redistribution": "not_granted_by_civilmcp_source_code_license",
+        "training": "not_assumed"
+      },
+      "coverage_denominator": {
+        "unit": "official_ncce_edition_and_paper_manifest",
+        "known_total": null,
+        "active_observed_editions": 4,
+        "required_range_review": "NCCE 1 through current edition",
+        "complete": false
+      },
+      "official_url": "https://conference.thaince.org/",
+      "required_next_action": "Build an edition-by-edition organizer manifest, reconcile official paper counts and deletions, and obtain an explicit long-term display and transformation agreement before expanding native full-paper reading."
+    },
+    {
+      "id": "thai_conference",
+      "label": "Broader Thai Conference Proceedings",
+      "role": "multi_discipline_conference_registry_and_deposit_network",
+      "protocol": {
+        "metadata": ["per-series OJS/OAI-PMH where available", "organizer export", "author or organizer deposit manifest"],
+        "full_text": ["organizer-hosted PDF", "rights-cleared deposit"]
+      },
+      "auth": {
+        "metadata": "per_series",
+        "full_text": "per_organizer_and_asset"
+      },
+      "current_status": {
+        "state": "registry_not_built",
+        "active_series": 0,
+        "note": "There is no assumed single national conference-paper API. NCCE remains a separate, proven vertical."
+      },
+      "access_modes": [
+        "metadata_catalog",
+        "organizer_deep_link",
+        "native_verified_reader_for_permissioned_deposits"
+      ],
+      "rights_posture": {
+        "metadata": "per_series_terms",
+        "full_text": "per_asset_or_deposit_agreement",
+        "storage_display_transformation_redistribution": "default_denied_until_each_action_is_verified"
+      },
+      "coverage_denominator": {
+        "unit": "versioned_registry_of_conference_series_editions_and_accepted_papers",
+        "known_total": null,
+        "observed": 0,
+        "complete": false
+      },
+      "official_url": null,
+      "official_url_note": "No single official umbrella endpoint is assumed; every conference series must record its organizer-controlled URL.",
+      "required_next_action": "Create a ranked conference-series registry, start with organizer partners that can provide accepted-paper denominators and rights manifests, and ingest metadata before any full-text action."
+    },
+    {
+      "id": "thai_ir",
+      "label": "Thai Institutional Repositories",
+      "role": "university_and_agency_repository_network",
+      "protocol": {
+        "metadata": ["per-repository OAI-PMH", "DSpace or EPrints API", "partner export"],
+        "full_text": ["repository bitstream", "institution resolver", "author deposit"]
+      },
+      "auth": {
+        "metadata": "repository_specific",
+        "full_text": "repository_item_and_institution_specific"
+      },
+      "current_status": {
+        "state": "national_registry_not_built",
+        "active_repositories": 0,
+        "note": "TDC overlap must be reconciled rather than counted as new institutional coverage."
+      },
+      "access_modes": [
+        "metadata_catalog",
+        "repository_deep_link",
+        "restricted_access_instructions",
+        "native_verified_reader_for_open_or_permissioned_assets"
+      ],
+      "rights_posture": {
+        "metadata": "per_repository_terms",
+        "full_text": "license_and_embargo_specific",
+        "storage_display_transformation_redistribution": "default_denied_until_asset_and_embargo_checks_pass"
+      },
+      "coverage_denominator": {
+        "unit": "versioned_registry_of_institutions_repositories_sets_and_items",
+        "known_total": null,
+        "observed": 0,
+        "dedupe_against": ["thailis_tdc", "tnrr", "doi", "handle", "canonical_work_fingerprint"],
+        "complete": false
+      },
+      "official_url": null,
+      "official_url_note": "No single official endpoint is assumed; every repository entry must retain its institution-controlled base URL and protocol declaration.",
+      "required_next_action": "Inventory Thai university and agency repositories, validate Identify/ListSets before harvesting, record embargo and bitstream-license fields, and recruit deposit partners for repositories without stable machine access."
+    },
+    {
+      "id": "openalex",
+      "label": "OpenAlex",
+      "role": "global_metadata_full_text_location_and_identity_enrichment_only",
+      "protocol": {
+        "metadata": ["OpenAlex API", "snapshot"],
+        "full_text": ["content API", "open-access locations"]
+      },
+      "auth": {
+        "metadata": "API key for production limits",
+        "full_text": "API key or licensed sync plan plus source-license checks"
+      },
+      "current_status": {
+        "state": "live_bounded_global_discovery",
+        "evidence_promotions": 0,
+        "note": "OpenAlex may contain some Thai works and repository copies, but CivilMCP does not treat it as a Thai national denominator or page-citable evidence."
+      },
+      "access_modes": [
+        "metadata_enrichment",
+        "global_discovery_lead",
+        "open_access_location_resolution",
+        "native_verified_reader_only_after_asset_license_and_provenance_checks"
+      ],
+      "rights_posture": {
+        "metadata": "follow_openalex_terms",
+        "full_text": "availability_is_not_a_blanket_reuse_license",
+        "storage_display_transformation_redistribution": "derive_from_resolved_asset_license_and_source_provenance"
+      },
+      "coverage_denominator": {
+        "unit": "dated_openalex_query_or_snapshot_slice",
+        "known_total": null,
+        "observed": "bounded_on_demand_results",
+        "national_completeness_denominator": false,
+        "complete": false
+      },
+      "official_url": "https://help.openalex.org/access/fulltext/",
+      "required_next_action": "Use OpenAlex to reconcile DOI, institutions, citations, and lawful open locations after Thai-provider ingestion; publish overlap and missingness metrics instead of treating non-matches as absent research."
+    },
+    {
+      "id": "scopus",
+      "label": "Scopus",
+      "role": "licensed_global_abstract_citation_and_identity_enrichment_only",
+      "protocol": {
+        "metadata": ["Elsevier Scopus APIs"],
+        "full_text": ["not supplied by Scopus index membership; resolve separately"]
+      },
+      "auth": {
+        "metadata": "Elsevier API key plus institutional entitlement or commercial agreement as applicable",
+        "full_text": "publisher_or_repository_specific"
+      },
+      "current_status": {
+        "state": "not_connected",
+        "active_records": 0,
+        "note": "Some Thai journals and Thai-affiliated international publications can be indexed by Scopus; coverage is not zero and is not nationally complete."
+      },
+      "access_modes": [
+        "licensed_metadata_enrichment",
+        "citation_reconciliation",
+        "publisher_resolution"
+      ],
+      "rights_posture": {
+        "metadata": "licensed_use_only",
+        "full_text": "not_inferred_from_scopus_record",
+        "storage_display_transformation_redistribution": "governed_by_separate_publisher_or_repository_asset_rights"
+      },
+      "coverage_denominator": {
+        "unit": "dated_licensed_scopus_query_or_export_slice",
+        "known_total": null,
+        "observed": 0,
+        "national_completeness_denominator": false,
+        "complete": false
+      },
+      "official_url": "https://dev.elsevier.com/sc_apis.html",
+      "required_next_action": "Only add Scopus under an approved license, use it for citation and identity reconciliation, and report overlap with Thai primary providers without using it as the denominator for Thai research completeness."
+    }
+  ]
+}

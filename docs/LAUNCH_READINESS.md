@@ -34,6 +34,15 @@ The launch promise is narrow and testable:
   19-tool first-party compatibility contract. OAuth and revocable owner-scoped
   personal keys share the same permission and distributed-quota boundary.
   Metadata-only records are never returned as citable evidence.
+- WebMCP: five top-level browser site tools for discovery, exact-page evidence,
+  Evidence-bounded Research Passport drafting, Research Path
+  creation/adaptation, and privacy-bounded progress inspection. Tool calls
+  must update the same visible page the person is reviewing.
+- Research Passport: one to three visible exact-page Thai anchors, at most four
+  OpenAlex metadata-only leads, an optional bounded English rendering that
+  never replaces the source excerpt, one candidate validation gap, mandatory
+  exact-page review, and a boundary-preserving Markdown export. It must not claim
+  scientific correctness, novelty, transferability, or comprehensive review.
 - Trust and support: public Privacy, Terms, Support/takedown, self-service
   account deletion, and first-party activation events without raw queries.
 
@@ -62,6 +71,18 @@ All of the following must pass against the same source state:
     initialize/list/call pass authenticated isolation tests;
 12. `npm audit --omit=dev` has no high or critical production advisory, and any
     deferred low advisory has an owner and migration plan.
+13. the focused WebMCP browser test executes all five tools and verifies visible
+    Explore, evidence-drawer, Research Passport, Research Path, and progress
+    state; Passport page-review acknowledgment remains locked until every selected exact-page anchor is reopened, export remains locked until that acknowledgment, and OpenAlex leads
+    remain non-citable. The deployed candidate is also checked manually in
+    ChatGPT's built-in browser with Sol or Terra and in Chrome with WebMCP
+    testing enabled.
+
+The August 31, 2026 production dependency audit found no high or critical
+advisories and five transitive low-severity advisories in the current AI SDK
+chain. The project maintainer owns the follow-up: test the available breaking
+AI SDK major upgrade on an isolated branch after the challenge candidate is
+frozen, then rerun build, E2E, memory, citation, and audit gates before merging.
 
 ## Limited-rollout success criteria
 
@@ -69,6 +90,8 @@ Review after the first 10–20 researchers or students have completed real tasks
 
 - at least 70% reach an exact-page evidence view;
 - at least 40% save, export, or continue a paper into a research workflow;
+- a page-reviewed Research Passport export counts as an evidence-bearing research
+  outcome only when it retains at least one exact-page Thai anchor;
 - at least 60% of rated answers are marked Helpful;
 - less than 10% zero-result rate for the launch prompt set;
 - median time-to-first exact-page evidence under 10 minutes;
@@ -90,5 +113,7 @@ coordination and must not be represented as shipped:
 - paid subscriptions while the deployment remains on Vercel Hobby.
 - unattended support SLA or legal-response automation; the preview queue is
   operator-reviewed.
+- automated proof of novelty, global transferability, or comprehensive
+  literature gaps from OpenAlex metadata.
 
 These are post-preview milestones, not blockers for the free limited rollout.

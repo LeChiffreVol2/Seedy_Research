@@ -454,7 +454,7 @@ def check_mcp_tool(mcp_url: str, env: dict[str, str], collection: str) -> Check:
 def check_web_chat(web_url: str, collection: str) -> Check:
     body: dict[str, Any] = {
         "mode": "mcp",
-        "model": "deepseek-v4-flash",
+        "model": "gpt-5.6-luna",
         "collection": collection,
         "debug": True,
         "contextOnly": True,

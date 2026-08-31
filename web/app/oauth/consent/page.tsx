@@ -2,7 +2,7 @@
 
 import { createBrowserClient } from "@supabase/ssr";
 import type { OAuthAuthorizationDetails } from "@supabase/supabase-js";
-import { ArrowLeft, Check, Database, LockKeyhole, ShieldCheck } from "lucide-react";
+import { ArrowLeft, Check, Database, ShieldCheck } from "lucide-react";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import type { FormEvent } from "react";
 
@@ -115,7 +115,7 @@ export default function OAuthConsentPage() {
       ? await supabase.auth.oauth.approveAuthorization(details.authorization_id, { skipBrowserRedirect: true })
       : await supabase.auth.oauth.denyAuthorization(details.authorization_id, { skipBrowserRedirect: true });
     if (response.error || !response.data?.redirect_url) {
-      setMessage(response.error?.message ?? "CivilMCP could not complete authorization.");
+      setMessage(response.error?.message ?? "SEEDY could not complete authorization.");
       setBusy(false);
       return;
     }
@@ -125,10 +125,10 @@ export default function OAuthConsentPage() {
   return (
     <main className={styles.page}>
       <section className={styles.shell} aria-labelledby="consent-title">
-        <a className={styles.back} href="/"><ArrowLeft size={15} aria-hidden /> CivilMCP</a>
+        <a className={styles.back} href="/"><ArrowLeft size={15} aria-hidden /> SEEDY</a>
         <header className={styles.header}>
           <div className={styles.mark}><ShieldCheck size={24} aria-hidden /></div>
-          <div><span>Secure connection</span><h1 id="consent-title">Connect to CivilMCP</h1></div>
+          <div><span>Secure connection</span><h1 id="consent-title">Connect to Seed Research</h1></div>
         </header>
 
         {state === "loading" ? <p className={styles.status}>Checking authorization…</p> : null}
@@ -143,7 +143,7 @@ export default function OAuthConsentPage() {
               <label>Password<input type="password" autoComplete={authMode === "signup" ? "new-password" : "current-password"} minLength={8} value={password} onChange={(event) => setPassword(event.target.value)} required /></label>
               <button className={styles.primary} type="submit" disabled={busy}>{busy ? "Please wait…" : authMode === "signup" ? "Create account" : "Sign in"}</button>
             </form>
-            <p className={styles.secondary}>{authMode === "signup" ? "Already have an account?" : "New to CivilMCP?"} <button type="button" onClick={() => { setAuthMode(authMode === "signup" ? "signin" : "signup"); setMessage(""); }}>{authMode === "signup" ? "Sign in" : "Create account"}</button></p>
+            <p className={styles.secondary}>{authMode === "signup" ? "Already have an account?" : "New to SEEDY?"} <button type="button" onClick={() => { setAuthMode(authMode === "signup" ? "signin" : "signup"); setMessage(""); }}>{authMode === "signup" ? "Sign in" : "Create account"}</button></p>
           </div>
         ) : null}
 
@@ -156,10 +156,10 @@ export default function OAuthConsentPage() {
             <p>This client will be able to:</p>
             <ul className={styles.permissions}>
               <li><Check size={16} aria-hidden /><span>Search Thai and global research metadata</span></li>
-              <li><Check size={16} aria-hidden /><span>Read exact-page CivilMCP evidence and your private PDFs</span></li>
+              <li><Check size={16} aria-hidden /><span>Read exact-page Seed Research evidence and your private PDFs</span></li>
               <li><Check size={16} aria-hidden /><span>Organize papers in your private library</span></li>
             </ul>
-            <div className={styles.trust}><LockKeyhole size={16} aria-hidden /><span>The client never receives your Google password or CivilMCP service keys. You can revoke access from Account.</span></div>
+            <div className={styles.trust}><ShieldCheck size={16} aria-hidden /><span>The client never receives your Google password or SEEDY service keys. You can revoke access from Account.</span></div>
             <div className={styles.actions}>
               <button type="button" className={styles.secondaryButton} onClick={() => void decide(false)} disabled={busy}>Deny</button>
               <button type="button" className={styles.primary} onClick={() => void decide(true)} disabled={busy}>{busy ? "Connecting…" : "Allow access"}</button>

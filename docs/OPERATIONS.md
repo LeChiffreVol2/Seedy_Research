@@ -44,6 +44,8 @@ Required variables:
 `SUPABASE_PREVIEW_DB_URL` must target the same Supabase project configured in the Vercel Preview environments. Keep it separate from production unless an explicitly reviewed additive migration is intentionally shared.
 
 ## Rollback
+- Return to the legacy section-then-chunk recipe: `FAST_RETRIEVAL_ENABLED=false`.
+- Restore model-based routing for otherwise-unclassified prompts: `LLM_ROUTER_ENABLED=true`.
 - Disable agentic orchestration: `AGENTIC_CONTEXT_ENABLED=false`.
 - Return MCP retrieval to v1: `RETRIEVAL_VERSION=v1`.
 - Exclude NCCE without DB changes: use `collection=ce_project`.
@@ -60,8 +62,14 @@ Required variables:
 - Vercel logs for structured events `civilmcp_retrieval_degraded`,
   `civilmcp_retrieval_unavailable`, `civilmcp_zero_evidence`, and
   `civilmcp_answer_fallback`.
+- Vercel logs for `civilmcp_research_path_complete` and
+  `civilmcp_checkpoint_assessment_degraded`; `research_path_busy` and
+  `checkpoint_busy` are deliberate backpressure responses with `Retry-After`.
 
-Router calls are bounded by `ROUTER_TIMEOUT_MS` (6 seconds by default). Answer
+The deterministic router is the default. Set `LLM_ROUTER_ENABLED=true` only
+when model classification is worth the extra request; those calls remain bounded by
+`ROUTER_TIMEOUT_MS` (6 seconds by default). MCP web calls are bounded by
+`MCP_TOOL_TIMEOUT_MS` (18 seconds by default). Answer
 generation is bounded by `ANSWER_TIMEOUT_MS` (35 seconds by default), below the
 60-second function limit. Debug/evaluation requests publish a deterministic,
 citation-allowlisted brief and request a refund of the reserved product credit
@@ -75,6 +83,13 @@ restore provider capacity, then confirm `retrievalMode=semantic` in strict
 smoke. The embedding circuit retries after `EMBEDDING_CIRCUIT_SECONDS` (300 by
 default), so adding provider credits does not require a redeploy (recovery is
 automatic within five minutes on a warm instance).
+
+Research Path limits active work per web instance with
+`MAX_ACTIVE_PATH_BUILDS` (8) and `MAX_ACTIVE_CHECKPOINTS` (6), in addition to
+the distributed per-user/IP quota. A busy response is retryable and should not
+be converted into an immediate client retry loop. Sparse but relevant coverage
+is returned with `coverage.status=limited`; zero relevant evidence remains a
+recoverable `422 insufficient_path_evidence` response.
 
 The current OpenAI `429 credit_balance_exhausted` response is billing/quota
 exhaustion, not ordinary request pacing. Restore the API balance in
@@ -125,7 +140,9 @@ Supabase Auth additionally requires `SUPABASE_ANON_KEY` (or
 fails closed when that key is absent or malformed and never falls back to
 `SUPABASE_SERVICE_KEY`.
 
-## Founder Pro billing
+## Dormant Founder Pro billing
+
+Open Access is the production default. Keep `CIVILMCP_OPEN_ACCESS=true` and `NEXT_PUBLIC_CIVILMCP_OPEN_ACCESS=true`; checkout returns a closed response and answer/MCP credit reservation is a no-op. Keep `NEXT_PUBLIC_CIVILMCP_REQUIRE_AUTH=true` for the demo and verify every per-feature `enabled`/`requiresAuth` flag from `.env.example` before release. Open Access removes payment gates, while Supabase authentication remains required for product features. The steps below apply only if product policy explicitly re-enables billing later.
 
 1. Apply the billing migration chain through `20260725205900_civil_founder_pro_500_credits.sql`, then apply `20260813120000_civil_stripe_event_idempotency.sql`, `20260814090000_civil_luna_free_credit_ladder.sql`, and `20260814100000_civil_terra_sol_credit_correction.sql` before deploying Stripe-enabled web code. The additive migrations preserve existing accounts and credit history.
 2. In Supabase Auth, enable Google and allow `https://civil-mcp-web.vercel.app/auth/callback` plus the local callback.
@@ -163,6 +180,16 @@ both usage tables plus `civil_get_mcp_usage`, `civil_consume_mcp_units`, and
 `civil_refund_mcp_units`. PostgreSQL is the tool-cost authority. Never adjust AI
 answer-credit balances to correct MCP usage; the two ledgers are independent.
 
+Apply `20260829072758_default_openai_luna.sql`,
+`20260829110000_civil_learning_checkpoint_events.sql`, and
+`20260831120000_civil_research_graph_assets.sql` before deploying the matching
+OpenAI-first Research Path and native-reader release. The checkpoint migration
+adds `checkpoint_answered`, `checkpoint_mastered`, and `path_adapted` while
+preserving the existing event allow-list. Then run
+`.venv310/bin/python pipeline/ingest_reader_pack.py --apply` once per target
+database and verify 3 native assets, 68 checksum-valid pages, RLS on all graph
+tables, and no `anon`/`authenticated` table grants.
+
 For public MCP OAuth, set the Supabase OAuth authorization path to
 `/oauth/consent`, enable dynamic client registration, and select
 `public.civil_mcp_access_token_hook` as the Custom Access Token hook. Then set
@@ -183,7 +210,7 @@ Five low AI SDK advisories require a breaking SDK major migration and are
 deferred; the affected file-upload whitelist is not used for the private PDF
 route, which parses and validates uploads independently with `pdfjs-dist`.
 
-Research Workspace batch runs share the Founder Pro entitlement and credit ledger. A run reserves the selected model weight once per selected paper, caps each request at six papers by six columns, and uses the separate `research_workspace_run` quota. Check `/api/research-workspaces` for `402`, `429`, or `503` responses when diagnosing access, quota, or provider failures. Failed runs attempt to restore every reservation; `creditRecovery=restored` is ledger-confirmed, while `creditRecovery=pending` requires reconciliation using the returned trace.
+Research Workspace batch runs are open access and credit reservation is a no-op. Each request remains capped at six papers by six columns and uses the separate `research_workspace_run` abuse limit. Check `/api/research-workspaces` for `429` or `503` responses when diagnosing rate or provider failures. Legacy credit restoration fields remain for backward compatibility when Open Access is deliberately disabled.
 
 Stripe webhook delivery is idempotent by `event.id`. For events with the same second-level `event.created`, the database uses subscription lifecycle rank and event ID as a deterministic tie-breaker under an account row lock. Inspect `civil_stripe_event_ledger` for `applied` or `stale` outcomes; repeated event IDs return `duplicate` without changing entitlement. Keep all Stripe variables absent on Vercel Hobby. Do not enable Checkout until the project is on a commercial hosting plan and this migration is verified in the target database.
 

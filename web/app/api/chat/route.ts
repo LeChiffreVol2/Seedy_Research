@@ -12,7 +12,7 @@ import type { UIMessage } from "ai";
 import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 
-import { applyChatIdentityCookies, chatIdentityErrorResponse, resolveChatIdentity } from "@/lib/chat-auth";
+import { applyChatIdentityCookies, chatIdentityErrorResponse, featureAccessDeniedResponse, resolveChatIdentity } from "@/lib/chat-auth";
 import { assertGuestCookieConfigured } from "@/lib/chat-cookies";
 import { consumeChatQuota, ensureChatUser, getChatSessionForOwner, isValidSessionId, saveChatTrace } from "@/lib/chat-store";
 import { getBillingState, refundAnswerCredits, reserveAnswerCredits } from "@/lib/billing";
@@ -32,6 +32,7 @@ import {
   readBoundedJson,
   safeTraceId,
 } from "@/lib/server-guards";
+import { CIVILMCP_OPEN_ACCESS } from "@/lib/product-access";
 
 export const runtime = "nodejs";
 export const maxDuration = 60;
@@ -43,6 +44,8 @@ const DEEPSEEK_BASE_URL = (process.env.DEEPSEEK_BASE_URL ?? "https://api.deepsee
 
 const AGENTIC_CONTEXT_ENABLED = process.env.AGENTIC_CONTEXT_ENABLED !== "false";
 const SIMPLE_RAG_FALLBACK = process.env.SIMPLE_RAG_FALLBACK !== "false";
+const FAST_RETRIEVAL_ENABLED = process.env.FAST_RETRIEVAL_ENABLED !== "false";
+const LLM_ROUTER_ENABLED = process.env.LLM_ROUTER_ENABLED === "true";
 const ROUTER_MODEL = process.env.ROUTER_MODEL ?? DEFAULT_CHAT_MODEL;
 const ROUTER_PROVIDER = normalizeRouterProvider(process.env.ROUTER_PROVIDER, ROUTER_MODEL);
 const MAX_AGENT_STEPS = clampNumber(process.env.MAX_AGENT_STEPS, 1, 5, 3);
@@ -75,6 +78,8 @@ const CHAT_AUTH_REQUESTS_PER_HOUR = clampEnvNumber(process.env.CHAT_AUTH_REQUEST
 const ANSWER_MAX_TOKENS = clampEnvNumber(process.env.ANSWER_MAX_TOKENS, 400, 4000, 1500);
 const ROUTER_TIMEOUT_MS = clampEnvNumber(process.env.ROUTER_TIMEOUT_MS, 1_000, 15_000, 6_000);
 const ANSWER_TIMEOUT_MS = clampEnvNumber(process.env.ANSWER_TIMEOUT_MS, 5_000, 50_000, 35_000);
+const MCP_TOOL_TIMEOUT_MS = clampEnvNumber(process.env.MCP_TOOL_TIMEOUT_MS, 5_000, 25_000, 18_000);
+const FAST_RETRIEVAL_MAX_RESULTS = clampEnvNumber(process.env.FAST_RETRIEVAL_MAX_RESULTS, 4, 8, 6);
 const OPENAI_ANSWER_MIN_TOKENS = 2400;
 
 type Intent = "simple_lookup" | "compare" | "summarize" | "methodology" | "citation_search";
@@ -984,7 +989,7 @@ async function generateRunningSummary(
       model: resolveRouterLanguageModel(routerProvider, routerModel),
       abortSignal: AbortSignal.timeout(ROUTER_TIMEOUT_MS),
       system:
-        "You compact long CivilMCP chat history into durable working memory. " +
+        "You compact long Seed Research chat history into durable working memory. " +
         "Keep user goals, decisions, unresolved questions, important paper/source references, and constraints. " +
         "Do not include raw chunks, filler, or hidden system details. Write concise Thai unless source text requires English.",
       prompt: [
@@ -1109,6 +1114,7 @@ async function callMcpToolPayload(name: string, args: Record<string, unknown>): 
     headers,
     body: JSON.stringify({ name, arguments: args }),
     cache: "no-store",
+    signal: AbortSignal.timeout(MCP_TOOL_TIMEOUT_MS),
   });
 
   if (!response.ok) {
@@ -1192,7 +1198,7 @@ async function callSimpleRagContext(
 ): Promise<BuiltContext> {
   try {
     const payload = await callMcpToolPayload("search_civil_knowledge", {
-      query: query || "civil engineering",
+      query: query || "Thai research",
       discipline: "",
       max_results: Math.min(5, MAX_CONTEXT_CHUNKS),
       collection,
@@ -1249,7 +1255,7 @@ function explicitDisciplineForQuestion(question: string): string {
 function contextPlanForIntent(question: string, intent: Intent, reason: string): ContextPlan {
   return {
     intent,
-    searchQuery: question || "civil engineering",
+    searchQuery: question || "Thai research",
     discipline: explicitDisciplineForQuestion(question),
     needsNeighbors: intent === "citation_search",
     reason,
@@ -1347,6 +1353,14 @@ async function planContext(
     };
   }
 
+  if (!LLM_ROUTER_ENABLED) {
+    return {
+      plan: heuristicPlan(question),
+      source: "heuristic_fallback",
+      latencyMs: roundLatencyMs(performance.now() - started),
+    };
+  }
+
   if (routerProvider === "deepseek") {
     const plan = await planContextWithDeepSeek(question, routerModel);
     return {
@@ -1362,7 +1376,7 @@ async function planContext(
       abortSignal: AbortSignal.timeout(ROUTER_TIMEOUT_MS),
       schema: RouterPlanSchema,
       prompt:
-        "Classify a Civil Engineering paper QA request into a bounded retrieval plan. " +
+        "Classify a research-paper QA request over a Thai-first evidence corpus into a bounded retrieval plan. " +
         ROUTER_RULES +
         "Prefer cheap retrieval. Use discipline only when the user explicitly gives one. " +
         "Return a concise searchQuery optimized for semantic retrieval.\n\n" +
@@ -1402,13 +1416,13 @@ async function planContextWithDeepSeek(question: string, routerModel: string): P
           {
             role: "system",
             content:
-              "You are a bounded retrieval router for CivilMCP. Return json only. " +
+              "You are a bounded retrieval router for Seed Research. Return json only. " +
               ROUTER_RULES +
               "Use this exact JSON shape: " +
               "{\"intent\":\"simple_lookup|compare|summarize|methodology|citation_search\"," +
               "\"searchQuery\":\"semantic query\",\"discipline\":\"\",\"needsNeighbors\":false," +
               "\"reason\":\"short reason\"}. " +
-              "Use discipline only if the user explicitly names one of the supported civil-engineering disciplines.",
+              "Use discipline only if the user explicitly names one of the supported discipline labels.",
           },
           {
             role: "user",
@@ -1878,7 +1892,7 @@ function buildAnswerSystemPrompt(
         ]
       : [];
   return [
-    "You are CivilMCP, a production-grade Agentic Context Engine for Civil Engineering papers.",
+    "You are Seed Research by SEEDY, a production-grade evidence engine for research papers.",
     "Answer in Thai unless the user explicitly asks otherwise.",
     "Use only the provided evidence packets when MCP context is available. Do not invent paper details.",
     "Never expose raw chunks, OCR noise, similarity scores, tool calls, context stats, or hidden routing notes.",
@@ -2014,7 +2028,7 @@ function fallbackMissionCore(question: string, builtContext: BuiltContext): Miss
   const hasCoverage = evidence.length >= 2;
   const fallbackIds = firstEvidenceId ? [firstEvidenceId] : [];
   return {
-    title: `Evidence mission: ${cleanEvidenceText(question, 88) || "Civil engineering research"}`,
+    title: `Evidence mission: ${cleanEvidenceText(question, 88) || "Thai research evidence"}`,
     executiveSummary: evidence.length
       ? `หลักฐานที่ค้นได้ให้จุดเริ่มต้นสำหรับคำถามนี้ แต่ควรตรวจบริบทและข้อจำกัดของแต่ละ paper ก่อนนำไปใช้${firstEvidenceId ? ` [${firstEvidenceId}]` : ""}`
       : "หลักฐานในคลังยังไม่พอสำหรับสร้าง evidence mission ที่ตรวจสอบได้",
@@ -2078,7 +2092,7 @@ function fallbackAutomationProgram(
     objective: `Execute a bounded, auditable research program for: ${cleanEvidenceText(question, 260)}`,
     subquestions: [
       "What does the strongest available evidence directly support?",
-      "How do methods, samples, and engineering contexts differ across the selected papers?",
+      "How do methods, samples, and research contexts differ across the selected papers?",
       "Where do findings agree, conflict, or remain insufficient?",
       "What is the smallest defensible next study or validation?",
     ],
@@ -2279,7 +2293,7 @@ async function generateMissionArtifact(
       abortSignal: AbortSignal.timeout(ANSWER_TIMEOUT_MS),
       schema: MissionArtifactSchema,
       system: [
-        "You are CivilMCP's bounded Evidence Mission synthesizer.",
+        "You are Seed Research by SEEDY, a bounded Evidence Mission synthesizer.",
         "Use only the supplied evidence packets for factual claims. Never invent a paper, page, method, result, or E-number.",
         "Write Thai unless the user explicitly requested another language.",
         "Distinguish finding from interpretation. Use 'insufficient' when coverage is too weak.",
@@ -2343,7 +2357,7 @@ function buildMissionMarkdown(artifact: MissionArtifact): string {
     "",
     `**Evidence verdict — ${missionVerdictLabel(artifact.verdict.status)}:** ${rationale}`,
     "",
-    "CivilMCP วางแผน ค้น เปรียบเทียบ และตรวจ page provenance ภายใต้งบ tool/step ที่จำกัดแล้ว โครงสร้างหลักฐาน, Thailand → World bridge และ learning checkpoints อยู่ใน Evidence Brief ด้านล่าง",
+    "Seed Research วางแผน ค้น เปรียบเทียบ และตรวจ page provenance ภายใต้งบ tool/step ที่จำกัดแล้ว โครงสร้างหลักฐาน, Thailand → World bridge และ learning checkpoints อยู่ใน Evidence Brief ด้านล่าง",
   ].join("\n");
 }
 
@@ -2441,7 +2455,7 @@ function buildContextText(
   );
 
   const rawContext = [
-    "CivilMCP Agentic Context Engine",
+    "SEEDY Seed Research",
     `Intent: ${plan.intent}`,
     `Search query: ${plan.searchQuery}`,
     `Collection filter: ${collection || "all"}`,
@@ -2630,51 +2644,75 @@ async function buildAgenticContext(
   }
 
   if (exactPaperMatches === 0) {
-    const sectionsPayload = await callTool("search_civil_sections", {
-      query: queryByIntent,
-      discipline: plan.discipline,
-      max_results: sectionTopKByIntent[plan.intent],
-      collection,
-    });
-    sections = [...sections, ...getStructuredResults<SectionResult>(sectionsPayload)];
-    const sectionIds = uniqueStrings(
-      [anchorEvidence?.sectionId, ...sections.map((section) => section.id)].filter(Boolean),
-      24,
-    );
-    const documentIds = explicitAnchor ? uniqueStrings([anchorEvidence?.documentId], 4) : [];
-
-    // Section fallback results already carry exact page provenance. Avoid a
-    // second broad lexical scan while semantic retrieval is unavailable.
-    const shouldFetchChunks =
-      !retrieval.degraded &&
-      (plan.intent !== "summarize" || sections.length < 5 || Number(sections[0]?.similarity ?? 0) < 0.2);
-
-    if (shouldFetchChunks && toolCalls < Math.min(MAX_TOOL_CALLS, MAX_AGENT_STEPS)) {
-      const chunkTopKByIntent: Record<Intent, number> = {
-        simple_lookup: MCP_CHUNK_CANDIDATE_LIMIT,
-        compare: MCP_CHUNK_CANDIDATE_LIMIT,
-        summarize: 12,
-        methodology: MCP_CHUNK_CANDIDATE_LIMIT,
-        citation_search: MCP_CHUNK_CANDIDATE_LIMIT,
-      };
-      const chunksPayload = await callTool("search_civil_chunks", {
+    if (FAST_RETRIEVAL_ENABLED) {
+      try {
+        const knowledgePayload = await callTool("search_civil_knowledge", {
+          query: queryByIntent,
+          discipline: plan.discipline,
+          max_results: Math.min(FAST_RETRIEVAL_MAX_RESULTS, MAX_CONTEXT_CHUNKS),
+          collection,
+        });
+        chunks = [...chunks, ...getStructuredResults<ChunkResult>(knowledgePayload)];
+      } catch {
+        // One bounded, page-linked fallback keeps the request useful without
+        // repeating the same combined semantic search under provider pressure.
+        if (toolCalls < Math.min(MAX_TOOL_CALLS, MAX_AGENT_STEPS)) {
+          const sectionsPayload = await callTool("search_civil_sections", {
+            query: queryByIntent,
+            discipline: plan.discipline,
+            max_results: Math.min(sectionTopKByIntent[plan.intent], 8),
+            collection,
+          });
+          sections = [...sections, ...getStructuredResults<SectionResult>(sectionsPayload)];
+        }
+      }
+    } else {
+      const sectionsPayload = await callTool("search_civil_sections", {
         query: queryByIntent,
         discipline: plan.discipline,
-        max_results: chunkTopKByIntent[plan.intent],
-        section_ids: sectionIds.length ? sectionIds : undefined,
-        document_ids: documentIds.length ? documentIds : undefined,
+        max_results: sectionTopKByIntent[plan.intent],
         collection,
       });
-      chunks = [...chunks, ...getStructuredResults<ChunkResult>(chunksPayload)];
+      sections = [...sections, ...getStructuredResults<SectionResult>(sectionsPayload)];
+      const sectionIds = uniqueStrings(
+        [anchorEvidence?.sectionId, ...sections.map((section) => section.id)].filter(Boolean),
+        24,
+      );
+      const documentIds = explicitAnchor ? uniqueStrings([anchorEvidence?.documentId], 4) : [];
 
-      if (chunks.length === 0 && plan.intent !== "summarize" && toolCalls < Math.min(MAX_TOOL_CALLS, MAX_AGENT_STEPS)) {
-        const fallbackChunksPayload = await callTool("search_civil_chunks", {
+      // Section fallback results already carry exact page provenance. Avoid a
+      // second broad lexical scan while semantic retrieval is unavailable.
+      const shouldFetchChunks =
+        !retrieval.degraded &&
+        (plan.intent !== "summarize" || sections.length < 5 || Number(sections[0]?.similarity ?? 0) < 0.2);
+
+      if (shouldFetchChunks && toolCalls < Math.min(MAX_TOOL_CALLS, MAX_AGENT_STEPS)) {
+        const chunkTopKByIntent: Record<Intent, number> = {
+          simple_lookup: MCP_CHUNK_CANDIDATE_LIMIT,
+          compare: MCP_CHUNK_CANDIDATE_LIMIT,
+          summarize: 12,
+          methodology: MCP_CHUNK_CANDIDATE_LIMIT,
+          citation_search: MCP_CHUNK_CANDIDATE_LIMIT,
+        };
+        const chunksPayload = await callTool("search_civil_chunks", {
           query: queryByIntent,
           discipline: plan.discipline,
           max_results: chunkTopKByIntent[plan.intent],
+          section_ids: sectionIds.length ? sectionIds : undefined,
+          document_ids: documentIds.length ? documentIds : undefined,
           collection,
         });
-        chunks = getStructuredResults<ChunkResult>(fallbackChunksPayload);
+        chunks = [...chunks, ...getStructuredResults<ChunkResult>(chunksPayload)];
+
+        if (chunks.length === 0 && plan.intent !== "summarize" && toolCalls < Math.min(MAX_TOOL_CALLS, MAX_AGENT_STEPS)) {
+          const fallbackChunksPayload = await callTool("search_civil_chunks", {
+            query: queryByIntent,
+            discipline: plan.discipline,
+            max_results: chunkTopKByIntent[plan.intent],
+            collection,
+          });
+          chunks = getStructuredResults<ChunkResult>(fallbackChunksPayload);
+        }
       }
     }
   }
@@ -2713,10 +2751,10 @@ async function buildMcpContext(
   }
 
   try {
-    return await buildAgenticContext(question || "civil engineering", routerProvider, routerModel, collection, anchor);
+    return await buildAgenticContext(question || "Thai research", routerProvider, routerModel, collection, anchor);
   } catch (error) {
-    if (!SIMPLE_RAG_FALLBACK) throw error;
-    const fallback = await callSimpleRagContext(question || "civil engineering", routerProvider, routerModel, collection);
+    if (!SIMPLE_RAG_FALLBACK || FAST_RETRIEVAL_ENABLED) throw error;
+    const fallback = await callSimpleRagContext(question || "Thai research", routerProvider, routerModel, collection);
     const message = error instanceof Error ? error.message : String(error);
     return {
       ...fallback,
@@ -2772,6 +2810,8 @@ export async function POST(request: NextRequest) {
     });
     return applyChatIdentityCookies(nextResponse, identity, applyAuthCookies);
   };
+  const accessDenied = featureAccessDeniedResponse("chat", identity, applyAuthCookies);
+  if (accessDenied) return accessDenied;
 
   let rate: Awaited<ReturnType<typeof consumeChatQuota>>;
   try {
@@ -2839,7 +2879,7 @@ export async function POST(request: NextRequest) {
     );
   }
 
-  if (experience === "research" || experience === "automated") {
+  if (!CIVILMCP_OPEN_ACCESS && (experience === "research" || experience === "automated")) {
     const proExperience = experience === "automated" ? "Automated Research" : "Deep Research";
     if (!identity.isAuthenticated) {
       return finalizeResponse(Response.json(
@@ -2944,8 +2984,8 @@ export async function POST(request: NextRequest) {
 
   if (mode === "baseline") {
     const system =
-      "You are a Civil Engineering assistant. " +
-      "Answer from general engineering knowledge. " +
+      "You are a Thai research assistant. " +
+      "Answer from general research knowledge. " +
       "Be explicit when uncertain." +
       (memoryBlock ? `\n\n${memoryBlock}` : "");
 
@@ -3270,7 +3310,7 @@ export async function POST(request: NextRequest) {
           }),
         );
       },
-      onError: () => "CivilMCP could not publish the Evidence Brief.",
+      onError: () => "Seed Research could not publish the Evidence Brief.",
     });
     return finalizeResponse(response);
   }
@@ -3411,7 +3451,7 @@ export async function POST(request: NextRequest) {
     console.error("civilmcp_chat_generation_failed", error instanceof Error ? error.message : String(error));
     return finalizeResponse(Response.json(
       {
-        error: `CivilMCP could not generate this answer. ${creditRecoveryMessage(creditsRestored)}`,
+        error: `Seed Research could not generate this answer. ${creditRecoveryMessage(creditsRestored)}`,
         traceId,
         creditRecovery: creditRecoveryState(creditsRestored),
       },

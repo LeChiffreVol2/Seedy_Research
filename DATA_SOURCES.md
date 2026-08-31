@@ -9,14 +9,21 @@ CivilMCP indexes 1,297 documents from two locally curated collections:
 | Student Transport Projects (`ce_project`) | Publicly available student transport research PDFs, 2019–2024 | 67 papers |
 | NCCE | Proceedings for NCCE25, NCCE26, NCCE29, and NCCE31 | 1,230 papers |
 
-NCCE31 contributes 356 papers after its dry-run, duplicate-code, title,
-discipline, page, embedding, and strict data-quality gates passed on 24 July
-2026.
+NCCE31 entered production as 356 papers after the then-current dry-run,
+duplicate-code, title, discipline, page, embedding, and data-quality checks
+completed on 24 July 2026. A later stricter corpus audit found three reused
+footer codes that had merged
+non-contiguous papers and one duplicated proceedings item. The repaired local
+extraction contains 359 NCCE31 markdown paper files and 358 index-eligible
+papers after a
+versioned, index-enforced duplicate exclusion. Production still reports the
+1,297-paper baseline until the bounded embedding refresh and exact cleanup are
+explicitly approved.
 
-The public corpus proof counts 11,523 active, page-linked sections and 68,614
-page-linked evidence chunks. The underlying index contains 69,687 active chunk
-rows; 1,073 legacy/non-page-linked rows are intentionally excluded from the
-headline metric.
+The public corpus proof counts 11,523 active, page-linked sections. The
+underlying index contains 69,687 active chunk rows, including 1,064 rows without
+page ranges and nine paged rows beyond document-declared chunk counts. Those
+rows are not described as exact-page passages in judge-facing copy.
 
 ## Rights policy
 
@@ -33,30 +40,40 @@ the OpenAI Embeddings Batch API. Only extracted text and stable internal
 identifiers are sent for embedding; raw PDFs are not uploaded by the indexer.
 This processing authorization does not grant redistribution rights or change
 the source copyright status. G02 and all 356 NCCE31 papers passed the production
-index and strict data-quality gates on the same date. Two completed NCCE31
+index and the then-current data-quality checks on the same date. The later
+boundary and duplicate audit described above supersedes that historical gate
+result. Two completed NCCE31
 Batch parts were reused; after a later Batch part stalled twice at zero
 completed requests, the remaining text was processed through the same OpenAI
 embeddings model using the indexer's bounded synchronous fallback.
 
-## TCI / ThaiJO boundary
+## ThaiJO / TCI boundary
 
 CivilMCP uses the official ThaiJO OAI-PMH service for bounded metadata
-harvesting. New TCI records enter `civil_source_catalog` as
+harvesting. The deployed `tci_thaijo` provider ID is a legacy compatibility
+name for **ThaiJO-hosted** records; it is not a claim that the records came from
+the separate TCI citation index. Future TCI records enter through the distinct
+`tci_citation` provider after an official export or partnership and remain
 `metadata_only_unverified`; the harvester does not download PDFs. An article is
 eligible for the page-linked evidence index only after its article/journal
 license or written permission is verified, a stable source URL is retained, and
 full text passes page-provenance and OCR quality gates.
 
-As of 20 August 2026, 11 reviewed civil-engineering and
-multidisciplinary-engineering sets contribute 2,380 active metadata-only
-records: 991 geotechnical, 91 structural/concrete, 177 surveying/GIS, and 1,121
-general engineering. The catalog stores publisher links for all 2,380 and DOI
-values for 818. Another 38 provider-deleted headers remain only as removed
-audit tombstones. A versioned, default-deny rights manifest records each allowed
-operation separately;
+As of 31 August 2026, 16 contributing OAI set specs across the official `ph01`
+and `sc01` endpoint families contribute 2,578 active metadata-only records. The
+catalog stores publisher links for all 2,578 and DOI values for 833. The bounded
+`sc01` pilot added 198 net-new active records after collapsing one repeated OAI
+identifier and excluding six whole-issue containers from the paper count.
+Another 44 provider-deleted headers remain only as removed audit tombstones:
+38 from `ph01` and six added by the `sc01` pilot. A
+versioned, default-deny rights manifest records each allowed operation separately;
 provider-supplied license strings are retained as provenance but do not
 automatically authorize embedding, summarization, translation, redistribution,
 commercial use, or model training.
+
+These are ThaiJO-hosted records, not a complete TCI corpus and not a claim that every work is Thai-language,
+Thai-authored, or affiliated with a Thai institution. Endpoint-family labels
+are broad routing provenance until journal-level classification is reviewed.
 
 ThaiJO OAI deleted-record headers are also retained. They become non-citable
 catalog tombstones with the provider identifier, deletion datestamp, endpoint,

@@ -8,6 +8,7 @@ import LiquidGlass from "liquid-glass-react";
 import type { LucideIcon } from "lucide-react";
 import {
   ArrowUp,
+  ArrowRight,
   Bell,
   Bookmark,
   Building2,
@@ -31,7 +32,8 @@ import {
   KeyRound,
   Languages,
   Layers3,
-  LockKeyhole,
+  LoaderCircle,
+  LogIn,
   LogOut,
   Mail,
   MessageCircle,
@@ -48,7 +50,9 @@ import {
   TriangleAlert,
   RefreshCw,
   Route,
+  Save,
   Trash2,
+  UserPlus,
   X,
 } from "lucide-react";
 import ReactMarkdown from "react-markdown";
@@ -57,29 +61,36 @@ import remarkGfm from "remark-gfm";
 import {
   CHAT_MODELS,
   DEFAULT_CHAT_MODEL,
-  chatModelRequiresPro,
   isChatModel,
   type ChatModel,
 } from "@/lib/chat-models";
+import { CIVILMCP_FEATURE_ACCESS, CIVILMCP_OPEN_ACCESS, CIVILMCP_OPEN_ACCESS_LABEL, type CivilMcpFeature } from "@/lib/product-access";
 import { ResearchWorkspacePanel, type ResearchWorkspacePaper } from "@/components/research-workspace";
 import { GlassMenuSelect, type GlassMenuOption } from "@/components/glass-menu-select";
+import {
+  registerSeedResearchWebMcpTools,
+  type SeedResearchWebMcpHandlers,
+  type WebMcpGapLens,
+} from "@/lib/webmcp";
 
 type Mode = "baseline" | "mcp";
 type ChatExperience = "answer" | "mission" | "learn" | "research" | "automated";
 type CollectionFilter = "" | "ce_project" | "ncce";
 type SyncState = "loading" | "saving" | "saved" | "error";
 type OpenDropdown = "experience" | "model" | "collection" | "actions" | "examples" | null;
-type FeedFilter = "hot" | "for_you" | "recent" | "evidence" | "saved" | "tci" | "ncce" | "ce_project";
+type FeedFilter = "hot" | "for_you" | "recent" | "evidence" | "saved" | "thai" | "tci" | "ncce" | "ce_project";
 type MobileNavItem = "explore" | "workspace" | "path" | "chat" | "history" | "shared" | "settings";
 type FeedStatus = "loading" | "ready" | "error";
 type SessionsStatus = "idle" | "loading" | "ready" | "error";
 type AuthMode = "signin" | "signup" | "forgot-password" | "recovery";
 type PaperLanguage = "th" | "en";
+type WebMcpStatus = "checking" | "ready" | "unsupported" | "error";
 type ProductEvent =
   | "explore_search" | "paper_open" | "evidence_open" | "paper_save"
   | "research_path_created" | "path_stage_completed"
   | "workspace_started" | "workspace_run_completed"
   | "session_export" | "evidence_export" | "review_exported"
+  | "checkpoint_answered" | "checkpoint_mastered" | "path_adapted"
   | "first_answer" | "onboarding_completed" | "user_returned" | "upgrade_intent" | "verified_research_outcome";
 type ActivationStep = "search" | "verify" | "outcome";
 
@@ -239,6 +250,7 @@ type BillingState = {
   creditsRemaining: number | null;
   resetAt: string | null;
   premiumModels: boolean;
+  openAccess: boolean;
   billingConfigured: boolean;
   priceThb: number;
   hasStripeCustomer: boolean;
@@ -264,6 +276,8 @@ type ResearchCardData = {
   proceedingNo?: number | null;
   proceedingYear?: number | null;
   discipline?: string | null;
+  language?: string | null;
+  publishedAt?: string | null;
   title: string;
   date: string;
   sourceLabel: string;
@@ -286,6 +300,8 @@ type ResearchCardData = {
   doi?: string | null;
   rightsStatus?: string | null;
   accessLevel?: string | null;
+  licenseExpression?: string | null;
+  licenseUrl?: string | null;
   discoveryLayer?: "evidence" | "thai_discovery";
 };
 
@@ -375,6 +391,8 @@ type PaperDetailData = {
     pageStart?: number | null;
     pageEnd?: number | null;
     snippet: string;
+    readerPageNumber?: number | null;
+    readerAnchor?: string | null;
   }>;
   counts: {
     sections: number;
@@ -382,6 +400,71 @@ type PaperDetailData = {
   };
   related?: ResearchCardData[];
   generatedAt?: string;
+  readerAccess?: PaperReaderAccessSummary | null;
+};
+
+type PaperReaderAccessMode = "native_verified" | "source_hosted" | "restricted" | "metadata_only" | "unavailable";
+
+type PaperReaderAccessSummary = {
+  mode: PaperReaderAccessMode;
+  statusLabel: string;
+  pageReadableInSeedResearch: boolean;
+  pageAnchor: string | null;
+  readerUrl: string | null;
+  sourceUrl: string | null;
+};
+
+type PaperReaderAccessPayload = {
+  access?: {
+    mode?: unknown;
+    statusLabel?: unknown;
+    sourceUrl?: unknown;
+  } | null;
+  pages?: Array<{
+    pageNumber?: unknown;
+    anchor?: unknown;
+  }> | null;
+};
+
+type ResearchPassportEvidence = PaperDetailData["evidence"][number] & {
+  englishSnippet: string | null;
+};
+
+type WebMcpActivity = {
+  tool: string;
+  detail: string;
+  completedAt: string;
+};
+
+type ResearchPassportArtifact = {
+  version: "seed-research-passport-v1";
+  passportId: string;
+  createdAt: string;
+  reviewedAt: string | null;
+  stale: boolean;
+  openedEvidenceIds: string[];
+  runSteps: WebMcpActivity[];
+  translationStatus: "ready" | "not_needed" | "unavailable";
+  focus: string;
+  gapLens: WebMcpGapLens;
+  paper: ResearchCardData;
+  evidence: ResearchPassportEvidence[];
+  globalStatus: GlobalDiscoveryStatus;
+  globalSearchUrl: string;
+  globalWorks: GlobalDiscoveryWork[];
+  candidateGap: {
+    statement: string;
+    missingValidation: string;
+    nextVerificationQuery: string;
+    localBasisEvidenceIds: string[];
+    relationValidated: false;
+  };
+};
+
+type ResearchPassportState = {
+  phase: "idle" | "loading" | "ready" | "error";
+  artifact: ResearchPassportArtifact | null;
+  error: string;
 };
 
 type PaperWorkspaceItem = {
@@ -439,6 +522,14 @@ type ResearchPath = {
   outcome: PathOutcome;
   sourceCodes: string[];
   adaptedFromGaps?: string[];
+  coverage?: {
+    status: "strong" | "limited";
+    paperCount: number;
+    message: string;
+  };
+  planningMode?: "model" | "retrieval_fallback";
+  model?: "gpt-5.6-luna" | null;
+  timings?: { totalMs: number };
   generatedAt: string;
   stages: Array<{
     id: string;
@@ -471,6 +562,25 @@ type ResearchPath = {
       url: string;
     }>;
   };
+};
+
+type ResearchPathCheckpointStatus = "needs_review" | "partial" | "understood";
+
+type ResearchPathCheckpointAssessment = {
+  version: "civilmcp-checkpoint-assessment-v1";
+  stageId: string;
+  status: ResearchPathCheckpointStatus;
+  score: number;
+  gradeAvailable?: boolean;
+  assessmentMode?: "model" | "evidence_fallback";
+  feedback: string;
+  strengths: string[];
+  gaps: string[];
+  nextStep: string;
+  evidence: CivilEvidenceItem[];
+  model: "gpt-5.6-luna";
+  assessedAt: string;
+  timings?: { totalMs: number };
 };
 
 type NavItem = {
@@ -512,10 +622,15 @@ const PROMPT_STARTERS: Array<{ id: string; label: string; description: string; p
 
 const EXPERIENCE_OPTIONS: Array<MenuOption<ChatExperience>> = [
   {
+    value: "answer",
+    label: "Quick Answer",
+    description: "Stream a direct answer with page citations",
+    badge: "Recommended",
+  },
+  {
     value: "mission",
     label: "Evidence Review",
     description: "Find, compare, and verify evidence across papers",
-    badge: "Recommended",
   },
   {
     value: "learn",
@@ -526,9 +641,14 @@ const EXPERIENCE_OPTIONS: Array<MenuOption<ChatExperience>> = [
     value: "research",
     label: "Deep Research",
     description: "Compare methods, conflicts, limitations, and gaps across papers",
-    badge: "Pro",
+    badge: "OpenAI",
   },
-  { value: "answer", label: "Quick Answer", description: "Answer directly with page citations" },
+  {
+    value: "automated",
+    label: "Automated Research",
+    description: "Decompose a goal into a bounded, auditable evidence program",
+    badge: "Agent",
+  },
 ];
 
 const COLLECTION_OPTIONS: Array<MenuOption<CollectionFilter>> = [
@@ -543,22 +663,28 @@ const FILTER_OPTIONS: Array<{ id: FeedFilter; label: string; icon: LucideIcon }>
   { id: "evidence", label: "Evidence", icon: FileText },
   { id: "saved", label: "Saved", icon: Bookmark },
   { id: "for_you", label: "For you", icon: Sparkles },
-  { id: "tci", label: "Thai journals", icon: Database },
+  { id: "thai", label: "Thai discovery", icon: Database },
   { id: "ncce", label: "NCCE", icon: Building2 },
   { id: "ce_project", label: "Student Transport", icon: Layers3 },
 ];
 
-const MAIN_NAV_ITEMS: NavItem[] = [
+const MAIN_NAV_ITEMS: NavItem[] = ([
+  { id: "path", label: "Research Path", icon: Route },
   { id: "explore", label: "Explore", icon: Compass },
   { id: "chat", label: "Chat", icon: MessageCircle },
   { id: "workspace", label: "Workspace", icon: TableProperties },
-  { id: "path", label: "Research Path", icon: Route },
   { id: "history", label: "History", icon: History },
   { id: "shared", label: "Share & export", icon: Share2 },
   { id: "settings", label: "Settings", icon: Settings },
-];
+] satisfies NavItem[]).filter((item) => CIVILMCP_FEATURE_ACCESS[item.id].enabled);
 
 const MOBILE_NAV_ITEMS = MAIN_NAV_ITEMS.filter((item) => item.id !== "shared");
+const AUTH_RETURN_FEATURE_KEY = "seedy-auth-return-feature-v1";
+const DEFAULT_AUTHENTICATED_FEATURE: MobileNavItem = CIVILMCP_FEATURE_ACCESS.path.enabled ? "path" : MAIN_NAV_ITEMS.find((item) => item.id !== "settings")?.id ?? "settings";
+
+function isMobileNavItem(value: string | null | undefined): value is MobileNavItem {
+  return Boolean(value && MAIN_NAV_ITEMS.some((item) => item.id === value));
+}
 
 const ACTION_LABELS = {
   share: "Copy share link",
@@ -570,12 +696,20 @@ const ACTION_LABELS = {
 const THAI_TEXT_PATTERN = /[\u0E00-\u0E7F]/;
 const TRANSLATION_CACHE_KEY = "civilmcp-paper-translations-v1";
 const PAPER_LANGUAGE_KEY = "civilmcp-paper-language-v1";
-const RESEARCH_PATH_KEY = "civilmcp-research-path-v2";
+const RESEARCH_PATH_KEY = "civilmcp-research-path-v3";
+const RESEARCH_PATH_DEMO_GOAL = "Urban road safety";
+const RESEARCH_PATH_DEMO_LEVEL: PathLevel = "foundation";
+const RESEARCH_PATH_DEMO_OUTCOME: PathOutcome = "study_plan";
 const ACTIVATION_KEY = "civilmcp-activation-v1";
 const TRANSLATION_CACHE_TTL_MS = 7 * 24 * 60 * 60 * 1_000;
 const TRANSLATION_CACHE_MAX_PAPERS = 30;
 const TRANSLATION_BATCH_MAX_SEGMENTS = 48;
 const TRANSLATION_BATCH_MAX_CHARS = 14_000;
+
+function researchPathStorageKey(userId: string): string {
+  return `${RESEARCH_PATH_KEY}:${userId}`;
+}
+
 const GUEST_BILLING_STATE: BillingState = {
   plan: "guest",
   status: "active",
@@ -583,9 +717,10 @@ const GUEST_BILLING_STATE: BillingState = {
   creditsUsed: null,
   creditsRemaining: null,
   resetAt: null,
-  premiumModels: false,
+  premiumModels: true,
+  openAccess: true,
   billingConfigured: false,
-  priceThb: 299,
+  priceThb: 0,
   hasStripeCustomer: false,
 };
 
@@ -684,6 +819,157 @@ function pageLabel(item: CivilEvidenceItem): string {
   return item.pageStart === item.pageEnd ? `p.${item.pageStart}` : `p.${item.pageStart}-${item.pageEnd}`;
 }
 
+function boundedToolText(value: unknown, maximum: number): string {
+  return typeof value === "string" ? value.replace(/\s+/g, " ").trim().slice(0, maximum) : "";
+}
+
+function safeReaderSourceUrl(value: unknown): string | null {
+  if (typeof value !== "string") return null;
+  try {
+    const url = new URL(value);
+    return (url.protocol === "https:" || url.protocol === "http:") && !url.username && !url.password
+      ? url.toString()
+      : null;
+  } catch {
+    return null;
+  }
+}
+
+function safeReaderAnchor(value: unknown): string | null {
+  if (typeof value !== "string") return null;
+  const anchor = value
+    .replace(/^#/, "")
+    .trim()
+    .replace(/[^a-zA-Z0-9_-]+/g, "-")
+    .replace(/^-+|-+$/g, "")
+    .slice(0, 240);
+  return anchor || null;
+}
+
+function summarizePaperReaderAccess(
+  payload: PaperReaderAccessPayload | null,
+  source: string,
+  expectedPageNumber?: number | null,
+): PaperReaderAccessSummary | null {
+  const rawMode = boundedToolText(payload?.access?.mode, 40);
+  const mode: PaperReaderAccessMode | null = (
+    ["native_verified", "source_hosted", "restricted", "metadata_only", "unavailable"] as const
+  ).find((candidate) => candidate === rawMode) ?? null;
+  if (!mode) return null;
+  const page = (payload?.pages ?? []).find((candidate) => (
+    expectedPageNumber == null || candidate.pageNumber === expectedPageNumber
+  ));
+  const pageAnchor = mode === "native_verified" && Number.isInteger(page?.pageNumber)
+    ? safeReaderAnchor(page?.anchor)
+    : null;
+  const sourceUrl = safeReaderSourceUrl(payload?.access?.sourceUrl);
+  const pageReadableInSeedResearch = mode === "native_verified" && pageAnchor != null;
+  const readerPath = `/papers/${encodeURIComponent(source)}`;
+  const readerUrl = pageReadableInSeedResearch
+    ? `${readerPath}#${pageAnchor}`
+    : mode === "source_hosted" || mode === "restricted"
+      ? sourceUrl
+      : null;
+  const fallbackLabel: Record<PaperReaderAccessMode, string> = {
+    native_verified: "Read in Seed Research",
+    source_hosted: "Open at official source",
+    restricted: "Institutional access required",
+    metadata_only: "Metadata only",
+    unavailable: "Full text unavailable",
+  };
+  return {
+    mode,
+    statusLabel: boundedToolText(payload?.access?.statusLabel, 120) || fallbackLabel[mode],
+    pageReadableInSeedResearch,
+    pageAnchor,
+    readerUrl,
+    sourceUrl,
+  };
+}
+
+function passportEvidencePage(item: PaperDetailData["evidence"][number]): string {
+  if (item.pageStart == null || item.pageEnd == null) return "Page unavailable";
+  return item.pageStart === item.pageEnd ? `p.${item.pageStart}` : `p.${item.pageStart}-${item.pageEnd}`;
+}
+
+function passportGapCopy(focus: string, gapLens: WebMcpGapLens) {
+  const validationByLens: Record<WebMcpGapLens, string> = {
+    method: "a comparable study design and measurement protocol",
+    context: "a different geographic, regulatory, or institutional context",
+    population: "a clearly defined population beyond the indexed Thai sample",
+    outcome: "the same outcome definition and observation window",
+    validation: "an independent replication or triangulation dataset",
+  };
+  const querySuffixByLens: Record<WebMcpGapLens, string> = {
+    method: "comparable method measurement protocol",
+    context: "cross-context comparative validation",
+    population: "population external validation",
+    outcome: "harmonized outcome comparative study",
+    validation: "independent replication triangulation",
+  };
+  const condition = validationByLens[gapLens];
+  return {
+    statement: `Question to test against the selected evidence: how should this focus be evaluated under ${condition}?`,
+    missingValidation: `Missing validation: ${condition}. Novelty and transferability have not been established.`,
+    nextVerificationQuery: boundedToolText(`${focus} ${querySuffixByLens[gapLens]}`, 220),
+  };
+}
+
+function passportGlobalStatusCopy(status: GlobalDiscoveryStatus, hasWorks: boolean): string {
+  if (status === "connected") return hasWorks ? "Bounded OpenAlex metadata returned" : "No matching OpenAlex records found";
+  if (status === "rate_limited") return "Global discovery not completed · rate limited";
+  if (status === "link_only") return "Global metadata API not connected · search link available";
+  if (status === "disabled") return "Global discovery disabled for this deployment";
+  return "Global layer not checked · provider unavailable";
+}
+
+function researchPassportMarkdown(artifact: ResearchPassportArtifact): string {
+  const lines = [
+    `# Thai → Global Research Passport — ${boundedToolText(artifact.paper.title, 180)}`,
+    "",
+    `- Passport: ${artifact.passportId}`,
+    `- Status: ${artifact.reviewedAt ? `Page anchors reviewed ${artifact.reviewedAt}; candidate inference unvalidated` : "Draft · exact-page review required"}`,
+    `- Focus: ${artifact.focus}`,
+    `- Thai source: ${artifact.paper.paperCode || artifact.paper.source}`,
+    `- Collection: ${artifact.paper.collection || "all"}`,
+    `- Page coverage: ${artifact.paper.pageLabel}`,
+    `- Opened page anchors: ${artifact.openedEvidenceIds.length}/${artifact.evidence.length}`,
+    `- English bridge: ${artifact.translationStatus === "ready" ? "bounded rendering included" : artifact.translationStatus === "not_needed" ? "source excerpts already English" : "unavailable; original source excerpts retained"}`,
+    "",
+    "## Page-reviewed Thai evidence",
+    "",
+    ...artifact.evidence.flatMap((item) => [
+      `### ${item.id} · ${passportEvidencePage(item)}`,
+      item.sectionTitle ? `Section: ${boundedToolText(item.sectionTitle, 100)}` : "",
+      `Source excerpt: ${boundedToolText(item.snippet, 360)}`,
+      item.englishSnippet ? `English rendering: ${boundedToolText(item.englishSnippet, 360)}` : "",
+      "",
+    ]),
+    "## Global discovery leads — metadata only",
+    "",
+    `Status: ${passportGlobalStatusCopy(artifact.globalStatus, artifact.globalWorks.length > 0)}`,
+    "",
+    ...(artifact.globalWorks.length
+      ? artifact.globalWorks.map((work) => `- ${boundedToolText(work.title, 180)}${work.year ? ` (${work.year})` : ""} — ${work.url}`)
+      : [`- No OpenAlex records were returned. Continue discovery: ${artifact.globalSearchUrl}`]),
+    "",
+    "## Candidate inference — human review required",
+    "",
+    artifact.candidateGap.statement,
+    "",
+    `Proposed local basis: ${artifact.candidateGap.localBasisEvidenceIds.join(", ")} · evidence relationship not validated`,
+    "",
+    artifact.candidateGap.missingValidation,
+    "",
+    `Next verification query: ${artifact.candidateGap.nextVerificationQuery}`,
+    "",
+    "## Evidence boundary",
+    "",
+    "Thai page-linked packets above may support claims after human review. OpenAlex records are discovery metadata only and were not used as evidence. This passport checks provenance boundaries, not scientific correctness or novelty.",
+  ];
+  return lines.join("\n");
+}
+
 type CitationAuditClaim = {
   text: string;
   evidenceIds: string[];
@@ -722,11 +1008,30 @@ function intentLabel(intent?: string | null): string {
 
 function disciplineLabel(discipline?: string | null): string {
   if (!discipline) return "No discipline restriction";
-  if (discipline === "unknown") return "General engineering";
+  const labels: Record<string, string> = {
+    unknown: "General research",
+    science: "Science",
+    life_sciences: "Life Sciences",
+    physical_sciences: "Physical Sciences",
+    health_sciences: "Health Sciences",
+    social_sciences: "Social Sciences",
+  };
+  if (labels[discipline]) return labels[discipline];
   return discipline
     .split("_")
     .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
     .join(" ");
+}
+
+function discoveryProviderLabel(provider?: string | null): string {
+  return {
+    tci_thaijo: "ThaiJO",
+    tci_citation: "TCI Citation Index",
+    tnrr: "TNRR",
+    thailis_tdc: "ThaiLIS / TDC",
+    thai_conference: "Thai Conferences",
+    thai_ir: "Thai Institutional Repositories",
+  }[provider ?? ""] ?? "Thai source";
 }
 
 function collectionLabel(collection?: string): string {
@@ -745,7 +1050,7 @@ function citationAuditMarkdown(
   const citedIds = citedEvidenceIds(markdown);
   const claims = citationAuditClaims(markdown);
   const lines = [
-    "# CivilMCP evidence audit",
+    "# Seed Research evidence audit",
     "",
     `- Question: ${question?.trim() || "Not available"}`,
     `- Interpreted query: ${annotation.searchQuery?.trim() || question?.trim() || "Not available"}`,
@@ -864,9 +1169,9 @@ function evidenceBriefMarkdown(annotation: CivilMissionAnnotation, evidenceItems
     "",
     ...(evidenceItems.length
       ? evidenceItems.map((item) => `- [${item.evidenceId}] ${item.source}${pageLabel(item) ? ` · ${pageLabel(item)}` : ""}${item.sectionTitle ? ` · ${item.sectionTitle}` : ""}`)
-      : ["- See the linked CivilMCP session for source packets and exact-page evidence."]),
+      : ["- See the linked Seed Research session for source packets and exact-page evidence."]),
     "",
-    "_For research use. Not engineering advice._",
+    "_For research use. Not professional advice._",
   ];
   return lines.join("\n");
 }
@@ -884,6 +1189,19 @@ function isResearchPath(value: unknown): value is ResearchPath {
   if (!value || typeof value !== "object") return false;
   const candidate = value as Partial<ResearchPath>;
   return candidate.version === "civilmcp-research-path-v2" && typeof candidate.goal === "string" && Array.isArray(candidate.stages);
+}
+
+function isResearchPathCheckpointAssessment(value: unknown): value is ResearchPathCheckpointAssessment {
+  if (!value || typeof value !== "object") return false;
+  const candidate = value as Partial<ResearchPathCheckpointAssessment>;
+  return candidate.version === "civilmcp-checkpoint-assessment-v1"
+    && typeof candidate.stageId === "string"
+    && (candidate.status === "needs_review" || candidate.status === "partial" || candidate.status === "understood")
+    && typeof candidate.score === "number"
+    && typeof candidate.feedback === "string"
+    && Array.isArray(candidate.strengths)
+    && Array.isArray(candidate.gaps)
+    && Array.isArray(candidate.evidence);
 }
 
 function looksLikeFileCode(value: string): boolean {
@@ -1498,7 +1816,7 @@ function CitationIntegrityPanel({
     const url = URL.createObjectURL(blob);
     const anchor = document.createElement("a");
     anchor.href = url;
-    anchor.download = `civilmcp-evidence-audit-${Date.now()}.md`;
+    anchor.download = `seed-research-evidence-audit-${Date.now()}.md`;
     anchor.click();
     URL.revokeObjectURL(url);
     trackProductEvent("evidence_export", { format: "citation_audit", traceId: annotation.traceId ?? "" });
@@ -1678,7 +1996,7 @@ function AgenticMissionCard({
       <div className="missionHeader">
         <div>
           <span className="missionEyebrow">
-            {isAutomatedResearch ? "Pro · Automated Research" : isDeepResearch ? "Pro · Deep Research" : "Evidence Review"}
+            {isAutomatedResearch ? "Open Access · Automated Research" : isDeepResearch ? "OpenAI · Deep Research" : "Evidence Review"}
           </span>
           <h3>{artifact.title}</h3>
         </div>
@@ -1840,7 +2158,7 @@ function MemoryNotice({ annotation }: { annotation: CivilMemoryAnnotation | null
       </summary>
       <div className="memoryDetails">
         <p>
-          CivilMCP summarizes older conversation context to preserve continuity while controlling context cost
+          Seed Research summarizes older conversation context to preserve continuity while controlling context cost
           {annotation.compactedMessageCount ? ` across ${annotation.compactedMessageCount} compacted messages` : ""}.
         </p>
         {annotation.runningSummary ? <p className="memorySummary">{annotation.runningSummary}</p> : null}
@@ -2044,44 +2362,6 @@ function trackProductEvent(
   }).catch(() => undefined);
 }
 
-function ActivationGuide({
-  steps,
-  onStart,
-  onDismiss,
-}: {
-  steps: ActivationStep[];
-  onStart: () => void;
-  onDismiss: () => void;
-}) {
-  const complete = steps.length === 3;
-  const items: Array<{ id: ActivationStep; label: string }> = [
-    { id: "search", label: "Find relevant Thai papers" },
-    { id: "verify", label: "Open exact-page evidence" },
-    { id: "outcome", label: "Save or export the result" },
-  ];
-  return (
-    <section className={`activationGuide ${complete ? "complete" : ""}`} aria-label="Getting started">
-      <div>
-        <span className="workspaceEyebrow">3-minute review</span>
-        <strong>{complete ? "First verified outcome complete" : "Turn a question into verified evidence"}</strong>
-        <small>{complete ? "Your library is ready for the next review." : `${steps.length}/3 steps complete`}</small>
-      </div>
-      <ol>
-        {items.map((item) => (
-          <li key={item.id} className={steps.includes(item.id) ? "complete" : ""}>
-            {steps.includes(item.id) ? <Check size={15} aria-hidden /> : <span>{items.indexOf(item) + 1}</span>}
-            {item.label}
-          </li>
-        ))}
-      </ol>
-      <div className="activationActions">
-        {!complete ? <button type="button" className="cardAction" onClick={onStart}><Search size={15} aria-hidden /> Start with road safety</button> : null}
-        <button type="button" className="activationDismiss" onClick={onDismiss}>{complete ? "Done" : "Hide"}</button>
-      </div>
-    </section>
-  );
-}
-
 function AppSidebar({
   syncState,
   syncLabel,
@@ -2096,34 +2376,37 @@ function AppSidebar({
   onNavigate: (item: MobileNavItem) => void;
 }) {
   return (
-    <aside className="appSidebar" aria-label="CivilMCP navigation">
+    <aside className="appSidebar" aria-label="SEEDY navigation">
       <div className="sidebarTop">
         <div className="sidebarBrand">
           <img className="brandMark" src="/civilmcp-logo.svg" alt="" aria-hidden="true" />
           <div>
             <div className="brandTitleRow">
-              <p className="brandName">CivilMCP</p>
+              <p className="brandName">SEEDY</p>
               <span className="brandBadge">Research Preview</span>
             </div>
-            <p className="brandSubline">Civil engineering evidence</p>
+            <p className="brandSubline">Seed Research</p>
           </div>
         </div>
 
         <nav className="sidebarNav" aria-label="Primary">
           {MAIN_NAV_ITEMS.map((item) => {
             const isAccountItem = item.id === "settings";
-            const Icon = isAccountItem ? (authenticated ? ShieldCheck : LockKeyhole) : item.icon;
+            const Icon = isAccountItem ? (authenticated ? ShieldCheck : LogIn) : item.icon;
             const label = isAccountItem ? (authenticated ? "Account" : "Sign in") : item.label;
+            const locked = !CIVILMCP_OPEN_ACCESS && !authenticated && CIVILMCP_FEATURE_ACCESS[item.id].requiresAuth;
             return (
               <button
                 key={item.id}
                 type="button"
-                className={`sidebarNavItem ${item.id === activeNav ? "selected" : ""}`}
+                className={`sidebarNavItem ${item.id === activeNav ? "selected" : ""} ${locked ? "locked" : ""}`}
                 aria-label={isAccountItem ? label : undefined}
                 aria-current={item.id === activeNav ? "page" : undefined}
                 onClick={() => onNavigate(item.id)}
               >
-                <Icon size={21} strokeWidth={2.1} aria-hidden />
+                <span className="navItemIcon">
+                  <Icon size={21} strokeWidth={2.1} aria-hidden />
+                </span>
                 <span>{label}</span>
               </button>
             );
@@ -2157,19 +2440,22 @@ function MobileBottomNav({
     <nav className="mobileBottomNav" aria-label="Mobile navigation">
       {MOBILE_NAV_ITEMS.map((item) => {
         const isAccountItem = item.id === "settings";
-        const Icon = isAccountItem ? (authenticated ? ShieldCheck : LockKeyhole) : item.icon;
+        const Icon = isAccountItem ? (authenticated ? ShieldCheck : LogIn) : item.icon;
         const label = isAccountItem ? (authenticated ? "Account" : "Sign in") : item.label;
         const selected = active === item.id;
+        const locked = !CIVILMCP_OPEN_ACCESS && !authenticated && CIVILMCP_FEATURE_ACCESS[item.id].requiresAuth;
         return (
           <button
             key={item.id}
             type="button"
-            className={selected ? "selected" : ""}
+            className={`${selected ? "selected" : ""} ${locked ? "locked" : ""}`}
             aria-current={selected ? "page" : undefined}
             aria-label={isAccountItem ? label : undefined}
             onClick={() => setActive(item.id)}
           >
-            <Icon size={19} strokeWidth={2.2} aria-hidden />
+            <span className="navItemIcon">
+              <Icon size={19} strokeWidth={2.2} aria-hidden />
+            </span>
             <span>{label}</span>
           </button>
         );
@@ -2237,7 +2523,7 @@ function SearchComposer({
         onChange={(event) => setDraft(event.target.value)}
         onKeyDown={onKeyDown}
         placeholder={activeNav === "explore" ? "Search papers or ask a question" : "Ask about the evidence"}
-        aria-label="Ask or search civil engineering papers"
+        aria-label="Ask or search Thai research papers"
         aria-describedby="composer-intent"
         rows={3}
       />
@@ -2297,7 +2583,7 @@ function SearchComposer({
           type="submit"
           className="sendButtonWrap"
           disabled={!isReady || isLoading || !draft.trim()}
-          aria-label={isLoading ? "CivilMCP is answering" : "Send message"}
+          aria-label={isLoading ? "Seed Research is answering" : "Send message"}
         >
           <ArrowUp size={22} strokeWidth={2.5} aria-hidden />
         </GlassButton>
@@ -2368,8 +2654,8 @@ function FilterBar({
             <span>
               {activeFilter === "saved"
                 ? `${savedCount.toLocaleString("en-US")} saved`
-                : activeFilter === "tci"
-                  ? `${(filterCounts.tci ?? 0).toLocaleString("en-US")} journal records`
+                : activeFilter === "thai" || activeFilter === "tci"
+                  ? `${(filterCounts.thai ?? filterCounts.tci ?? 0).toLocaleString("en-US")} discovery records`
                   : totalDocuments
                     ? `${totalDocuments.toLocaleString("en-US")} cited papers`
                     : "Live corpus"}
@@ -2377,7 +2663,7 @@ function FilterBar({
             <small>{activeFilter === "saved" ? syncText : `updated ${syncText}`}</small>
           </div>
           {activeFilter === "saved" ? (
-            <div className="refreshChipStatic" aria-label="Saved papers are kept in the CivilMCP library">
+            <div className="refreshChipStatic" aria-label="Saved papers are kept in the Seed Research library">
               <Bookmark className="chipIcon" aria-hidden />
               <span>Library synced</span>
             </div>
@@ -2418,8 +2704,8 @@ function DiscoveryTrustBar({
       <div className="discoveryTrustItem metadataTrust">
         <span className="discoveryTrustIcon" aria-hidden><Database size={16} strokeWidth={2.2} /></span>
         <span>
-          <strong>Thai journal discovery</strong>
-          <small>Metadata and publisher links only. Not used as answer evidence.</small>
+          <strong>Thai research discovery metadata</strong>
+          <small>Provider metadata and source links only. Not used as answer evidence.</small>
         </span>
         {metadataOnlyTotal ? <em>{metadataOnlyTotal.toLocaleString("en-US")}</em> : null}
       </div>
@@ -2527,6 +2813,187 @@ function GlobalDiscoveryPanel({
             Open OpenAlex <ExternalLink size={13} aria-hidden />
           </a>
         </div>
+      ) : null}
+    </section>
+  );
+}
+
+function ResearchPassportPanel({
+  enabled,
+  state,
+  onOpenEvidence,
+  onMarkReviewed,
+  onExport,
+  onClear,
+}: {
+  enabled: boolean;
+  state: ResearchPassportState;
+  onOpenEvidence: (item: ResearchPassportEvidence) => void;
+  onMarkReviewed: () => void;
+  onExport: () => void;
+  onClear: () => void;
+}) {
+  if (!enabled || state.phase === "idle") return null;
+  const artifact = state.artifact;
+  const exactPageCount = artifact?.evidence.filter((item) => item.pageStart != null && item.pageEnd != null).length ?? 0;
+  const reviewed = Boolean(artifact?.reviewedAt);
+  const allEvidenceOpened = artifact
+    ? artifact.evidence.length > 0 && artifact.evidence.every((item) => artifact.openedEvidenceIds.includes(item.id))
+    : false;
+
+  return (
+    <section className={`researchPassport ${state.phase}${artifact?.stale ? " stale" : ""}`} aria-label="Thai-to-global research passport">
+      <header className="passportHeader">
+        <div>
+          <span className="passportEyebrow"><GitFork size={15} strokeWidth={2.2} aria-hidden /> Research Passport · WebMCP run</span>
+          <h2>{artifact ? "Thai → Global Research Passport" : "Build a Thai → Global Research Passport"}</h2>
+          <p>{artifact
+            ? "A bounded evidence trail drafted on this page by your browser agent."
+            : "Open exact-page evidence, then ask your browser agent to connect the finding to global discovery without treating metadata as evidence."}</p>
+        </div>
+        <span className={`passportReviewStatus ${reviewed ? "reviewed" : "pending"}`}>
+          {artifact?.stale
+            ? "Out of date · redraft required"
+            : reviewed
+              ? "Page anchors reviewed · inference remains candidate"
+              : artifact
+                ? allEvidenceOpened ? "Ready for page-review acknowledgment" : `Open exact pages · ${artifact.openedEvidenceIds.length}/${artifact.evidence.length}`
+                : "5 site tools ready"}
+        </span>
+      </header>
+
+      {state.phase === "loading" ? (
+        <div className="passportLoading" role="status" aria-live="polite">
+          <LoaderCircle className="passportSpinner" size={18} aria-hidden />
+          <div><strong>Drafting the evidence boundary</strong><span>Validating Thai page anchors · searching bounded global metadata · framing one candidate gap</span></div>
+        </div>
+      ) : state.phase === "error" ? (
+        <div className="passportError" role="alert">
+          <TriangleAlert size={17} aria-hidden />
+          <span>{state.error || "The Research Passport could not be drafted."}</span>
+          <button type="button" onClick={onClear}>Reset</button>
+        </div>
+      ) : artifact ? (
+        <>
+          <div className="passportMeta" aria-label="Research Passport summary">
+            <span><strong>{artifact.passportId}</strong> passport</span>
+            <span><strong>{artifact.evidence.length}</strong> Thai anchors</span>
+            <span><strong>{artifact.globalWorks.length}</strong> global leads</span>
+            <span><strong>{artifact.translationStatus === "ready" ? "EN" : artifact.translationStatus === "not_needed" ? "EN source" : "Original"}</strong> language bridge</span>
+            <span><strong>0</strong> global records used as evidence</span>
+          </div>
+
+          <div className="passportLedger">
+            <section className="passportEvidenceColumn" aria-label="Page-linked Thai evidence">
+              <div className="passportSectionHeading">
+                <span className="passportStep">01</span>
+                <div><strong>{reviewed ? "Human-reviewed page anchors" : "Page-linked Thai evidence"}</strong><small>{artifact.translationStatus === "ready" ? "Original + bounded English rendering" : artifact.translationStatus === "unavailable" ? "Original retained · English rendering unavailable" : "Source text already English"} · not scientific validation</small></div>
+              </div>
+              <h3>{artifact.paper.title}</h3>
+              <p>{artifact.paper.paperCode || artifact.paper.source} · {artifact.paper.pageLabel}</p>
+              <div className="passportEvidenceList">
+                {artifact.evidence.map((item) => (
+                  <button
+                    key={item.id}
+                    type="button"
+                    onClick={() => onOpenEvidence(item)}
+                    aria-pressed={artifact.openedEvidenceIds.includes(item.id)}
+                    aria-label={`Open evidence ${item.id} at ${passportEvidencePage(item)}`}
+                  >
+                    <span><strong>{item.id}</strong><em>{passportEvidencePage(item)}{artifact.openedEvidenceIds.includes(item.id) ? " · opened" : ""}</em></span>
+                    <small>{item.sectionTitle || "Evidence packet"}</small>
+                    <span className="passportEvidenceExcerpt" lang={contentLanguage(item.snippet)}>{boundedToolText(item.snippet, 180)}</span>
+                    {item.englishSnippet ? <span className="passportEvidenceTranslation" lang="en"><em>English</em>{boundedToolText(item.englishSnippet, 180)}</span> : null}
+                  </button>
+                ))}
+              </div>
+            </section>
+
+            <section className="passportInferenceColumn" aria-label="Candidate inference requiring review">
+              <div className="passportSectionHeading">
+                <span className="passportStep">02</span>
+                <div><strong>Candidate inference</strong><small>Agent-drafted · review required</small></div>
+              </div>
+              <blockquote>“{artifact.focus}”</blockquote>
+              <p>{artifact.candidateGap.statement}</p>
+              <p className="passportCandidateBasis">
+                Proposed local basis: {artifact.candidateGap.localBasisEvidenceIds.join(", ")} · evidence relationship not validated
+              </p>
+              <div className="passportGapWarning">
+                <TriangleAlert size={15} aria-hidden />
+                <span>{artifact.candidateGap.missingValidation}</span>
+              </div>
+              <dl>
+                <div><dt>Gap lens</dt><dd>{artifact.gapLens}</dd></div>
+                <div><dt>Verify next</dt><dd>{artifact.candidateGap.nextVerificationQuery}</dd></div>
+              </dl>
+            </section>
+
+            <section className="passportGlobalColumn" aria-label="Global discovery metadata">
+              <div className="passportSectionHeading">
+                <span className="passportStep">03</span>
+                <div><strong>Global discovery leads</strong><small>OpenAlex · metadata only</small></div>
+              </div>
+              <p className={`passportGlobalStatus ${artifact.globalStatus}`}>
+                {passportGlobalStatusCopy(artifact.globalStatus, artifact.globalWorks.length > 0)}
+              </p>
+              {artifact.globalWorks.length ? (
+                <ol>
+                  {artifact.globalWorks.map((work) => (
+                    <li key={work.id || work.doi || work.url}>
+                      <a href={work.url} target="_blank" rel="noopener noreferrer">
+                        <span>Metadata only <ExternalLink size={12} aria-hidden /></span>
+                        <strong>{work.title}</strong>
+                        <small>{[work.year, work.topic, `${work.citedByCount} citations`].filter((value) => value != null && value !== "").join(" · ")}</small>
+                      </a>
+                    </li>
+                  ))}
+                </ol>
+              ) : (
+                <div className="passportNoGlobal">
+                  <Database size={17} aria-hidden />
+                  <p>{artifact.globalStatus === "connected"
+                    ? "No matching records were returned. The Thai page anchors remain usable on their own."
+                    : "No global records are shown because this layer was not completed. The Thai page anchors remain usable on their own."}</p>
+                </div>
+              )}
+              <a className="passportGlobalSearch" href={artifact.globalSearchUrl} target="_blank" rel="noopener noreferrer">
+                Continue verification on OpenAlex <ExternalLink size={13} aria-hidden />
+              </a>
+            </section>
+          </div>
+
+          <div className="passportBoundary" role="note">
+            <ShieldCheck size={18} strokeWidth={2.2} aria-hidden />
+            <div><strong>Provenance checks passed</strong><span>{exactPageCount}/{artifact.evidence.length} anchors resolve to Thai source pages · global records used as evidence: 0 · provenance is not scientific correctness.</span></div>
+          </div>
+
+          <div className="passportActions">
+            <button type="button" className="cardAction primary" disabled={reviewed || artifact.stale || !allEvidenceOpened} onClick={onMarkReviewed}>
+              {reviewed ? <Check size={16} aria-hidden /> : <Eye size={16} aria-hidden />}
+              <span>{reviewed ? "Pages reviewed" : allEvidenceOpened ? "Mark pages reviewed" : "Open every exact page first"}</span>
+            </button>
+            <button type="button" className="cardAction" disabled={!reviewed || artifact.stale} onClick={onExport}>
+              <Download size={16} aria-hidden />
+              <span>Export passport</span>
+            </button>
+            <button type="button" className="cardAction" onClick={onClear}>
+              <X size={16} aria-hidden />
+              <span>Clear</span>
+            </button>
+          </div>
+
+          <details className="passportRun">
+            <summary><Terminal size={15} aria-hidden /><span>Inspect WebMCP run</span><strong>{artifact.runSteps.length} completed calls</strong><ChevronDown size={15} aria-hidden /></summary>
+            <ol>
+              {artifact.runSteps.map((item, index) => (
+                <li key={`${item.tool}-${item.completedAt}-${index}`}>
+                  <code>{item.tool}</code><span>{item.detail}</span><time dateTime={item.completedAt}>{new Date(item.completedAt).toLocaleTimeString("en-US", { hour: "2-digit", minute: "2-digit", second: "2-digit" })}</time>
+                </li>
+              ))}
+            </ol>
+          </details>
+        </>
       ) : null}
     </section>
   );
@@ -2700,15 +3167,16 @@ function ResearchCard({
   const title = translatedPaperText(translation, "paper.title", displayTitle(card));
   const summary = translatedPaperText(translation, "paper.summary", displaySummary(card));
   const translated = Boolean(translation?.showingTranslation);
+  const visibleDate = /^Indexed\b/i.test(card.date.trim()) ? "" : card.date.trim();
   const citable = card.citable !== false && card.evidenceStatus !== "metadata_only";
   const collectionLabel = card.collection === "ncce"
     ? "NCCE"
     : card.collection === "ce_project"
       ? "Student Transport"
-      : card.provider === "tci_thaijo"
-        ? "ThaiJO"
+      : card.provider
+        ? discoveryProviderLabel(card.provider)
         : "All collections";
-  const disciplineLabel = card.discipline?.trim();
+  const visibleDisciplineLabel = card.discipline?.trim() ? disciplineLabel(card.discipline) : "";
   const pagesLabel = card.pageStart != null
     ? card.pageEnd === card.pageStart
       ? `p.${card.pageStart}`
@@ -2735,9 +3203,9 @@ function ResearchCard({
           )}
         </div>
         <div className="paperMeta">
-          <span>{card.date}</span>
+          {visibleDate ? <span>{visibleDate}</span> : null}
           <span>{collectionLabel}</span>
-          {disciplineLabel ? <span>{disciplineLabel}</span> : null}
+          {visibleDisciplineLabel ? <span>{visibleDisciplineLabel}</span> : null}
           {citable ? <span>{pagesLabel}</span> : null}
           <span className={citable ? "citableMeta" : "discoveryMeta"}>
             {citable ? `Page-cited evidence · ${card.evidenceCount}` : "Discovery metadata"}
@@ -2789,7 +3257,7 @@ function ResearchCard({
           ) : card.canonicalUrl ? (
             <a className="cardAction primary" href={card.canonicalUrl} target="_blank" rel="noreferrer">
               <ExternalLink size={17} strokeWidth={2.2} aria-hidden />
-              <span>Open publisher record</span>
+              <span>Open source record</span>
             </a>
           ) : (
             <span className="catalogUnavailable">Source link unavailable</span>
@@ -2807,7 +3275,7 @@ function ResearchCard({
       ) : (
         <aside className="catalogSourceCard" aria-label="Discovery record status">
           <Database size={20} aria-hidden />
-          <strong>Thai journal metadata</strong>
+          <strong>{discoveryProviderLabel(card.provider)} metadata</strong>
           <span>Not used for AI answers or citations</span>
           {card.journalTitle ? <small>{card.journalTitle}</small> : null}
         </aside>
@@ -2862,7 +3330,7 @@ function ResearchFeed({
 
   if (status === "loading") {
     return (
-      <section className="feedStack" aria-label="CivilMCP research feed loading" aria-busy="true">
+      <section className="feedStack" aria-label="Seed Research feed loading" aria-busy="true">
         <p className="srOnly" role="status">
           Loading research feed
         </p>
@@ -2883,10 +3351,10 @@ function ResearchFeed({
 
   if (status === "error") {
     return (
-      <section className="feedStack" aria-label="CivilMCP research feed error">
+      <section className="feedStack" aria-label="Seed Research feed error">
         <article className="feedStateCard" role="alert">
           <h2>Research feed unavailable</h2>
-          <p>{error || "CivilMCP could not load the indexed paper collection."}</p>
+          <p>{error || "Seed Research could not load the indexed paper collection."}</p>
           <button type="button" className="cardAction primary" onClick={onRetry}>
             Retry
           </button>
@@ -2897,7 +3365,7 @@ function ResearchFeed({
 
   if (!cards.length) {
     return (
-      <section className="feedStack" aria-label="CivilMCP research feed empty">
+      <section className="feedStack" aria-label="Seed Research feed empty">
         <article className="feedStateCard">
           <h2>{isSavedFilter ? (savedCount ? "No saved papers match this search" : "No saved papers yet") : "No papers match these filters"}</h2>
           <p>
@@ -2920,7 +3388,7 @@ function ResearchFeed({
   }
 
   return (
-    <section className="feedStack" aria-label="CivilMCP research feed">
+    <section className="feedStack" aria-label="Seed Research feed">
       {isSavedFilter ? (
         <aside className="workspaceSelectionTray" aria-label="Compare saved papers">
           <div>
@@ -2983,14 +3451,14 @@ function downloadCitation(card: ResearchCardData, format: "bibtex" | "ris") {
         `@${card.collection === "ncce" ? "inproceedings" : "techreport"}{${key},`,
         `  title = {${title}},`,
         year ? `  year = {${year}},` : "",
-        `  note = {CivilMCP source: ${source}; page-linked evidence available},`,
+        `  note = {Seed Research source: ${source}; page-linked evidence available},`,
         "}",
       ].filter(Boolean).join("\n")
     : [
         `TY  - ${card.collection === "ncce" ? "CPAPER" : "RPRT"}`,
         `TI  - ${title}`,
         year ? `PY  - ${year}` : "",
-        `N1  - CivilMCP source: ${source}; page-linked evidence available`,
+        `N1  - Seed Research source: ${source}; page-linked evidence available`,
         "ER  -",
       ].filter(Boolean).join("\n");
   const blob = new Blob([content], { type: format === "bibtex" ? "application/x-bibtex;charset=utf-8" : "application/x-research-info-systems;charset=utf-8" });
@@ -3083,6 +3551,21 @@ function PaperDetailDrawer({
   if (!isOpen) return null;
   const paper = detail?.document;
   const sourceRef = paper?.sourcePdf || paper?.parentSourcePdf || paper?.source || "";
+  const readerAccess = detail?.readerAccess ?? null;
+  const publicReaderPath = paper ? `/papers/${encodeURIComponent(paper.source)}` : "#";
+  const readerActionHref = readerAccess?.readerUrl
+    ?? readerAccess?.sourceUrl
+    ?? paper?.canonicalUrl
+    ?? publicReaderPath;
+  const readerActionLabel = readerAccess?.mode === "native_verified"
+    ? "Read verified full paper"
+    : readerAccess?.mode === "source_hosted"
+      ? "Open official full text"
+      : readerAccess?.mode === "restricted"
+        ? "Open institutional resolver"
+        : readerAccess
+          ? "Open source record"
+          : "Open paper reader";
   const translatedTitle = paper
     ? translatedPaperText(translation, "paper.title", displayTitle(paper))
     : "Loading paper...";
@@ -3216,9 +3699,16 @@ function PaperDetailDrawer({
                 <GitFork size={17} strokeWidth={2.2} aria-hidden />
                 <span>{citationMap.phase === "loading" ? "Mapping…" : "Citation map"}</span>
               </button>
-              <a className="cardAction" href={`/papers/${encodeURIComponent(paper.source)}`} target="_blank" rel="noreferrer">
+              <a
+                className="cardAction"
+                href={readerActionHref}
+                target="_blank"
+                rel="noreferrer"
+                data-testid="paper-reader-action"
+                data-reader-mode={readerAccess?.mode ?? "unknown"}
+              >
                 <ExternalLink size={17} strokeWidth={2.2} aria-hidden />
-                <span>Public record</span>
+                <span>{readerActionLabel}</span>
               </a>
               {sourceRef ? (
                 <button
@@ -3234,6 +3724,7 @@ function PaperDetailDrawer({
               ) : null}
               <span>{detail.counts.sections} sections</span>
               <span>{detail.counts.chunks} chunks</span>
+              {readerAccess ? <span className="translationStatus">{readerAccess.statusLabel}</span> : null}
               {translation?.showingTranslation ? <span className="translationStatus">Translated from Thai</span> : null}
             </div>
 
@@ -3347,7 +3838,7 @@ function PaperDetailDrawer({
 
             <section className="detailSection">
               <div className="detailSectionHeading">
-                <div><h3>Global citation map</h3><p className="detailSectionLead">OpenAlex metadata for discovery only. CivilMCP does not use these nodes as answer evidence.</p></div>
+                <div><h3>Global citation map</h3><p className="detailSectionLead">OpenAlex metadata for discovery only. Seed Research does not use these nodes as answer evidence.</p></div>
                 {citationMap.phase !== "idle" ? <button type="button" className="textAction" onClick={() => void loadCitationMap()}>Refresh</button> : null}
               </div>
               {citationMap.phase === "idle" ? (
@@ -3374,8 +3865,8 @@ function PaperDetailDrawer({
               <h3>Related Thai evidence</h3>
               <p className="detailSectionLead">
                 {status === "loading"
-                  ? "Finding page-linked studies in the same civil engineering discipline…"
-                  : "More page-linked studies in the same civil engineering discipline."}
+                  ? "Finding page-linked studies in the same research field…"
+                  : "More page-linked studies in the same research field."}
               </p>
               {detail.related?.length ? (
                 <div className="relatedPaperList">
@@ -3420,7 +3911,7 @@ function ConversationFeed({
             <div className="conversationHeader">
               <span className="conversationRole">
                 {isUser ? <Search size={16} strokeWidth={2.2} aria-hidden /> : <Gauge size={16} strokeWidth={2.2} aria-hidden />}
-                {isUser ? "Your question" : "CivilMCP answer"}
+                {isUser ? "Your question" : "Seed Research answer"}
               </span>
             </div>
             <MessageRenderer
@@ -3484,7 +3975,7 @@ function ChatWorkspace({
       ) : (
         <article className="feedStateCard chatEmptyState">
           <h2>Ask your first question</h2>
-          <p>CivilMCP searches the selected collection and cites the pages it uses.</p>
+          <p>Seed Research searches the selected collection and cites the pages it uses.</p>
         </article>
       )}
       {error ? (
@@ -3676,12 +4167,15 @@ function PersonalizedResearchPathPanel({
   error,
   completedStages,
   stageMastery,
+  checkpointAnswers,
+  checkpointAssessments,
+  assessingStageId,
   onBuild,
   onReset,
-  onToggleStage,
-  onMarkMastery,
+  onAnswerChange,
+  onAssessCheckpoint,
   onAdapt,
-  onStudyStage,
+  onExport,
   onOpenPaper,
 }: {
   goal: string;
@@ -3694,19 +4188,48 @@ function PersonalizedResearchPathPanel({
   status: SessionsStatus;
   error: string;
   completedStages: string[];
-  stageMastery: Record<string, "needs_review" | "understood">;
+  stageMastery: Record<string, ResearchPathCheckpointStatus>;
+  checkpointAnswers: Record<string, string>;
+  checkpointAssessments: Record<string, ResearchPathCheckpointAssessment>;
+  assessingStageId: string;
   onBuild: () => void;
   onReset: () => void;
-  onToggleStage: (stageId: string) => void;
-  onMarkMastery: (stageId: string, state: "needs_review" | "understood") => void;
+  onAnswerChange: (stageId: string, answer: string) => void;
+  onAssessCheckpoint: (stageId: string) => void;
   onAdapt: () => void;
-  onStudyStage: (prompt: string) => void;
+  onExport: () => void;
   onOpenPaper: (source: string) => void;
 }) {
   const progress = path?.stages.length
     ? Math.round((completedStages.length / path.stages.length) * 100)
     : 0;
-  const reviewCount = Object.values(stageMastery).filter((value) => value === "needs_review").length;
+  const reviewCount = Object.values(stageMastery).filter((value) => value !== "understood").length;
+  const nextStageIndex = path?.stages.findIndex((stage) => !completedStages.includes(stage.id)) ?? -1;
+  const progressStages = path?.stages.map((stage, index) => {
+    const complete = completedStages.includes(stage.id);
+    const assessment = checkpointAssessments[stage.id];
+    const hasDraft = Boolean(checkpointAnswers[stage.id]?.trim());
+    const state = complete
+      ? "mastered"
+      : assessingStageId === stage.id
+        ? "checking"
+        : assessment
+          ? "review"
+          : hasDraft
+            ? "draft"
+            : index === nextStageIndex
+              ? "current"
+              : "upcoming";
+    const label = {
+      mastered: "Mastered",
+      checking: "Checking",
+      review: "Review",
+      draft: "Draft",
+      current: "Current",
+      upcoming: "Upcoming",
+    }[state];
+    return { stage, index, state, label };
+  }) ?? [];
 
   return (
     <section className="workspacePanel pathWorkspace" aria-label="Personalized research learning path">
@@ -3715,18 +4238,48 @@ function PersonalizedResearchPathPanel({
           <div>
             <p className="workspaceEyebrow"><Route size={14} aria-hidden /> Research Path</p>
             <h2>{path ? path.goal : "Turn a topic into a research plan"}</h2>
-            <p>{path ? "Four focused stages, grounded in page-linked Thai evidence." : "Set a goal. CivilMCP organizes relevant studies into a focused four-stage path."}</p>
+            <p>{path ? "Learn, answer, and get evidence-grounded feedback across four focused stages." : "Set a goal. Seed Research organizes relevant studies into a focused four-stage path."}</p>
           </div>
-          {path ? <button type="button" className="textAction pathResetAction" onClick={onReset}><RefreshCw size={15} aria-hidden /><span>New path</span></button> : null}
+          {path ? (
+            <div className="pathHeaderActions">
+              <button type="button" className="textAction" onClick={onExport}><Download size={15} aria-hidden /><span>Export</span></button>
+              <button type="button" className="textAction pathResetAction" onClick={onReset}><RefreshCw size={15} aria-hidden /><span>New path</span></button>
+            </div>
+          ) : null}
         </header>
 
         {path ? (
           <>
-            <div className="pathProgress" aria-label={`${progress}% of research path complete`}>
-              <span><strong>{completedStages.length}</strong> of {path.stages.length} stages complete</span>
-              <progress value={completedStages.length} max={path.stages.length} />
-              <span>{progress}%</span>
+            <div className="pathProgress" aria-label={`${progress}% of research path mastered`}>
+              <div className="pathProgressSummary">
+                <span><strong>{completedStages.length}</strong> of {path.stages.length} stages mastered</span>
+                <span>{progress}%</span>
+              </div>
+              <ol className="pathProgressSteps">
+                {progressStages.map(({ stage, index, state, label }) => (
+                  <li key={`progress-${stage.id}`} className={state}>
+                    <button
+                      type="button"
+                      aria-label={`Stage ${index + 1}: ${stage.title} · ${label}`}
+                      onClick={() => document.getElementById(stage.id)?.scrollIntoView({ behavior: "smooth", block: "start" })}
+                    >
+                      <span>{String(index + 1).padStart(2, "0")}</span>
+                      <strong>{stage.title}</strong>
+                      <small>{label}</small>
+                    </button>
+                  </li>
+                ))}
+              </ol>
             </div>
+            {path.coverage?.status === "limited" ? (
+              <div className="pathCoverageNotice" role="note">
+                <TriangleAlert size={16} aria-hidden />
+                <span>{path.coverage.message}</span>
+              </div>
+            ) : null}
+            <p className="pathPlanningProvenance">
+              {path.planningMode === "model" ? "Path planned with GPT‑5.6 Luna from the retrieved evidence set." : "Path built from retrieved evidence; checkpoint grading uses GPT‑5.6 Luna."}
+            </p>
             {reviewCount ? (
               <button type="button" className="cardAction pathAdaptAction" onClick={onAdapt} disabled={status === "loading"}>
                 <RefreshCw size={15} aria-hidden />
@@ -3780,11 +4333,54 @@ function PersonalizedResearchPathPanel({
         </form>
       ) : (
         <>
+          {error ? <p className="pathError pathInlineError" role="alert">{error}</p> : null}
           <div className="pathStageList">
             {path.stages.map((stage, index) => {
               const complete = completedStages.includes(stage.id);
+              const answer = checkpointAnswers[stage.id] ?? "";
+              const assessment = checkpointAssessments[stage.id];
+              const assessing = assessingStageId === stage.id;
+              const answerReady = answer.trim().length >= 40;
+              const checkpointHelpId = `${stage.id}-checkpoint-help`;
+              const responseTemplate = [
+                "Claim:",
+                `What I learned from ${stage.papers.map((paper) => paper.title).join(" and ")}:`,
+                "Comparison or limitation:",
+                "What remains uncertain:",
+              ].join("\n\n");
+              const primaryPaper = stage.papers[0];
+              const comparisonPaper = stage.papers[1];
+              const evidenceReference = primaryPaper
+                ? primaryPaper.title
+                : "the selected source above";
+              const exampleAnswer = index === 3
+                ? [
+                    `Demo research question: For urban roads in Thailand, which road-safety approach identified in ${evidenceReference} should be tested first, for whom, and under what local conditions?`,
+                    `Evidence basis: ${primaryPaper?.summary?.slice(0, 520) || stage.objective}`,
+                    "Proposed study plan: define one measurable safety outcome, document the road and road-user context, collect a baseline, test one bounded intervention or comparison, and report uncertainty rather than treating association as causation.",
+                    comparisonPaper
+                      ? `Comparison to resolve: ${comparisonPaper.summary.slice(0, 360)} (${comparisonPaper.title}). The follow-up study should test whether the difference comes from method, population, or road context.`
+                      : "Evidence gap: a second comparable source or local dataset is needed before choosing the study design.",
+                    "Next validation: open the exact pages, confirm the outcome definition and method, then narrow the population, location, and time window before data collection.",
+                  ].join("\n\n")
+                : [
+                    `Demo learning claim: ${primaryPaper?.summary?.slice(0, 520) || stage.objective}`,
+                    `Evidence to verify: ${evidenceReference}.`,
+                    comparisonPaper
+                      ? `Comparison or limitation: ${comparisonPaper.summary.slice(0, 420)} (${comparisonPaper.title}). The two studies may use different settings or methods, so the findings should not be treated as directly interchangeable.`
+                      : "Comparison or limitation: This stage currently has one selected source, so the strength of cross-study comparison is limited.",
+                    "What I need to learn next: confirm the definitions, method, study population, and limits on the linked pages before carrying the finding into a new research question.",
+                  ].join("\n\n");
+              const startTask = () => {
+                if (!answer.trim()) onAnswerChange(stage.id, exampleAnswer);
+                window.requestAnimationFrame(() => {
+                  const field = document.getElementById(`${stage.id}-checkpoint-answer`);
+                  field?.focus();
+                  field?.scrollIntoView({ behavior: "smooth", block: "center" });
+                });
+              };
               return (
-                <article key={stage.id} className={`pathStage ${complete ? "complete" : ""}`}>
+                <article id={stage.id} key={stage.id} className={`pathStage ${complete ? "complete" : ""}`}>
                   <div className="pathStageIndex" aria-hidden>{String(index + 1).padStart(2, "0")}</div>
                   <div className="pathStageBody">
                     <div className="pathStageHeading">
@@ -3792,43 +4388,120 @@ function PersonalizedResearchPathPanel({
                         <h3>{stage.title}</h3>
                         <p>{stage.objective}</p>
                       </div>
-                      <button type="button" className="stageCheck" aria-pressed={complete} onClick={() => onToggleStage(stage.id)}>
-                        <Check size={16} aria-hidden />
-                        <span>{complete ? "Completed" : "Mark complete"}</span>
+                      <button
+                        type="button"
+                        className={`stageCheck ${complete ? "completed" : ""}`}
+                        aria-label={complete ? "View completed task" : answerReady ? "Complete task" : "Load demo answer"}
+                        disabled={assessing}
+                        onClick={() => {
+                          if (complete) document.getElementById(`${stage.id}-assessment`)?.scrollIntoView({ behavior: "smooth", block: "center" });
+                          else if (answerReady) onAssessCheckpoint(stage.id);
+                          else startTask();
+                        }}
+                      >
+                        {assessing ? <LoaderCircle className="pathActionSpinner" size={15} aria-hidden /> : complete ? <Check size={15} aria-hidden /> : answerReady ? <Sparkles size={15} aria-hidden /> : <FileText size={15} aria-hidden />}
+                        <span>{assessing ? "Checking…" : complete ? "Completed" : answerReady ? "Complete task" : "Load demo answer"}</span>
                       </button>
+                    </div>
+                    <div className="pathReadingIntro">
+                      <strong>Core reading</strong>
+                      <span>Inspect the selected paper evidence. A verified full-text reader will open when rights permit; otherwise use exact-page evidence or the source record.</span>
                     </div>
                     <div className="pathPaperList">
                       {stage.papers.map((paper) => (
-                        <button key={paper.id} type="button" className="pathPaper" onClick={() => onOpenPaper(paper.source)}>
+                        <button key={paper.id} type="button" className="pathPaper" aria-label={`Open paper evidence: ${paper.title}`} onClick={() => onOpenPaper(paper.source)}>
                           <span>{paper.title}</span>
-                          <small>{[paper.paperCode, paper.pageLabel, `${paper.evidenceCount} evidence`].filter(Boolean).join(" · ")}</small>
+                          <small><FileText size={12} aria-hidden /> Open paper evidence</small>
                         </button>
                       ))}
                     </div>
-                    <button type="button" className="primaryAction stageStudyAction" onClick={() => onStudyStage(stage.prompt)}>
-                      <MessageCircle size={15} aria-hidden />
-                      <span>Study with evidence</span>
-                    </button>
                     {stage.checkpointQuestion ? (
                       <div className="pathCheckpoint">
-                        <div>
-                          <span>Checkpoint</span>
-                          <p>{stage.checkpointQuestion}</p>
+                        <div className="pathCheckpointPrompt">
+                          <header className="pathCheckpointHeader">
+                            <FileText size={17} aria-hidden />
+                            <div>
+                              <span>Learning checkpoint</span>
+                              <p>{stage.checkpointQuestion}</p>
+                            </div>
+                          </header>
+                          <ol className="pathCheckpointSteps">
+                            <li><strong>Read</strong><span>Open the paper evidence and note the main concept, method, and study context.</span></li>
+                            <li><strong>Clarify</strong><span>Use Chat separately when a term, method, or limitation is unclear.</span></li>
+                            <li><strong>Reflect</strong><span>Answer in your own words and identify what you still need to research.</span></li>
+                          </ol>
+                          <div className="pathDraftHeader">
+                            <div><strong>Example use case</strong><span>Prefilled from the selected paper summaries; edit freely for a real task.</span></div>
+                            <button type="button" className="cardAction pathStartTask" onClick={startTask}>
+                              <FileText size={14} aria-hidden /><span>{answer.trim() ? "Continue writing" : "Load example answer"}</span>
+                            </button>
+                          </div>
+                          <label htmlFor={`${stage.id}-checkpoint-answer`}>
+                            <span className="visuallyHidden">Your reasoning</span>
+                            <textarea
+                              id={`${stage.id}-checkpoint-answer`}
+                              value={answer}
+                              onChange={(event) => onAnswerChange(stage.id, event.target.value)}
+                              rows={7}
+                              maxLength={3_000}
+                              aria-describedby={checkpointHelpId}
+                              placeholder={responseTemplate}
+                            />
+                          </label>
+                          <div className="pathCheckpointActions">
+                            <button
+                              type="button"
+                              className="primaryAction"
+                              onClick={() => onAssessCheckpoint(stage.id)}
+                              disabled={assessing || !answerReady}
+                            >
+                              {assessing ? <LoaderCircle className="pathActionSpinner" size={15} aria-hidden /> : <Sparkles size={15} aria-hidden />}
+                              <span>{assessing ? "Checking your reading…" : assessment ? "Check revised answer" : "Check understanding"}</span>
+                            </button>
+                            <small id={checkpointHelpId} aria-live="polite">
+                              {assessing
+                                ? "Comparing your note with the selected research papers."
+                                : !answerReady
+                                  ? `Add ${Math.max(0, 40 - answer.trim().length)} more characters so the claim can be checked.`
+                                  : assessment?.assessmentMode === "evidence_fallback"
+                                    ? "The reading is available, but model feedback needs a retry."
+                                    : "Ready · OpenAI GPT‑5.6 Luna · selected readings only."}
+                            </small>
+                          </div>
                         </div>
-                        <div className="pathMasteryActions" aria-label={`Checkpoint status for ${stage.title}`}>
-                          <button
-                            type="button"
-                            className={stageMastery[stage.id] === "needs_review" ? "selected" : ""}
-                            aria-pressed={stageMastery[stage.id] === "needs_review"}
-                            onClick={() => onMarkMastery(stage.id, "needs_review")}
-                          >Need review</button>
-                          <button
-                            type="button"
-                            className={stageMastery[stage.id] === "understood" ? "selected understood" : ""}
-                            aria-pressed={stageMastery[stage.id] === "understood"}
-                            onClick={() => onMarkMastery(stage.id, "understood")}
-                          >Understood</button>
-                        </div>
+                        {assessment ? (
+                          <aside id={`${stage.id}-assessment`} className={`pathAssessment ${assessment.status}`} aria-label={`Checkpoint assessment for ${stage.title}`}>
+                            <header>
+                              <span>{assessment.gradeAvailable === false ? "Evidence available · grade pending" : assessment.status === "understood" ? "Mastered" : assessment.status === "partial" ? "Developing" : "Review needed"}</span>
+                              <strong>{assessment.gradeAvailable === false ? "Not graded" : `${assessment.score}/100`}</strong>
+                            </header>
+                            <p>{assessment.feedback}</p>
+                            {assessment.strengths.length ? <div><strong>What worked</strong><ul>{assessment.strengths.map((item) => <li key={item}>{item}</li>)}</ul></div> : null}
+                            {assessment.gaps.length ? <div><strong>Repair next</strong><ul>{assessment.gaps.map((item) => <li key={item}>{item}</li>)}</ul></div> : null}
+                            <div className="pathNextStep"><strong>Next step</strong><span>{assessment.nextStep}</span></div>
+                            {assessment.evidence.length ? (
+                              <div className="pathAssessmentEvidence">
+                                <strong>Reading checked</strong>
+                                <div>{assessment.evidence.map((item) => (
+                                  <button key={`${stage.id}-${item.evidenceId}`} type="button" onClick={() => onOpenPaper(item.source)}>
+                                    <span>{stage.papers.find((paper) => paper.source === item.source)?.title || "Selected research paper"}</span>
+                                    <small>Open paper evidence</small>
+                                  </button>
+                                ))}</div>
+                              </div>
+                            ) : null}
+                            {index < path.stages.length - 1 ? (
+                              <button
+                                type="button"
+                                className="cardAction pathContinueTask"
+                                onClick={() => document.getElementById(path.stages[index + 1].id)?.scrollIntoView({ behavior: "smooth", block: "start" })}
+                              >
+                                <span>Continue to stage {index + 2}</span>
+                                <ArrowRight size={14} aria-hidden />
+                              </button>
+                            ) : null}
+                          </aside>
+                        ) : null}
                       </div>
                     ) : null}
                   </div>
@@ -3836,11 +4509,24 @@ function PersonalizedResearchPathPanel({
               );
             })}
           </div>
+          {completedStages.length === path.stages.length ? (
+            <aside className="pathCompletion" aria-label="Research path complete">
+              <div>
+                <p className="workspaceEyebrow">Path complete</p>
+                <h3>Turn the four checkpoints into a cited outcome</h3>
+                <p>Seed Research will carry the selected papers and your assessed gaps into one final Evidence Review.</p>
+              </div>
+              <button type="button" className="primaryAction" onClick={onExport}>
+                <Download size={16} aria-hidden />
+                <span>Export cited path</span>
+              </button>
+            </aside>
+          ) : null}
           <aside className="openAlexBridge" aria-label="Global research discovery with OpenAlex">
             <div>
               <p className="workspaceEyebrow">OpenAlex</p>
               <h3>Compare with global research</h3>
-              <p>Explore related work, authors, and citation paths outside the CivilMCP corpus.</p>
+              <p>Explore related work, authors, and citation paths outside the Seed Research corpus.</p>
             </div>
             {path.openAlex.works.length ? (
               <div className="openAlexWorks">
@@ -3864,7 +4550,7 @@ function PersonalizedResearchPathPanel({
 type McpAccessKey = { key_id: string; token_prefix: string; label: string; last_used_at?: string | null; created_at?: string };
 type OAuthGrant = { client: { id: string; name: string; uri?: string }; scopes: string[]; granted_at: string };
 type McpUsage = { plan: "free" | "founder_pro"; included_units: number; used_units: number; remaining_units: number; reset_at: string };
-type McpPricing = { tools: Array<{ label: string; units: number }>; founderPro: { monthlyUnits: number; priceThb: number } };
+type McpPricing = { openAccess?: boolean; tools: Array<{ label: string; units: number }>; founderPro: { monthlyUnits: number; priceThb: number } };
 
 function McpAccessCard() {
   const [keys, setKeys] = useState<McpAccessKey[]>([]);
@@ -3901,7 +4587,7 @@ function McpAccessCard() {
       const payload = await fetchJson<{ token: string; endpoint: string }>("/api/mcp-access", { method: "POST", body: JSON.stringify({ label: "Research client" }) });
       setRevealedToken(payload.token);
       setEndpoint(payload.endpoint);
-      setMessage("Copy this key now. CivilMCP will not show it again.");
+      setMessage("Copy this key now. SEEDY will not show it again.");
       await load();
     } catch (error) {
       setMessage(error instanceof Error ? error.message : "MCP key could not be created.");
@@ -3940,10 +4626,11 @@ function McpAccessCard() {
   return (
     <section className="mcpAccessCard" aria-label="Personal MCP access">
       <header>
-        <div><span className="workspaceEyebrow"><Terminal size={14} aria-hidden /> API &amp; MCP</span><strong>Use your CivilMCP library from research agents.</strong><small>Personal keys are owner-scoped, rate-limited, and revocable.</small></div>
+        <div><span className="workspaceEyebrow"><Terminal size={14} aria-hidden /> API &amp; MCP</span><strong>Use your Seed Research library from research agents.</strong><small>Personal keys are owner-scoped, rate-limited, and revocable.</small></div>
         <button type="button" className="cardAction primary" onClick={() => void createKey()} disabled={busy || keys.length >= 5}><KeyRound size={15} aria-hidden /> Create key</button>
       </header>
       {endpoint ? <div className="mcpEndpoint"><span>MCP v2 endpoint</span><code>{endpoint}</code><button type="button" onClick={() => void navigator.clipboard?.writeText(endpoint)}><Copy size={14} aria-hidden /> Copy</button></div> : null}
+      {pricing?.openAccess ? <div className="mcpOpenAccess"><Sparkles size={16} aria-hidden /><div><strong>Open-access research API</strong><span>All 14 research tools are unlocked. Safety rate limits still protect service reliability.</span></div></div> : null}
       {usage ? <div className="mcpUnitMeter" aria-label={`${usage.remaining_units} of ${usage.included_units} Research Units remaining`}>
         <div><span>{usage.plan === "founder_pro" ? "Founder Pro API" : "Free API"}</span><strong>{usage.remaining_units.toLocaleString()} <small>of {usage.included_units.toLocaleString()} units left</small></strong></div>
         <progress value={usage.remaining_units} max={usage.included_units} />
@@ -3953,7 +4640,7 @@ function McpAccessCard() {
       {keys.length ? <div className="mcpKeyList">{keys.map((key) => <article key={key.key_id}><div><strong>{key.label}</strong><span>{key.token_prefix}{key.last_used_at ? ` · used ${new Date(key.last_used_at).toLocaleDateString("en-GB")}` : " · never used"}</span></div><button type="button" onClick={() => void revokeKey(key.key_id)} disabled={busy}>Revoke</button></article>)}</div> : <p>No personal MCP keys yet.</p>}
       {grants.length ? <div className="mcpKeyList">{grants.map((grant) => <article key={grant.client.id}><div><strong>{grant.client.name || "Connected research client"}</strong><span>OAuth · connected {new Date(grant.granted_at).toLocaleDateString("en-GB")}</span></div><button type="button" onClick={() => void revokeGrant(grant.client.id)} disabled={busy}>Disconnect</button></article>)}</div> : null}
       {message ? <small className="mcpAccessMessage">{message}</small> : null}
-      <p className="mcpAccessScope">14 high-level tools cover Thai/global discovery, exact-page evidence, comparison, private PDFs, and folder-based library workflows. {pricing ? `${pricing.tools.map((item) => `${item.label} ${item.units}`).join(" · ")}. Founder Pro includes ${pricing.founderPro.monthlyUnits.toLocaleString()} monthly units.` : ""} <a href="/developers">Setup, usage, and pricing</a></p>
+      <p className="mcpAccessScope">14 high-level tools cover Thai/global discovery, exact-page evidence, comparison, private PDFs, and folder-based library workflows. {pricing && !pricing.openAccess ? `${pricing.tools.map((item) => `${item.label} ${item.units}`).join(" · ")}. Founder Pro includes ${pricing.founderPro.monthlyUnits.toLocaleString()} monthly units.` : ""} <a href="/developers">Setup and usage</a></p>
     </section>
   );
 }
@@ -4034,14 +4721,14 @@ function AccountPanel({
       ? "Create one account for your research across devices."
       : isForgot
         ? "We'll email you a secure reset link."
-        : isRecovery
+      : isRecovery
           ? "Choose a new password with at least eight characters."
-          : "Access your saved chats, research paths, and papers.";
+          : "Sign in to use Research Path, chat, workspace, and synced history.";
   const authSwitchLabel = isSignup
     ? "Already have an account?"
     : isForgot || isRecovery
       ? "Remember your password?"
-      : "New to CivilMCP?";
+      : "New to SEEDY?";
   const authSwitchAction = isSignup || isForgot || isRecovery ? "Sign in" : "Create account";
   const authSwitchMode: AuthMode = isSignup || isForgot || isRecovery ? "signin" : "signup";
   const primaryActionLabel = isBusy
@@ -4066,23 +4753,30 @@ function AccountPanel({
   };
 
   return (
-    <section className="workspacePanel" aria-label="Account and chat history login">
-      <div className="workspaceHeader">
-        <div>
-          <p className="workspaceEyebrow">Account</p>
-          <h2>{authTitle}</h2>
-          <p>{authSubtitle}</p>
-        </div>
-        {signedIn ? (
+    <section className={`workspacePanel accountWorkspace ${!signedIn ? "guestAuthWorkspace" : ""}`} aria-label="Account and chat history login">
+      {signedIn ? (
+        <div className="workspaceHeader">
+          <div>
+            <p className="workspaceEyebrow">Account</p>
+            <h2>{authTitle}</h2>
+            <p>{authSubtitle}</p>
+          </div>
           <button type="button" className="cardAction" onClick={onLogout}>
             <LogOut size={17} strokeWidth={2.2} aria-hidden />
             <span>Log out</span>
           </button>
-        ) : null}
-      </div>
+        </div>
+      ) : null}
 
-      <div className="accountGrid withPlan">
+      <div className={`accountGrid withPlan ${!signedIn ? "guestAuthGrid" : ""} ${signedIn && billing.openAccess ? "signedInAccountGrid" : ""}`}>
         <form className="accountCard authFormCard" onSubmit={onSubmit}>
+          {!signedIn ? (
+            <header className="authFormHeader">
+              <p>{isSignup ? "Start your workspace" : isForgot || isRecovery ? "Account recovery" : "Welcome back"}</p>
+              <h2>{authTitle}</h2>
+              <span className="authFormSubtitle">{authSubtitle}</span>
+            </header>
+          ) : null}
           {signedIn ? (
             <>
               <div className="accountSignedIn">
@@ -4091,63 +4785,82 @@ function AccountPanel({
                   <strong>{user.displayName}</strong>
                   <span>{user.email || "Verified workspace session"}</span>
                 </div>
+                <span className="accountSyncPill"><Check size={13} strokeWidth={2.4} aria-hidden /> Synced</span>
               </div>
-              <label>
-                <span>Display name</span>
-                <input
-                  value={displayName}
-                  onChange={(event) => setDisplayName(event.target.value)}
-                  placeholder="Your name"
-                  autoComplete="name"
-                  maxLength={80}
-                  disabled={isBusy}
-                />
-              </label>
-              <div className="accountActions">
-                <button
-                  type="button"
-                  className="cardAction primary"
-                  onClick={onProfileUpdate}
-                  disabled={isBusy || !displayName.trim() || displayName.trim() === user.displayName}
-                >
-                  <ShieldCheck size={17} strokeWidth={2.2} aria-hidden />
-                  <span>{isBusy ? "Saving..." : "Save profile"}</span>
-                </button>
+              <div className="accountProfileEditor">
+                <label>
+                  <span>Display name</span>
+                  <input
+                    value={displayName}
+                    onChange={(event) => setDisplayName(event.target.value)}
+                    placeholder="Your name"
+                    autoComplete="name"
+                    maxLength={80}
+                    disabled={isBusy}
+                  />
+                </label>
+                <div className="accountActions">
+                  <button
+                    type="button"
+                    className="cardAction primary"
+                    onClick={onProfileUpdate}
+                    disabled={isBusy || !displayName.trim() || displayName.trim() === user.displayName}
+                  >
+                    <Save size={17} strokeWidth={2.2} aria-hidden />
+                    <span>{isBusy ? "Saving..." : "Save profile"}</span>
+                  </button>
+                </div>
               </div>
               {statusText ? (
                 <p className="authFormStatus" role="status" aria-live="polite">
                   {statusText}
                 </p>
               ) : null}
-              <div className="accountDangerZone">
-                <div>
-                  <strong>Delete account</strong>
-                  <span>Permanently removes chats, saved papers, workspaces, feedback, and sign-in access.</span>
+              <details className="accountDangerZone accountDangerDisclosure">
+                <summary>
+                  <span className="accountDangerIcon"><Trash2 size={16} strokeWidth={2} aria-hidden /></span>
+                  <span className="accountDangerCopy">
+                    <strong>Delete account</strong>
+                    <small>Permanently remove this account and all synced research.</small>
+                  </span>
+                  <span className="accountDangerManage">Manage</span>
+                </summary>
+                <div className="accountDangerControls">
+                  <div>
+                    <strong>Delete account</strong>
+                    <span>Permanently removes chats, saved papers, workspaces, feedback, and sign-in access.</span>
+                  </div>
+                  <input
+                    value={deleteConfirmation}
+                    onChange={(event) => setDeleteConfirmation(event.target.value)}
+                    placeholder="Type DELETE to confirm"
+                    aria-label="Type DELETE to confirm account deletion"
+                    autoComplete="off"
+                    disabled={isBusy}
+                  />
+                  <button
+                    type="button"
+                    className="cardAction dangerAction"
+                    onClick={onDeleteAccount}
+                    disabled={isBusy || deleteConfirmation !== "DELETE"}
+                  >
+                    <Trash2 size={17} strokeWidth={2.2} aria-hidden />
+                    <span>Delete account</span>
+                  </button>
                 </div>
-                <input
-                  value={deleteConfirmation}
-                  onChange={(event) => setDeleteConfirmation(event.target.value)}
-                  placeholder="Type DELETE to confirm"
-                  aria-label="Type DELETE to confirm account deletion"
-                  autoComplete="off"
-                  disabled={isBusy}
-                />
-                <button
-                  type="button"
-                  className="cardAction dangerAction"
-                  onClick={onDeleteAccount}
-                  disabled={isBusy || deleteConfirmation !== "DELETE"}
-                >
-                  <Trash2 size={17} strokeWidth={2.2} aria-hidden />
-                  <span>Delete account</span>
-                </button>
-              </div>
+              </details>
             </>
           ) : (
             <>
               {!isForgot && !isRecovery ? (
                 <>
                   <button type="button" className="googleAuthAction" onClick={onGoogle} disabled={isBusy}>
+                    <svg className="googleAuthMark" viewBox="0 0 24 24" aria-hidden="true">
+                      <path fill="#4285F4" d="M21.6 12.23c0-.71-.06-1.4-.18-2.07H12v3.92h5.38a4.6 4.6 0 0 1-2 3.02v2.54h3.25c1.9-1.75 2.97-4.33 2.97-7.41Z" />
+                      <path fill="#34A853" d="M12 22c2.72 0 5-0.9 6.63-2.36l-3.25-2.54c-.9.6-2.05.96-3.38.96-2.62 0-4.85-1.77-5.64-4.15H3v2.62A10 10 0 0 0 12 22Z" />
+                      <path fill="#FBBC05" d="M6.36 13.91A6.02 6.02 0 0 1 6.05 12c0-.66.11-1.3.31-1.91V7.47H3A10 10 0 0 0 2 12c0 1.61.39 3.14 1 4.53l3.36-2.62Z" />
+                      <path fill="#EA4335" d="M12 5.94c1.48 0 2.8.51 3.84 1.5l2.87-2.88A9.65 9.65 0 0 0 12 2a10 10 0 0 0-9 5.47l3.36 2.62C7.15 7.71 9.38 5.94 12 5.94Z" />
+                    </svg>
                     <span>Continue with Google</span>
                   </button>
                   <div className="authDivider"><span>or continue with email</span></div>
@@ -4240,7 +4953,13 @@ function AccountPanel({
                   className="cardAction primary authPrimaryAction"
                   disabled={isBusy}
                 >
-                  {isForgot ? <Mail size={17} strokeWidth={2.2} aria-hidden /> : <LockKeyhole size={17} strokeWidth={2.2} aria-hidden />}
+                  {isForgot
+                    ? <Mail size={17} strokeWidth={2.2} aria-hidden />
+                    : isSignup
+                      ? <UserPlus size={17} strokeWidth={2.2} aria-hidden />
+                      : isRecovery
+                        ? <ShieldCheck size={17} strokeWidth={2.2} aria-hidden />
+                        : <LogIn size={17} strokeWidth={2.2} aria-hidden />}
                   <span>{primaryActionLabel}</span>
                 </button>
               </div>
@@ -4259,7 +4978,51 @@ function AccountPanel({
           )}
         </form>
 
-        <aside className="authBenefitCard" aria-label="CivilMCP Founder Pro plan">
+        {!signedIn && billing.openAccess ? (
+          <aside className="authBenefitCard openAccessCard" aria-label="SEEDY Open Access">
+            <div className="openAccessBrand" aria-hidden="true">
+              <img src="/civilmcp-logo.svg" alt="" />
+              <span>
+                <strong>SEEDY</strong>
+                <small>Research Preview</small>
+              </span>
+            </div>
+            <div className="openAccessLead">
+              <p className="openAccessStatus"><Check size={14} strokeWidth={2.5} aria-hidden />{CIVILMCP_OPEN_ACCESS_LABEL}</p>
+              <h3>Every research workflow is included after sign in.</h3>
+              <p className="authBenefitIntro">Powered primarily by OpenAI GPT‑5.6. No answer credits, model paywalls, or Pro-only research modes.</p>
+            </div>
+            <div className="authFeatureList">
+              <div className="authFeatureRow">
+                <Route size={18} strokeWidth={2} aria-hidden />
+                <span><strong>Evidence-based learning</strong><small>Build a path, answer checkpoints, repair gaps, and inspect exact source pages.</small></span>
+              </div>
+              <div className="authFeatureRow">
+                <TableProperties size={18} strokeWidth={2} aria-hidden />
+                <span><strong>Research Workspace + Deep Research</strong><small>Run bounded comparisons and auditable review workflows without upgrading.</small></span>
+              </div>
+              <div className="authFeatureRow">
+                <ShieldCheck size={18} strokeWidth={2} aria-hidden />
+                <span><strong>Reliability guardrails remain</strong><small>Abuse rate limits and agent/tool/context budgets keep the public demo stable.</small></span>
+              </div>
+            </div>
+            {!signedIn ? (
+              <div className="authAccessFlags" aria-label="Research tools included with your account">
+                {MAIN_NAV_ITEMS.filter((item) => item.id !== "settings").map((item) => (
+                  <span key={item.id}><Check size={12} strokeWidth={2.2} aria-hidden /><strong>{CIVILMCP_FEATURE_ACCESS[item.id].label}</strong></span>
+                ))}
+              </div>
+            ) : null}
+            <p className="openAccessNote">
+              {signedIn ? <ShieldCheck size={16} strokeWidth={2} aria-hidden /> : <LogIn size={16} strokeWidth={2} aria-hidden />}
+              <span>
+                <strong>{signedIn ? "Sync is active" : "Sign in to sync"}</strong>
+                <small>{signedIn ? "Your paths, chats, papers, and private research sources stay with you across devices." : "Authentication attaches research paths, chats, and history to one account across devices."}</small>
+              </span>
+            </p>
+          </aside>
+        ) : !billing.openAccess ? (
+          <aside className="authBenefitCard" aria-label="SEEDY Founder Pro plan">
             <div className="planHeading">
               <span className={`planIcon ${founderPro ? "pro" : ""}`}>
                 {founderPro ? <Crown size={19} strokeWidth={2.2} aria-hidden /> : <Sparkles size={19} strokeWidth={2.2} aria-hidden />}
@@ -4313,12 +5076,13 @@ function AccountPanel({
                 onClick={() => setAuthMode("signin")}
                 disabled={!billing.billingConfigured}
               >
-                <LockKeyhole size={17} strokeWidth={2.2} aria-hidden />
+                <LogIn size={17} strokeWidth={2.2} aria-hidden />
                 <span>{billing.billingConfigured ? "Sign in to upgrade" : "Founder Pro opening soon"}</span>
               </button>
             )}
             <p className="planFinePrint">Pro credits are added monthly. Usage is weighted by model; unused Pro credits do not roll over.</p>
           </aside>
+        ) : null}
       </div>
       {signedIn ? <McpAccessCard /> : null}
       <nav className="accountLegalLinks" aria-label="Legal and support">
@@ -4366,9 +5130,10 @@ function AppShell({
 
 export default function Home() {
   const [useMcp, setUseMcp] = useState(true);
+  const [webMcpStatus, setWebMcpStatus] = useState<WebMcpStatus>("checking");
   const [selectedModel, setSelectedModel] = useState<ChatModel>(DEFAULT_CHAT_MODEL);
   const [selectedCollection, setSelectedCollection] = useState<CollectionFilter>("");
-  const [selectedExperience, setSelectedExperience] = useState<ChatExperience>("mission");
+  const [selectedExperience, setSelectedExperience] = useState<ChatExperience>("answer");
   const [draft, setDraft] = useState("");
   const [isReady, setIsReady] = useState(false);
   const [syncState, setSyncState] = useState<SyncState>("loading");
@@ -4376,17 +5141,21 @@ export default function Home() {
   const [isSharedView, setIsSharedView] = useState(false);
   const [openDropdown, setOpenDropdown] = useState<OpenDropdown>(null);
   const [activeFeedFilter, setActiveFeedFilter] = useState<FeedFilter>("hot");
-  const [activeMobileNav, setActiveMobileNav] = useState<MobileNavItem>("explore");
+  const [activeMobileNav, setActiveMobileNav] = useState<MobileNavItem>("settings");
+  const [pendingFeature, setPendingFeature] = useState<MobileNavItem | null>(null);
   const [currentSessionId, setCurrentSessionId] = useState("");
   const [currentSessionTitle, setCurrentSessionTitle] = useState("Untitled chat");
-  const [pathGoal, setPathGoal] = useState("");
-  const [pathLevel, setPathLevel] = useState<PathLevel>("applied");
-  const [pathOutcome, setPathOutcome] = useState<PathOutcome>("literature_review");
+  const [pathGoal, setPathGoal] = useState(RESEARCH_PATH_DEMO_GOAL);
+  const [pathLevel, setPathLevel] = useState<PathLevel>(RESEARCH_PATH_DEMO_LEVEL);
+  const [pathOutcome, setPathOutcome] = useState<PathOutcome>(RESEARCH_PATH_DEMO_OUTCOME);
   const [researchPath, setResearchPath] = useState<ResearchPath | null>(null);
   const [researchPathStatus, setResearchPathStatus] = useState<SessionsStatus>("idle");
   const [researchPathError, setResearchPathError] = useState("");
   const [completedPathStages, setCompletedPathStages] = useState<string[]>([]);
-  const [pathStageMastery, setPathStageMastery] = useState<Record<string, "needs_review" | "understood">>({});
+  const [pathStageMastery, setPathStageMastery] = useState<Record<string, ResearchPathCheckpointStatus>>({});
+  const [pathCheckpointAnswers, setPathCheckpointAnswers] = useState<Record<string, string>>({});
+  const [pathCheckpointAssessments, setPathCheckpointAssessments] = useState<Record<string, ResearchPathCheckpointAssessment>>({});
+  const [pathAssessingStageId, setPathAssessingStageId] = useState("");
   const [researchPathReady, setResearchPathReady] = useState(false);
   const [userProfile, setUserProfile] = useState<ChatUserProfile | null>(null);
   const [isAuthenticated, setIsAuthenticated] = useState(false);
@@ -4402,7 +5171,6 @@ export default function Home() {
   const [loginPasswordConfirm, setLoginPasswordConfirm] = useState("");
   const [authBusy, setAuthBusy] = useState(false);
   const [billing, setBilling] = useState<BillingState>(GUEST_BILLING_STATE);
-  const [billingLoaded, setBillingLoaded] = useState(false);
   const [billingBusy, setBillingBusy] = useState(false);
   const [shareUrl, setShareUrl] = useState("");
   const [shareBusy, setShareBusy] = useState(false);
@@ -4415,8 +5183,7 @@ export default function Home() {
   const [translationCacheReady, setTranslationCacheReady] = useState(false);
   const [paperLanguage, setPaperLanguage] = useState<PaperLanguage>("en");
   const [paperLanguageReady, setPaperLanguageReady] = useState(false);
-  const [activationSteps, setActivationSteps] = useState<ActivationStep[]>([]);
-  const [activationVisible, setActivationVisible] = useState(false);
+  const [, setActivationSteps] = useState<ActivationStep[]>([]);
   const [translationRefreshNonce, setTranslationRefreshNonce] = useState(0);
   const [feedCards, setFeedCards] = useState<ResearchCardData[]>([]);
   const [feedStatus, setFeedStatus] = useState<FeedStatus>("loading");
@@ -4439,6 +5206,11 @@ export default function Home() {
     response: null,
     error: "",
   });
+  const [researchPassport, setResearchPassport] = useState<ResearchPassportState>({
+    phase: "idle",
+    artifact: null,
+    error: "",
+  });
   const [livingReviewWatches, setLivingReviewWatches] = useState<LivingReviewWatch[]>([]);
   const [livingReviewBusyId, setLivingReviewBusyId] = useState("");
   const [paperDetail, setPaperDetail] = useState<PaperDetailData | null>(null);
@@ -4450,8 +5222,19 @@ export default function Home() {
   const saveControllerRef = useRef<AbortController | null>(null);
   const detailRequestIdRef = useRef(0);
   const chatSessionRequestIdRef = useRef(0);
+  const pathBuildRequestIdRef = useRef(0);
+  const pathCheckpointRequestIdRef = useRef(0);
+  const navigationTouchedRef = useRef(false);
   const feedKeyRef = useRef("");
   const globalDiscoveryRequestIdRef = useRef(0);
+  const researchPassportRequestIdRef = useRef(0);
+  const webMcpDiscoveryRequestIdRef = useRef(0);
+  const webMcpEvidenceRequestIdRef = useRef(0);
+  const researchContextRevisionRef = useRef(0);
+  const feedResearchContextKeyRef = useRef("");
+  const researchPassportRef = useRef(researchPassport);
+  const webMcpActivityRef = useRef<WebMcpActivity[]>([]);
+  const webMcpEvidenceContextRef = useRef<PaperDetailData | null>(null);
   const paperLanguageRef = useRef<PaperLanguage>("en");
   const paperTranslationsRef = useRef<Record<string, PaperTranslationState>>({});
   const translationInFlightRef = useRef(new Set<string>());
@@ -4459,6 +5242,7 @@ export default function Home() {
   const initialEvidenceLinkOpenedRef = useRef(false);
   const pendingHumanAnswerRef = useRef(false);
   const activationReportedRef = useRef(false);
+  const webMcpHandlersRef = useRef<SeedResearchWebMcpHandlers | null>(null);
 
   const setAppView = useCallback((item: MobileNavItem) => {
     setActiveMobileNav(item);
@@ -4466,10 +5250,53 @@ export default function Home() {
     window.requestAnimationFrame(() => mainRailRef.current?.scrollTo({ top: 0, behavior: "auto" }));
   }, []);
 
+  const recordWebMcpActivity = useCallback((tool: string, detail: string) => {
+    const entry = { tool, detail: boundedToolText(detail, 180), completedAt: new Date().toISOString() };
+    webMcpActivityRef.current = [...webMcpActivityRef.current, entry].slice(-8);
+    return entry;
+  }, []);
+
+  const invalidateResearchContext = useCallback(() => {
+    researchContextRevisionRef.current += 1;
+    researchPassportRequestIdRef.current += 1;
+    setResearchPassport((current) => {
+      if (current.artifact) {
+        const next = { ...current, artifact: { ...current.artifact, stale: true } };
+        researchPassportRef.current = next;
+        return next;
+      }
+      if (current.phase === "loading") {
+        const next: ResearchPassportState = { phase: "error", artifact: null, error: "Research context changed while the Passport was being drafted. Redraft from the current evidence." };
+        researchPassportRef.current = next;
+        return next;
+      }
+      return current;
+    });
+  }, []);
+
+  useEffect(() => {
+    researchPassportRef.current = researchPassport;
+  }, [researchPassport]);
+
+  useEffect(() => {
+    const contextKey = `${feedQuery}\u0000${selectedCollection || "all"}\u0000${activeFeedFilter}`;
+    if (!feedResearchContextKeyRef.current) {
+      feedResearchContextKeyRef.current = contextKey;
+      return;
+    }
+    if (feedResearchContextKeyRef.current === contextKey) return;
+    feedResearchContextKeyRef.current = contextKey;
+    invalidateResearchContext();
+  }, [activeFeedFilter, feedQuery, invalidateResearchContext, selectedCollection]);
+
   const mode: Mode = useMcp ? "mcp" : "baseline";
   const { messages, append, isLoading, setMessages, error: chatError } = useChat({
     api: "/api/chat",
     id: "civilmcp-session",
+    // React 19 can hit its nested-update guard when every data-stream part
+    // synchronously invalidates SWR. Batch paint updates without delaying the
+    // network stream or changing the final message.
+    experimental_throttle: 50,
   });
 
   const recordActivationStep = useCallback((step: ActivationStep) => {
@@ -4492,7 +5319,6 @@ export default function Home() {
     try {
       const stored = JSON.parse(window.localStorage.getItem(ACTIVATION_KEY) ?? "{}") as {
         steps?: unknown;
-        dismissed?: unknown;
         lastVisit?: unknown;
       };
       const steps = Array.isArray(stored.steps)
@@ -4500,14 +5326,11 @@ export default function Home() {
         : [];
       setActivationSteps(steps);
       activationReportedRef.current = steps.length === 3;
-      setActivationVisible(stored.dismissed !== true && steps.length < 3);
       if (typeof stored.lastVisit === "number" && Date.now() - stored.lastVisit > 6 * 60 * 60 * 1_000) {
         trackProductEvent("user_returned", { hoursAway: Math.floor((Date.now() - stored.lastVisit) / 3_600_000) });
       }
       window.localStorage.setItem(ACTIVATION_KEY, JSON.stringify({ ...stored, steps, lastVisit: Date.now() }));
-    } catch {
-      setActivationVisible(true);
-    }
+    } catch {}
   }, []);
 
   useEffect(() => {
@@ -4530,8 +5353,6 @@ export default function Home() {
       setBilling(await fetchJson<BillingState>("/api/billing"));
     } catch {
       // Billing configuration never blocks the free Research Preview.
-    } finally {
-      setBillingLoaded(true);
     }
   }, []);
 
@@ -4595,7 +5416,7 @@ export default function Home() {
   }, [bookmarkedCards, bookmarksReady]);
 
   useEffect(() => {
-    if (!isReady || !bookmarksReady) return;
+    if (!isReady || !isAuthenticated || !bookmarksReady) return;
     let cancelled = false;
     void fetchJson<{ items: PaperWorkspaceItem[]; cards: ResearchCardData[] }>("/api/paper-workspace")
       .then((payload) => {
@@ -4612,14 +5433,18 @@ export default function Home() {
     return () => {
       cancelled = true;
     };
-  }, [bookmarksReady, isReady]);
+  }, [bookmarksReady, isAuthenticated, isReady]);
 
   useEffect(() => {
+    if (!isReady || !isAuthenticated || !userProfile?.userId) return;
+    setResearchPathReady(false);
     try {
-      const parsed = JSON.parse(window.localStorage.getItem(RESEARCH_PATH_KEY) ?? "null") as {
+      const parsed = JSON.parse(window.localStorage.getItem(researchPathStorageKey(userProfile.userId)) ?? "null") as {
         path?: unknown;
         completedStages?: unknown;
         stageMastery?: unknown;
+        checkpointAnswers?: unknown;
+        checkpointAssessments?: unknown;
       } | null;
       if (isResearchPath(parsed?.path)) {
         setResearchPath(parsed.path);
@@ -4628,30 +5453,42 @@ export default function Home() {
         setPathOutcome(parsed.path.outcome);
         setCompletedPathStages(Array.isArray(parsed?.completedStages) ? parsed.completedStages.filter((value): value is string => typeof value === "string") : []);
         const storedMastery = parsed?.stageMastery && typeof parsed.stageMastery === "object" ? parsed.stageMastery as Record<string, unknown> : {};
-        setPathStageMastery(Object.fromEntries(Object.entries(storedMastery).filter((entry): entry is [string, "needs_review" | "understood"] => entry[1] === "needs_review" || entry[1] === "understood")));
+        setPathStageMastery(Object.fromEntries(Object.entries(storedMastery).filter((entry): entry is [string, ResearchPathCheckpointStatus] => entry[1] === "needs_review" || entry[1] === "partial" || entry[1] === "understood")));
+        const storedAnswers = parsed?.checkpointAnswers && typeof parsed.checkpointAnswers === "object" ? parsed.checkpointAnswers as Record<string, unknown> : {};
+        setPathCheckpointAnswers(Object.fromEntries(Object.entries(storedAnswers).filter((entry): entry is [string, string] => typeof entry[1] === "string")));
+        const storedAssessments = parsed?.checkpointAssessments && typeof parsed.checkpointAssessments === "object" ? parsed.checkpointAssessments as Record<string, unknown> : {};
+        setPathCheckpointAssessments(Object.fromEntries(Object.entries(storedAssessments).filter((entry): entry is [string, ResearchPathCheckpointAssessment] => isResearchPathCheckpointAssessment(entry[1]))));
         setResearchPathStatus("ready");
       }
     } catch {
       setResearchPath(null);
       setCompletedPathStages([]);
       setPathStageMastery({});
+      setPathCheckpointAnswers({});
+      setPathCheckpointAssessments({});
     } finally {
       setResearchPathReady(true);
     }
-  }, []);
+  }, [isAuthenticated, isReady, userProfile?.userId]);
 
   useEffect(() => {
-    if (!researchPathReady) return;
+    if (!researchPathReady || !isAuthenticated || !userProfile?.userId) return;
     try {
       if (researchPath) {
-        window.localStorage.setItem(RESEARCH_PATH_KEY, JSON.stringify({ path: researchPath, completedStages: completedPathStages, stageMastery: pathStageMastery }));
+        window.localStorage.setItem(researchPathStorageKey(userProfile.userId), JSON.stringify({
+          path: researchPath,
+          completedStages: completedPathStages,
+          stageMastery: pathStageMastery,
+          checkpointAnswers: pathCheckpointAnswers,
+          checkpointAssessments: pathCheckpointAssessments,
+        }));
       } else {
-        window.localStorage.removeItem(RESEARCH_PATH_KEY);
+        window.localStorage.removeItem(researchPathStorageKey(userProfile.userId));
       }
     } catch {
       setResearchPathError("This browser could not save your path locally.");
     }
-  }, [completedPathStages, pathStageMastery, researchPath, researchPathReady]);
+  }, [completedPathStages, isAuthenticated, pathCheckpointAnswers, pathCheckpointAssessments, pathStageMastery, researchPath, researchPathReady, userProfile?.userId]);
 
   useEffect(() => {
     let nextLanguage: PaperLanguage = "en";
@@ -4732,6 +5569,7 @@ export default function Home() {
 
   const closePaperDetail = useCallback(() => {
     detailRequestIdRef.current += 1;
+    webMcpEvidenceContextRef.current = null;
     setPaperDetail(null);
     setPaperDetailStatus("ready");
     setPaperDetailError("");
@@ -4789,7 +5627,16 @@ export default function Home() {
         setLoginEmail(normalized.user?.email ?? "");
         setIsSharedView(Boolean(shareId));
         setSyncState("saved");
-        if (requestedView === "settings") setAppView("settings");
+        let returnFeature = DEFAULT_AUTHENTICATED_FEATURE;
+        try {
+          const storedFeature = window.sessionStorage.getItem(AUTH_RETURN_FEATURE_KEY);
+          if (isMobileNavItem(storedFeature)) returnFeature = storedFeature;
+          window.sessionStorage.removeItem(AUTH_RETURN_FEATURE_KEY);
+        } catch {}
+        const requestedFeature = isMobileNavItem(requestedView) ? requestedView : null;
+        if (shareId || requestedFeature || !navigationTouchedRef.current) {
+          setAppView(shareId ? "shared" : requestedFeature ?? returnFeature);
+        }
         const billingResult = searchParams.get("billing");
         if (billingResult) {
           setAppView("settings");
@@ -4818,7 +5665,18 @@ export default function Home() {
       } catch (error) {
         if (!cancelled) {
           setSyncState("error");
-          setStatusText("Session sync is temporarily unavailable. Paper search remains available.");
+          const publicFallback = MAIN_NAV_ITEMS.find(
+            (item) => item.id !== "settings" && CIVILMCP_FEATURE_ACCESS[item.id].enabled && (CIVILMCP_OPEN_ACCESS || !CIVILMCP_FEATURE_ACCESS[item.id].requiresAuth),
+          )?.id;
+          if (publicFallback) {
+            if (!navigationTouchedRef.current) setAppView(DEFAULT_AUTHENTICATED_FEATURE);
+            setStatusText("Account sync is temporarily unavailable. Public research tools remain available.");
+          } else {
+            setAppView("settings");
+            setStatusText(error instanceof Error && /sign in/i.test(error.message)
+              ? "Sign in to use Research Path, chat, workspace, and history."
+              : "Sign in is required. Account services are temporarily unavailable.");
+          }
         }
       } finally {
         if (!cancelled) {
@@ -4836,12 +5694,6 @@ export default function Home() {
       }
     };
   }, [refreshBilling, refreshChatSessions, setAppView, setMessages]);
-
-  useEffect(() => {
-    if (billingLoaded && !billing.premiumModels && chatModelRequiresPro(selectedModel)) {
-      setSelectedModel(DEFAULT_CHAT_MODEL);
-    }
-  }, [billing.premiumModels, billingLoaded, selectedModel]);
 
   useEffect(() => {
     if (!isReady || !currentSessionId || isSharedView) return;
@@ -5000,23 +5852,22 @@ export default function Home() {
       CHAT_MODELS.map((option) => ({
         value: option.id,
         label: option.label,
-        badge: option.requiresPro ? (billing.premiumModels ? `${option.credits} credits` : "PRO") : "FREE",
+        badge: option.id.startsWith("gpt-") ? "OPENAI" : "OPTIONAL",
         description:
           option.id === DEFAULT_CHAT_MODEL
-            ? "Default · 1 credit · fast research answers"
-            : option.requiresPro
-              ? `${option.credits} credits · advanced reasoning`
-              : `${option.credits} ${option.credits === 1 ? "credit" : "credits"} · included in Free`,
+            ? "Default · efficient, grounded research answers"
+            : option.id === "gpt-5.6-terra"
+              ? "Balanced reasoning for deeper research"
+              : option.id === "gpt-5.6-sol"
+                ? "Flagship reasoning for the hardest synthesis"
+                : option.id.startsWith("gpt-")
+                  ? "OpenAI model · available to every learner"
+                  : "Optional fallback model · no plan gate",
       })),
-    [billing.premiumModels],
+    [],
   );
 
   const selectModel = (model: ChatModel) => {
-    if (chatModelRequiresPro(model) && !billing.premiumModels) {
-      setAppView("settings");
-      setStatusText(`${CHAT_MODELS.find((option) => option.id === model)?.label ?? model} is included in Founder Pro.`);
-      return;
-    }
     setSelectedModel(model);
   };
 
@@ -5528,6 +6379,9 @@ export default function Home() {
   const continueWithGoogle = async () => {
     setAuthBusy(true);
     try {
+      try {
+        window.sessionStorage.setItem(AUTH_RETURN_FEATURE_KEY, pendingFeature ?? DEFAULT_AUTHENTICATED_FEATURE);
+      } catch {}
       const payload = await fetchJson<{ url: string }>("/api/auth", {
         method: "POST",
         body: JSON.stringify({ action: "oauth", provider: "google" }),
@@ -5585,8 +6439,14 @@ export default function Home() {
         ),
       });
       if (payload.pendingEmail) {
-        setStatusText("Check your inbox to confirm the account, then sign in to CivilMCP.");
+        setStatusText("Check your inbox to confirm the account, then sign in to SEEDY.");
       } else {
+        let returnFeature = pendingFeature ?? DEFAULT_AUTHENTICATED_FEATURE;
+        try {
+          const storedFeature = window.sessionStorage.getItem(AUTH_RETURN_FEATURE_KEY);
+          if (isMobileNavItem(storedFeature)) returnFeature = storedFeature;
+          window.sessionStorage.removeItem(AUTH_RETURN_FEATURE_KEY);
+        } catch {}
         if (payload.user) {
           setUserProfile(payload.user);
           setLoginName(payload.user.displayName);
@@ -5595,10 +6455,12 @@ export default function Home() {
         setIsAuthenticated(Boolean(payload.authenticated));
         setLoginPassword("");
         setLoginPasswordConfirm("");
-        setStatusText("Signed in. Your current chat history is now linked to this account.");
         await refreshCurrentSession();
         await refreshBilling();
         await refreshChatSessions(true);
+        setPendingFeature(null);
+        setAppView(returnFeature);
+        setStatusText(`Signed in. ${CIVILMCP_FEATURE_ACCESS[returnFeature].label} is ready.`);
       }
     } catch (error) {
       setStatusText(error instanceof Error ? error.message : "Failed to sign in.");
@@ -5656,10 +6518,12 @@ export default function Home() {
       const nextUrl = new URL(window.location.href);
       nextUrl.searchParams.delete("auth");
       window.history.replaceState({}, "", `${nextUrl.pathname}${nextUrl.search}${nextUrl.hash}`);
-      setStatusText("Password updated. Your CivilMCP account is ready.");
+      setStatusText("Password updated. Your SEEDY account is ready.");
       await refreshCurrentSession();
       await refreshBilling();
       await refreshChatSessions(true);
+      setAppView(pendingFeature ?? DEFAULT_AUTHENTICATED_FEATURE);
+      setPendingFeature(null);
     } catch (error) {
       setStatusText(error instanceof Error ? error.message : "Password could not be updated.");
     } finally {
@@ -5704,12 +6568,11 @@ export default function Home() {
       setLoginPasswordConfirm("");
       setIsAuthenticated(false);
       setBilling(GUEST_BILLING_STATE);
-      setBillingLoaded(true);
       setMessages([]);
       setChatSessions([]);
       setCurrentSessionId("");
       setCurrentSessionTitle("Untitled chat");
-      setStatusText("Signed out. You can continue working on this browser without an account.");
+      setStatusText("Signed out. Sign in again to use research features.");
       window.location.reload();
     } catch (error) {
       setStatusText(error instanceof Error ? error.message : "Failed to log out.");
@@ -5740,9 +6603,19 @@ export default function Home() {
     source: string,
     seedCard?: ResearchCardData,
     evidenceTarget: CivilEvidenceItem | null = null,
-  ) => {
+  ): Promise<boolean> => {
+    const currentPassport = researchPassportRef.current.artifact;
+    const openingCurrentPassportEvidence = Boolean(
+      currentPassport
+      && !currentPassport.stale
+      && currentPassport.paper.source === source
+      && evidenceTarget?.id
+      && currentPassport.evidence.some((item) => item.id === evidenceTarget.id),
+    );
+    if (!openingCurrentPassportEvidence) invalidateResearchContext();
     const requestId = detailRequestIdRef.current + 1;
     detailRequestIdRef.current = requestId;
+    webMcpEvidenceContextRef.current = null;
     setPaperDetail(
       seedCard
         ? {
@@ -5763,8 +6636,31 @@ export default function Home() {
       if (evidenceTarget?.chunkIndex != null) params.set("chunk", String(evidenceTarget.chunkIndex));
       if (evidenceTarget?.pageStart != null) params.set("page", String(evidenceTarget.pageStart));
       const detail = await fetchJson<PaperDetailData>(`/api/papers/${encodeURIComponent(source)}${params.size ? `?${params.toString()}` : ""}`);
-      if (detailRequestIdRef.current !== requestId) return;
-      setPaperDetail(detail);
+      if (detailRequestIdRef.current !== requestId) return false;
+      const highlighted = detail.evidence.find((item) => (
+        (evidenceTarget?.id && item.id === evidenceTarget.id)
+        || (evidenceTarget?.sectionIndex != null && evidenceTarget?.chunkIndex != null
+          && item.sectionIndex === evidenceTarget.sectionIndex && item.chunkIndex === evidenceTarget.chunkIndex)
+        || (evidenceTarget?.pageStart != null && item.pageStart === evidenceTarget.pageStart)
+      ));
+      if (
+        openingCurrentPassportEvidence
+        && (!highlighted || highlighted.pageStart == null || highlighted.pageEnd == null)
+      ) {
+        throw new Error("The selected Passport anchor could not be reopened at its original page.");
+      }
+      const visibleEvidence = highlighted
+        ? [highlighted, ...detail.evidence.filter((item) => item.id !== highlighted.id)].slice(0, 8)
+        : detail.evidence.slice(0, 8);
+      const readerPageNumber = highlighted?.readerPageNumber ?? 1;
+      const readerPayload = await fetchJson<PaperReaderAccessPayload>(
+        `/api/papers/${encodeURIComponent(source)}/reader?page=${readerPageNumber}&limit=1`,
+      ).catch(() => null);
+      if (detailRequestIdRef.current !== requestId) return false;
+      const readerAccess = summarizePaperReaderAccess(readerPayload, detail.document.source, readerPageNumber);
+      const enrichedDetail = { ...detail, readerAccess };
+      webMcpEvidenceContextRef.current = { ...enrichedDetail, evidence: visibleEvidence };
+      setPaperDetail(enrichedDetail);
       setPaperDetailStatus("ready");
       trackProductEvent("paper_open", {
         source: detail.document.source,
@@ -5784,12 +6680,14 @@ export default function Home() {
       if (paperLanguageRef.current === "en") {
         void translatePapersToEnglish([{ card: detail.document, detail }]);
       }
+      return true;
     } catch (error) {
-      if (detailRequestIdRef.current !== requestId) return;
+      if (detailRequestIdRef.current !== requestId) return false;
       setPaperDetailStatus("error");
       setPaperDetailError(error instanceof Error ? error.message : "Failed to load paper detail.");
+      return false;
     }
-  }, [recordActivationStep, translatePapersToEnglish]);
+  }, [invalidateResearchContext, recordActivationStep, translatePapersToEnglish]);
 
   useEffect(() => {
     if (!isReady || initialEvidenceLinkOpenedRef.current) return;
@@ -5841,6 +6739,92 @@ export default function Home() {
       });
     }
   };
+
+  const clearResearchPassport = useCallback(() => {
+    researchPassportRequestIdRef.current += 1;
+    const next: ResearchPassportState = { phase: "idle", artifact: null, error: "" };
+    researchPassportRef.current = next;
+    setResearchPassport(next);
+    setStatusText("Research Passport cleared.");
+  }, []);
+
+  const markResearchPassportReviewed = useCallback(() => {
+    const current = researchPassportRef.current;
+    const artifact = current.artifact;
+    if (current.phase !== "ready" || !artifact || artifact.stale || artifact.reviewedAt) return;
+    const allEvidenceOpened = artifact.evidence.every((item) => artifact.openedEvidenceIds.includes(item.id));
+    if (!allEvidenceOpened) {
+      setStatusText("Open every exact-page anchor before acknowledging page review.");
+      return;
+    }
+    const next: ResearchPassportState = {
+      ...current,
+      artifact: { ...artifact, reviewedAt: new Date().toISOString() },
+    };
+    researchPassportRef.current = next;
+    setResearchPassport(next);
+    setStatusText("Research Passport page anchors marked as reviewed. Export is now available; the candidate inference remains unvalidated.");
+  }, []);
+
+  const exportResearchPassport = useCallback(() => {
+    const artifact = researchPassport.artifact;
+    const allEvidenceOpened = artifact?.evidence.every((item) => artifact.openedEvidenceIds.includes(item.id)) ?? false;
+    if (researchPassport.phase !== "ready" || !artifact?.reviewedAt || artifact.stale || !allEvidenceOpened) {
+      setStatusText("Review the current Research Passport before exporting it.");
+      return;
+    }
+    const blob = new Blob([researchPassportMarkdown(artifact)], { type: "text/markdown;charset=utf-8" });
+    const url = URL.createObjectURL(blob);
+    const anchor = document.createElement("a");
+    anchor.href = url;
+    anchor.download = `seed-research-passport-${artifact.passportId.toLowerCase()}.md`;
+    anchor.click();
+    URL.revokeObjectURL(url);
+    trackProductEvent("review_exported", {
+      surface: "research_passport",
+      source: artifact.paper.source,
+      evidenceCount: artifact.evidence.length,
+      globalLeadCount: artifact.globalWorks.length,
+    });
+    recordActivationStep("outcome");
+    setStatusText("Page-reviewed Research Passport exported as Markdown with its candidate-inference warning intact.");
+  }, [recordActivationStep, researchPassport]);
+
+  const openResearchPassportEvidence = useCallback((item: ResearchPassportEvidence) => {
+    const artifact = researchPassport.artifact;
+    if (!artifact) return;
+    const passportId = artifact.passportId;
+    const target: CivilEvidenceItem = {
+      evidenceId: item.id,
+      citation: `${artifact.paper.paperCode || artifact.paper.title} · ${passportEvidencePage(item)}`,
+      source: artifact.paper.source,
+      id: item.id,
+      documentId: artifact.paper.id,
+      sectionIndex: item.sectionIndex,
+      chunkIndex: item.chunkIndex,
+      pageStart: item.pageStart,
+      pageEnd: item.pageEnd,
+      sectionTitle: item.sectionTitle ?? undefined,
+      snippet: item.snippet,
+    };
+    void openPaperDetailBySource(artifact.paper.source, artifact.paper, target).then((opened) => {
+      if (!opened) return;
+      setResearchPassport((current) => {
+        if (current.phase !== "ready" || !current.artifact || current.artifact.passportId !== passportId || current.artifact.stale) return current;
+        if (current.artifact.openedEvidenceIds.includes(item.id)) return current;
+        const next: ResearchPassportState = {
+          ...current,
+          artifact: {
+            ...current.artifact,
+            openedEvidenceIds: [...current.artifact.openedEvidenceIds, item.id],
+          },
+        };
+        researchPassportRef.current = next;
+        return next;
+      });
+      setStatusText(`${item.id} reopened at ${passportEvidencePage(item)}. Review every Passport anchor before export.`);
+    });
+  }, [openPaperDetailBySource, researchPassport.artifact]);
 
   const createLivingReview = async () => {
     const query = feedQuery.trim();
@@ -5944,7 +6928,7 @@ export default function Home() {
     const url = URL.createObjectURL(blob);
     const anchor = document.createElement("a");
     anchor.href = url;
-    anchor.download = `civilmcp-session-${Date.now()}.json`;
+    anchor.download = `seed-research-session-${Date.now()}.json`;
     anchor.click();
     URL.revokeObjectURL(url);
     setStatusText("Session exported as JSON");
@@ -5964,7 +6948,7 @@ export default function Home() {
     const anchor = document.createElement("a");
     anchor.href = url;
     const automated = annotation.artifact.experience === "automated";
-    anchor.download = `civilmcp-${automated ? "research-dossier" : "evidence-brief"}-${Date.now()}.md`;
+    anchor.download = `seed-research-${automated ? "research-dossier" : "evidence-brief"}-${Date.now()}.md`;
     anchor.click();
     URL.revokeObjectURL(url);
     setStatusText(`${automated ? "Research Dossier" : "Evidence Brief"} exported as Markdown`);
@@ -6052,9 +7036,12 @@ export default function Home() {
     setStatusText("");
   };
 
-  const buildResearchPath = async (knowledgeGaps: string[] = []) => {
+  const buildResearchPath = async (knowledgeGaps: string[] = [], preserveMastered = false) => {
     const goal = pathGoal.trim();
     if (goal.length < 8 || researchPathStatus === "loading") return;
+    const requestId = ++pathBuildRequestIdRef.current;
+    const previousPath = researchPath;
+    const masteredStageIds = new Set(completedPathStages);
     setResearchPathStatus("loading");
     setResearchPathError("");
     try {
@@ -6062,10 +7049,30 @@ export default function Home() {
         method: "POST",
         body: JSON.stringify({ goal, level: pathLevel, outcome: pathOutcome, collection: selectedCollection, knowledgeGaps }),
       });
-      if (!isResearchPath(path)) throw new Error("CivilMCP returned an invalid research path.");
-      setResearchPath(path);
-      setCompletedPathStages([]);
-      setPathStageMastery({});
+      if (!isResearchPath(path)) throw new Error("Seed Research returned an invalid research path.");
+      if (pathBuildRequestIdRef.current !== requestId) return;
+      if (preserveMastered && previousPath) {
+        const priorStages = new Map(previousPath.stages.map((stage) => [stage.id, stage]));
+        const stages = path.stages.map((stage) => masteredStageIds.has(stage.id) ? priorStages.get(stage.id) ?? stage : stage);
+        const validMasteredIds = stages.map((stage) => stage.id).filter((stageId) => masteredStageIds.has(stageId));
+        setResearchPath({ ...path, stages });
+        setCompletedPathStages(validMasteredIds);
+        setPathStageMastery((current) => Object.fromEntries(
+          Object.entries(current).filter(([stageId, status]) => validMasteredIds.includes(stageId) && status === "understood"),
+        ));
+        setPathCheckpointAnswers((current) => Object.fromEntries(
+          Object.entries(current).filter(([stageId]) => validMasteredIds.includes(stageId)),
+        ));
+        setPathCheckpointAssessments((current) => Object.fromEntries(
+          Object.entries(current).filter(([stageId]) => validMasteredIds.includes(stageId)),
+        ));
+      } else {
+        setResearchPath(path);
+        setCompletedPathStages([]);
+        setPathStageMastery({});
+        setPathCheckpointAnswers({});
+        setPathCheckpointAssessments({});
+      }
       setResearchPathStatus("ready");
       trackProductEvent("research_path_created", {
         level: path.level,
@@ -6074,63 +7081,690 @@ export default function Home() {
         collection: selectedCollection || "all",
       });
     } catch (error) {
+      if (pathBuildRequestIdRef.current !== requestId) return;
       setResearchPathStatus("error");
       setResearchPathError(error instanceof Error ? error.message : "Could not build this research path.");
     }
   };
 
   const resetResearchPath = () => {
+    pathBuildRequestIdRef.current += 1;
+    pathCheckpointRequestIdRef.current += 1;
     setResearchPath(null);
     setCompletedPathStages([]);
     setPathStageMastery({});
+    setPathCheckpointAnswers({});
+    setPathCheckpointAssessments({});
+    setPathAssessingStageId("");
     setResearchPathError("");
     setResearchPathStatus("idle");
+    setPathGoal(RESEARCH_PATH_DEMO_GOAL);
+    setPathLevel(RESEARCH_PATH_DEMO_LEVEL);
+    setPathOutcome(RESEARCH_PATH_DEMO_OUTCOME);
   };
 
-  const togglePathStage = (stageId: string) => {
-    setCompletedPathStages((current) => {
-      if (current.includes(stageId)) return current.filter((id) => id !== stageId);
-      trackProductEvent("path_stage_completed", { stageId });
-      return [...current, stageId];
+  const updatePathCheckpointAnswer = (stageId: string, answer: string) => {
+    setPathCheckpointAnswers((current) => ({ ...current, [stageId]: answer }));
+    setPathCheckpointAssessments((current) => {
+      if (!current[stageId]) return current;
+      const next = { ...current };
+      delete next[stageId];
+      return next;
     });
+    setPathStageMastery((current) => {
+      if (!current[stageId]) return current;
+      const next = { ...current };
+      delete next[stageId];
+      return next;
+    });
+    setCompletedPathStages((current) => current.filter((id) => id !== stageId));
   };
 
-  const markPathMastery = (stageId: string, state: "needs_review" | "understood") => {
-    setPathStageMastery((current) => ({ ...current, [stageId]: state }));
-    if (state === "understood") {
-      setCompletedPathStages((current) => current.includes(stageId) ? current : [...current, stageId]);
-      trackProductEvent("path_stage_completed", { stageId, checkpoint: true });
+  const assessPathCheckpoint = async (stageId: string) => {
+    if (!researchPath || pathAssessingStageId) return;
+    const stage = researchPath.stages.find((candidate) => candidate.id === stageId);
+    const answer = pathCheckpointAnswers[stageId]?.trim() ?? "";
+    if (!stage?.checkpointQuestion || answer.length < 20) return;
+    const requestId = ++pathCheckpointRequestIdRef.current;
+    setPathAssessingStageId(stageId);
+    setResearchPathError("");
+    try {
+      const assessment = await fetchJson<ResearchPathCheckpointAssessment>("/api/research-path", {
+        method: "POST",
+        body: JSON.stringify({
+          action: "assess_checkpoint",
+          goal: researchPath.goal,
+          level: researchPath.level,
+          stageId: stage.id,
+          stageTitle: stage.title,
+          checkpointQuestion: stage.checkpointQuestion,
+          concepts: stage.concepts ?? [],
+          paperSources: stage.papers.map((paper) => paper.source).slice(0, 2),
+          answer,
+        }),
+      });
+      if (!isResearchPathCheckpointAssessment(assessment)) throw new Error("Seed Research returned an invalid checkpoint assessment.");
+      if (pathCheckpointRequestIdRef.current !== requestId) return;
+      setPathCheckpointAssessments((current) => ({ ...current, [stageId]: assessment }));
+      setPathStageMastery((current) => ({ ...current, [stageId]: assessment.status }));
+      setCompletedPathStages((current) => {
+        if (assessment.status === "understood") return current.includes(stageId) ? current : [...current, stageId];
+        return current.filter((id) => id !== stageId);
+      });
+      trackProductEvent("checkpoint_answered", { stageId, score: assessment.score, status: assessment.status, model: assessment.model });
+      if (assessment.status === "understood") {
+        trackProductEvent("checkpoint_mastered", { stageId, score: assessment.score });
+        trackProductEvent("path_stage_completed", { stageId, checkpoint: true, score: assessment.score });
+      }
+    } catch (error) {
+      if (pathCheckpointRequestIdRef.current !== requestId) return;
+      setResearchPathError(error instanceof Error ? error.message : "Could not assess this checkpoint.");
+    } finally {
+      if (pathCheckpointRequestIdRef.current === requestId) setPathAssessingStageId("");
     }
   };
 
   const adaptResearchPath = () => {
     if (!researchPath) return;
     const gaps = researchPath.stages
-      .filter((stage) => pathStageMastery[stage.id] === "needs_review")
-      .flatMap((stage) => stage.concepts?.length ? stage.concepts : [stage.objective])
+      .filter((stage) => pathStageMastery[stage.id] && pathStageMastery[stage.id] !== "understood")
+      .flatMap((stage) => pathCheckpointAssessments[stage.id]?.gaps?.length
+        ? pathCheckpointAssessments[stage.id].gaps
+        : stage.concepts?.length ? stage.concepts : [stage.objective])
       .slice(0, 4);
-    if (gaps.length) void buildResearchPath(gaps);
+    if (gaps.length) {
+      trackProductEvent("path_adapted", { gapCount: gaps.length, completedStages: completedPathStages.length });
+      void buildResearchPath(gaps, true);
+    }
   };
 
-  const studyPathStage = (prompt: string) => {
-    setUseMcp(true);
-    setSelectedExperience("learn");
-    void submitPrompt(prompt, undefined, "mcp", "learn");
+  const exportResearchPath = () => {
+    if (!researchPath) return;
+    const lines = [
+      `# Research Path — ${researchPath.goal}`,
+      "",
+      `- Starting point: ${researchPath.level}`,
+      `- Target outcome: ${researchPath.outcome.replace(/_/g, " ")}`,
+      `- Progress: ${completedPathStages.length}/${researchPath.stages.length} stages mastered`,
+      researchPath.coverage ? `- Coverage: ${researchPath.coverage.status} (${researchPath.coverage.paperCount} matching papers)` : "",
+      "",
+      ...researchPath.stages.flatMap((stage, index) => {
+        const assessment = pathCheckpointAssessments[stage.id];
+        const answer = pathCheckpointAnswers[stage.id]?.trim();
+        return [
+          `## ${index + 1}. ${stage.title}`,
+          "",
+          stage.objective,
+          "",
+          "### Papers",
+          ...stage.papers.map((paper) => `- ${paper.title}`),
+          "",
+          `### Checkpoint\n${stage.checkpointQuestion || "No checkpoint question"}`,
+          answer ? `\n### Your reasoning\n${answer}` : "",
+          assessment ? `\n### Assessment\n${assessment.gradeAvailable === false ? "Grade pending" : `${assessment.score}/100 · ${assessment.status}`}\n\n${assessment.feedback}` : "",
+          ...(assessment?.evidence.length ? ["", "### Reading checked", ...assessment.evidence.map((item) => `- ${stage.papers.find((paper) => paper.source === item.source)?.title || "Selected research paper"}`)] : []),
+          "",
+        ];
+      }),
+      "---",
+      "Generated from a bounded Seed Research learning path. Evidence still requires human review and is not professional approval.",
+    ].filter(Boolean);
+    const blob = new Blob([lines.join("\n")], { type: "text/markdown;charset=utf-8" });
+    const url = URL.createObjectURL(blob);
+    const anchor = document.createElement("a");
+    anchor.href = url;
+    anchor.download = `seed-research-path-${Date.now()}.md`;
+    anchor.click();
+    URL.revokeObjectURL(url);
+    trackProductEvent("review_exported", { surface: "research_path", completedStages: completedPathStages.length });
+    setStatusText("Research Path exported as Markdown");
   };
+
+  useEffect(() => {
+    webMcpHandlersRef.current = {
+      discoverResearch: async (input, signal) => {
+        const requestId = ++webMcpDiscoveryRequestIdRef.current;
+        invalidateResearchContext();
+        const collection: CollectionFilter = input.collection === "all" ? "" : input.collection;
+        const params = new URLSearchParams({
+          filter: "hot",
+          collection: input.collection,
+          limit: "8",
+          q: input.query,
+        });
+        const globalRequest = input.scope === "thai_and_global"
+          ? fetchJson<GlobalDiscoveryResponse>("/api/global-discovery", {
+              method: "POST",
+              signal,
+              body: JSON.stringify({ query: input.query }),
+            }).then((response) => ({ response, error: "" })).catch((error: unknown) => ({
+              response: null,
+              error: error instanceof Error ? error.message : "Global discovery is unavailable.",
+            }))
+          : Promise.resolve({ response: null, error: "" });
+        const [payload, globalResult] = await Promise.all([
+          fetchJson<ResearchFeedResponse>(`/api/research-feed?${params.toString()}`, { signal }),
+          globalRequest,
+        ]);
+        if (signal.aborted || webMcpDiscoveryRequestIdRef.current !== requestId) {
+          throw new DOMException("The research discovery was cancelled or superseded.", "AbortError");
+        }
+
+        const cards = payload.cards ?? [];
+        setDraft(input.query);
+        setFeedQuery(input.query);
+        setSelectedCollection(collection);
+        setActiveFeedFilter("hot");
+        setFeedCards(cards);
+        setFeedTotal(payload.facets?.total ?? cards.length);
+        setFeedCatalogTotal(payload.facets?.catalogTotal ?? payload.facets?.total ?? cards.length);
+        setFeedCitableTotal(payload.facets?.citableTotal ?? cards.filter((card) => card.citable !== false).length);
+        setFeedMetadataOnlyTotal(payload.facets?.metadataOnlyTotal ?? cards.filter((card) => card.citable === false).length);
+        setFeedTotalSections(payload.facets?.totalSections ?? 0);
+        setFeedTotalChunks(payload.facets?.totalChunks ?? 0);
+        setFeedFilterCounts(payload.facets?.filters ?? {});
+        setFeedGeneratedAt(payload.generatedAt ?? "");
+        setFeedNextCursor(payload.nextCursor ?? null);
+        setFeedStatus("ready");
+        setFeedError("");
+        if (input.scope === "thai_and_global") {
+          setGlobalDiscovery(globalResult.response
+            ? { phase: "ready", query: input.query, response: globalResult.response, error: "" }
+            : { phase: "error", query: input.query, response: null, error: globalResult.error });
+        } else {
+          setGlobalDiscovery({ phase: "idle", query: input.query, response: null, error: "" });
+        }
+        closePaperDetail();
+        setAppView("explore");
+        setStatusText(`WebMCP found ${cards.length} visible Thai research records${globalResult.response ? " and added global discovery" : ""}.`);
+        trackProductEvent("explore_search", {
+          queryLength: input.query.length,
+          resultCount: cards.length,
+          filter: "webmcp",
+          collection: collection || "all",
+        });
+        recordActivationStep("search");
+        recordWebMcpActivity(
+          "discover_research",
+          `${cards.length} Thai records${globalResult.response ? ` · ${globalResult.response.works.length} global metadata leads` : ""}`,
+        );
+
+        const citable = cards
+          .filter((card) => card.citable === true && card.discoveryLayer !== "thai_discovery")
+          .slice(0, 4);
+        const metadataOnly = cards.filter((card) => card.citable !== true || card.discoveryLayer === "thai_discovery");
+        return {
+          ok: true,
+          visibleView: "explore",
+          query: input.query,
+          thaiEvidence: citable.map((card) => ({
+            source: card.source,
+            title: boundedToolText(card.title, 140),
+            collection: card.collection,
+            pages: card.pageLabel,
+            evidencePackets: card.evidenceCount,
+            nativeReaderVerified: card.accessLevel === "full_text_licensed",
+          })),
+          discoveryOnlyReturned: metadataOnly.length,
+          globalMetadata: (globalResult.response?.works ?? []).slice(0, 3).map((work) => ({
+            title: boundedToolText(work.title, 120),
+            year: work.year,
+            citedBy: work.citedByCount,
+            url: boundedToolText(work.url, 180),
+          })),
+          evidenceBoundary: "Only page-linked Thai evidence is citable here. Rights-verified ThaiJO reader papers are evidence; unverified Thai catalog records and OpenAlex leads remain discovery metadata.",
+        };
+      },
+      inspectPaperEvidence: async (input, signal) => {
+        const requestId = ++webMcpEvidenceRequestIdRef.current;
+        invalidateResearchContext();
+        const params = new URLSearchParams();
+        if (input.evidenceId) params.set("evidence", input.evidenceId);
+        if (input.page != null) params.set("page", String(input.page));
+        webMcpEvidenceContextRef.current = null;
+        setPaperDetailStatus("loading");
+        setPaperDetailError("");
+        try {
+          const detail = await fetchJson<PaperDetailData>(
+            `/api/papers/${encodeURIComponent(input.source)}${params.size ? `?${params.toString()}` : ""}`,
+            { signal },
+          );
+          if (signal.aborted || webMcpEvidenceRequestIdRef.current !== requestId) {
+            throw new DOMException("The evidence request was cancelled or superseded.", "AbortError");
+          }
+          if (detail.document.citable !== true || detail.document.discoveryLayer === "thai_discovery") {
+            throw new Error("This record is discovery-only and cannot be returned as exact-page evidence.");
+          }
+          if (!detail.evidence.length) {
+            throw new Error("This paper has no verified page-linked evidence packets to inspect.");
+          }
+          const highlighted = detail.evidence.find((item) => item.id === input.evidenceId)
+            ?? detail.evidence.find((item) => input.page != null && item.pageStart != null && item.pageEnd != null && input.page >= item.pageStart && input.page <= item.pageEnd)
+            ?? detail.evidence[0]
+            ?? null;
+          const visibleEvidence = highlighted
+            ? [highlighted, ...detail.evidence.filter((item) => item.id !== highlighted.id)].slice(0, 8)
+            : detail.evidence.slice(0, 8);
+          const expectedReaderPage = highlighted?.readerPageNumber ?? null;
+          const readerPayload = await fetchJson<PaperReaderAccessPayload>(
+            `/api/papers/${encodeURIComponent(input.source)}/reader?page=${expectedReaderPage ?? 1}&limit=1`,
+            { signal },
+          ).catch(() => null);
+          if (signal.aborted || webMcpEvidenceRequestIdRef.current !== requestId) {
+            throw new DOMException("The evidence request was cancelled or superseded.", "AbortError");
+          }
+          const readerAccess = summarizePaperReaderAccess(
+            readerPayload,
+            detail.document.source,
+            expectedReaderPage ?? -1,
+          );
+          const enrichedDetail = { ...detail, readerAccess };
+          const target: CivilEvidenceItem | null = highlighted ? {
+            evidenceId: "WEBMCP",
+            citation: `${detail.document.paperCode || detail.document.title} · ${highlighted.pageStart == null ? "page unavailable" : highlighted.pageStart === highlighted.pageEnd ? `p.${highlighted.pageStart}` : `p.${highlighted.pageStart}-${highlighted.pageEnd}`}`,
+            source: detail.document.source,
+            id: highlighted.id,
+            documentId: detail.document.id,
+            sectionIndex: highlighted.sectionIndex,
+            chunkIndex: highlighted.chunkIndex,
+            pageStart: highlighted.pageStart,
+            pageEnd: highlighted.pageEnd,
+            sectionTitle: highlighted.sectionTitle ?? undefined,
+            snippet: highlighted.snippet,
+          } : null;
+          webMcpEvidenceContextRef.current = { ...enrichedDetail, evidence: visibleEvidence };
+          setPaperDetail(enrichedDetail);
+          setPaperDetailStatus("ready");
+          setPaperEvidenceTarget(target);
+          setAppView("explore");
+          setStatusText("WebMCP opened the paper evidence for human verification.");
+          const url = new URL(window.location.href);
+          url.searchParams.set("paper", detail.document.source);
+          if (target?.id) url.searchParams.set("evidence", target.id);
+          if (target?.pageStart != null) url.searchParams.set("page", String(target.pageStart));
+          window.history.replaceState(window.history.state, "", `${url.pathname}${url.search}${url.hash}`);
+          trackProductEvent("evidence_open", {
+            source: detail.document.source,
+            evidenceId: target?.id ?? "webmcp",
+            page: target?.pageStart ?? null,
+          });
+          recordActivationStep("verify");
+          recordWebMcpActivity(
+            "inspect_paper_evidence",
+            `${detail.document.paperCode || detail.document.source} · ${highlighted ? passportEvidencePage(highlighted) : "evidence opened"}`,
+          );
+          if (paperLanguageRef.current === "en") void translatePapersToEnglish([{ card: detail.document, detail }]);
+
+          return {
+            ok: true,
+            visibleView: "paper_evidence_drawer",
+            paper: {
+              source: detail.document.source,
+              title: boundedToolText(detail.document.title, 180),
+              collection: detail.document.collection,
+              pageCoverage: detail.document.pageLabel,
+              citable: true,
+            },
+            evidence: visibleEvidence.slice(0, 3).map((item) => ({
+              id: item.id,
+              page: item.pageStart == null ? "unavailable" : item.pageStart === item.pageEnd ? `p.${item.pageStart}` : `p.${item.pageStart}-${item.pageEnd}`,
+              section: boundedToolText(item.sectionTitle, 80),
+              excerpt: boundedToolText(item.snippet, 220),
+            })),
+            readerAccess,
+            nextHumanStep: "Inspect the highlighted original page before relying on or exporting a claim.",
+          };
+        } catch (error) {
+          const message = error instanceof Error ? error.message : "The paper evidence could not be loaded.";
+          if (webMcpEvidenceRequestIdRef.current === requestId) {
+            setPaperDetailStatus("error");
+            setPaperDetailError(message);
+          }
+          throw new Error(message);
+        }
+      },
+      draftResearchPassport: async (input, signal) => {
+        if (input.source.startsWith("private:")) {
+          throw new Error("Private paper sources cannot be included in a public Research Passport.");
+        }
+        const activeDetail = webMcpEvidenceContextRef.current;
+        if (!activeDetail || activeDetail.document.source !== input.source) {
+          throw new Error("Open this paper and its evidence before drafting its Research Passport.");
+        }
+        if (activeDetail.document.citable !== true || activeDetail.document.discoveryLayer === "thai_discovery") {
+          throw new Error("Discovery-only records cannot be used as Research Passport evidence.");
+        }
+        const evidenceById = new Map(activeDetail.evidence.map((item) => [item.id, item]));
+        const selectedEvidence = input.evidenceIds.map((id) => evidenceById.get(id));
+        if (selectedEvidence.some((item) => !item)) {
+          throw new Error("Every evidenceId must be visible in the active paper.");
+        }
+        const exactEvidence = selectedEvidence.filter((item): item is PaperDetailData["evidence"][number] => Boolean(item));
+        if (exactEvidence.some((item) => item.pageStart == null || item.pageEnd == null)) {
+          throw new Error("Research Passport evidence must resolve to original source pages.");
+        }
+
+        const requestId = ++researchPassportRequestIdRef.current;
+        const contextRevision = researchContextRevisionRef.current;
+        const fallbackSearchUrl = `https://openalex.org/works?search=${encodeURIComponent(input.focus)}`;
+        const loadingPassport: ResearchPassportState = { phase: "loading", artifact: null, error: "" };
+        researchPassportRef.current = loadingPassport;
+        setResearchPassport(loadingPassport);
+        closePaperDetail();
+        setAppView("explore");
+        try {
+          const thaiEvidence = exactEvidence.filter((item) => THAI_TEXT_PATTERN.test(item.snippet));
+          const translationRequest = thaiEvidence.length
+            ? fetchJson<PaperTranslationResponse>("/api/paper-translation", {
+                method: "POST",
+                signal,
+                body: JSON.stringify({
+                  targetLanguage: "en",
+                  segments: thaiEvidence.map((item, index) => ({ id: `passport-${index}`, text: item.snippet })),
+                }),
+              }).catch((error: unknown) => {
+                if (signal.aborted) throw error;
+                return null;
+              })
+            : Promise.resolve(null);
+          const globalRequest = fetchJson<GlobalDiscoveryResponse>("/api/global-discovery", {
+              method: "POST",
+              signal,
+              body: JSON.stringify({ query: input.focus }),
+            }).catch((error: unknown): GlobalDiscoveryResponse => {
+              if (signal.aborted) throw error;
+              return {
+              status: "unavailable",
+              provider: "openalex",
+              generatedAt: new Date().toISOString(),
+              searchUrl: fallbackSearchUrl,
+              works: [],
+              };
+            });
+          const [globalResponse, translationResponse] = await Promise.all([globalRequest, translationRequest]);
+          if (
+            signal.aborted
+            || researchPassportRequestIdRef.current !== requestId
+            || researchContextRevisionRef.current !== contextRevision
+          ) {
+            throw new DOMException("The Research Passport draft was cancelled because the research context changed.", "AbortError");
+          }
+          const createdAt = new Date().toISOString();
+          const candidateGapCopy = passportGapCopy(input.focus, input.gapLens);
+          const globalWorks = globalResponse.works.slice(0, 4);
+          const englishByRequestId = new Map(translationResponse?.translations.map((item) => [item.id, item.text.trim()]) ?? []);
+          const englishByEvidenceId = new Map(
+            thaiEvidence.map((item, index) => [item.id, englishByRequestId.get(`passport-${index}`) || null]),
+          );
+          const passportEvidence: ResearchPassportEvidence[] = exactEvidence.map((item) => ({
+            ...item,
+            englishSnippet: englishByEvidenceId.get(item.id) ?? null,
+          }));
+          const translationStatus: ResearchPassportArtifact["translationStatus"] = thaiEvidence.length
+            ? thaiEvidence.every((item) => Boolean(englishByEvidenceId.get(item.id))) ? "ready" : "unavailable"
+            : "not_needed";
+          const priorRunSteps = webMcpActivityRef.current;
+          const latestInspect = [...priorRunSteps].reverse().find((item) => item.tool === "inspect_paper_evidence");
+          const latestDiscover = [...priorRunSteps].reverse().find((item) => item.tool === "discover_research");
+          const draftStep = recordWebMcpActivity(
+            "draft_research_passport",
+            `${exactEvidence.length} exact-page anchors · ${globalWorks.length} metadata-only leads · page review pending`,
+          );
+          const artifact: ResearchPassportArtifact = {
+            version: "seed-research-passport-v1",
+            passportId: `SR-${Date.now().toString(36).toUpperCase()}-${requestId}`,
+            createdAt,
+            reviewedAt: null,
+            stale: false,
+            openedEvidenceIds: [],
+            runSteps: [latestDiscover, latestInspect, draftStep].filter((item): item is WebMcpActivity => Boolean(item)),
+            translationStatus,
+            focus: input.focus,
+            gapLens: input.gapLens,
+            paper: activeDetail.document,
+            evidence: passportEvidence,
+            globalStatus: globalResponse.status,
+            globalSearchUrl: globalResponse.searchUrl || fallbackSearchUrl,
+            globalWorks,
+            candidateGap: {
+              ...candidateGapCopy,
+              localBasisEvidenceIds: exactEvidence.map((item) => item.id),
+              relationValidated: false,
+            },
+          };
+          const readyPassport: ResearchPassportState = { phase: "ready", artifact, error: "" };
+          researchPassportRef.current = readyPassport;
+          setResearchPassport(readyPassport);
+          setGlobalDiscovery({ phase: "ready", query: input.focus, response: globalResponse, error: "" });
+          trackProductEvent("verified_research_outcome", {
+            surface: "research_passport_draft",
+            source: artifact.paper.source,
+            evidenceCount: exactEvidence.length,
+            globalLeadCount: artifact.globalWorks.length,
+            gapLens: input.gapLens,
+          });
+          setStatusText("WebMCP drafted a Research Passport. Open every exact page before acknowledging page review and exporting.");
+
+          return {
+            ok: true,
+            visibleArtifact: "research_passport",
+            version: artifact.version,
+            passportId: artifact.passportId,
+            thaiPaper: {
+              source: artifact.paper.source,
+              title: boundedToolText(artifact.paper.title, 160),
+              collection: artifact.paper.collection,
+              citable: true,
+            },
+            pageLinkedThaiEvidence: artifact.evidence.map((item) => ({
+              id: item.id,
+              page: passportEvidencePage(item),
+              section: boundedToolText(item.sectionTitle, 70),
+              excerptOriginal: boundedToolText(item.snippet, 180),
+              excerptEnglish: boundedToolText(item.englishSnippet, 180) || null,
+            })),
+            translationStatus: artifact.translationStatus,
+            globalLeads: artifact.globalWorks.map((work) => ({
+              title: boundedToolText(work.title, 110),
+              year: work.year,
+              url: boundedToolText(work.url, 180),
+              citable: false,
+            })),
+            globalStatus: artifact.globalStatus,
+            candidateGap: {
+              lens: input.gapLens,
+              status: "unsupported_candidate",
+              reviewRequired: true,
+              evidenceRelationValidated: false,
+              localBasisEvidenceIds: artifact.candidateGap.localBasisEvidenceIds,
+              nextVerificationQuery: candidateGapCopy.nextVerificationQuery,
+            },
+            boundary: "Thai page-linked packets are evidence. OpenAlex records are metadata-only leads. Novelty and transferability are not established.",
+            nextHumanStep: "Open every exact page, acknowledge the page review, then export the bounded artifact. The candidate inference remains unvalidated.",
+          };
+        } catch (error) {
+          if (researchPassportRequestIdRef.current === requestId) {
+            const message = error instanceof Error ? error.message : "The Research Passport could not be drafted.";
+            const errorPassport: ResearchPassportState = { phase: "error", artifact: null, error: message };
+            researchPassportRef.current = errorPassport;
+            setResearchPassport(errorPassport);
+            throw new Error(message);
+          }
+          throw error;
+        }
+      },
+      buildResearchPath: async (input, signal) => {
+        const collection: CollectionFilter = input.collection === "all" ? "" : input.collection;
+        const requestId = ++pathBuildRequestIdRef.current;
+        setPathGoal(input.goal);
+        setPathLevel(input.level);
+        setPathOutcome(input.outcome);
+        setSelectedCollection(collection);
+        setResearchPathStatus("loading");
+        setResearchPathError("");
+        closePaperDetail();
+        setAppView("path");
+        try {
+          const path = await fetchJson<ResearchPath>("/api/research-path", {
+            method: "POST",
+            signal,
+            body: JSON.stringify({
+              goal: input.goal,
+              level: input.level,
+              outcome: input.outcome,
+              collection,
+              knowledgeGaps: input.knowledgeGaps,
+            }),
+          });
+          if (!isResearchPath(path)) throw new Error("Seed Research returned an invalid research path.");
+          if (signal.aborted || pathBuildRequestIdRef.current !== requestId) {
+            throw new DOMException("The Research Path build was cancelled.", "AbortError");
+          }
+          setResearchPath(path);
+          setCompletedPathStages([]);
+          setPathStageMastery({});
+          setPathCheckpointAnswers({});
+          setPathCheckpointAssessments({});
+          setResearchPathStatus("ready");
+          setStatusText(input.knowledgeGaps.length
+            ? "WebMCP adapted the visible Research Path around the reviewed gaps."
+            : "WebMCP built a visible Research Path for the learner to review.");
+          trackProductEvent("research_path_created", {
+            level: path.level,
+            outcome: path.outcome,
+            paperCount: path.stages.reduce((count, stage) => count + stage.papers.length, 0),
+            collection: collection || "all",
+          });
+          if (input.knowledgeGaps.length) trackProductEvent("path_adapted", { gapCount: input.knowledgeGaps.length, completedStages: 0 });
+          recordWebMcpActivity("build_research_path", `${path.stages.length} stages · ${path.coverage?.paperCount ?? 0} matching papers`);
+
+          return {
+            ok: true,
+            visibleView: "research_path",
+            goal: path.goal,
+            planningMode: path.planningMode,
+            coverage: path.coverage,
+            adaptedFromGaps: path.adaptedFromGaps ?? input.knowledgeGaps,
+            stages: path.stages.map((stage) => ({
+              id: stage.id,
+              title: stage.title,
+              objective: boundedToolText(stage.objective, 150),
+              papers: stage.papers.map((paper) => boundedToolText(paper.title, 100)),
+            })),
+            nextHumanStep: "Open a stage paper, answer its checkpoint in your own words, then ask the agent to inspect learning progress.",
+          };
+        } catch (error) {
+          if (pathBuildRequestIdRef.current === requestId) setResearchPathStatus("error");
+          const message = error instanceof Error ? error.message : "The Research Path could not be built.";
+          setResearchPathError(message);
+          throw new Error(message);
+        }
+      },
+      inspectLearningProgress: async (signal) => {
+        if (signal.aborted) throw new DOMException("The progress inspection was cancelled.", "AbortError");
+        if (!researchPath) {
+          recordWebMcpActivity("inspect_learning_progress", "No active Research Path");
+          return {
+            ok: true,
+            state: "no_path",
+            visibleView: activeMobileNav,
+            nextStep: "Use build_research_path to create a four-stage evidence-backed path.",
+          };
+        }
+        const gaps = researchPath.stages.flatMap((stage) => pathCheckpointAssessments[stage.id]?.gaps ?? []).slice(0, 4);
+        recordWebMcpActivity("inspect_learning_progress", `${completedPathStages.length}/${researchPath.stages.length} stages mastered · ${gaps.length} reviewed gaps`);
+        return {
+          ok: true,
+          state: completedPathStages.length === researchPath.stages.length ? "complete" : "in_progress",
+          goal: researchPath.goal,
+          masteredStages: completedPathStages.length,
+          totalStages: researchPath.stages.length,
+          gaps: gaps.map((gap) => boundedToolText(gap, 160)),
+          stages: researchPath.stages.map((stage) => ({
+            id: stage.id,
+            title: stage.title,
+            status: pathStageMastery[stage.id] ?? "not_assessed",
+            score: pathCheckpointAssessments[stage.id]?.gradeAvailable === false ? null : pathCheckpointAssessments[stage.id]?.score ?? null,
+            evidenceReviewed: pathCheckpointAssessments[stage.id]?.evidence.length ?? 0,
+          })),
+          privacy: "Learner free-text answers are intentionally omitted.",
+          nextStep: gaps.length ? "Adapt the path with these reviewed gaps." : "Ask the learner to complete the next checkpoint in the visible page.",
+        };
+      },
+    };
+  });
+
+  useEffect(() => {
+    if (!isReady) return;
+    let active = true;
+    let registration: AbortController | null = null;
+    setWebMcpStatus("checking");
+    const proxy: SeedResearchWebMcpHandlers = {
+      discoverResearch: (input, signal) => {
+        if (!webMcpHandlersRef.current) throw new Error("Seed Research is still preparing its site tools.");
+        return webMcpHandlersRef.current.discoverResearch(input, signal);
+      },
+      inspectPaperEvidence: (input, signal) => {
+        if (!webMcpHandlersRef.current) throw new Error("Seed Research is still preparing its site tools.");
+        return webMcpHandlersRef.current.inspectPaperEvidence(input, signal);
+      },
+      draftResearchPassport: (input, signal) => {
+        if (!webMcpHandlersRef.current) throw new Error("Seed Research is still preparing its site tools.");
+        return webMcpHandlersRef.current.draftResearchPassport(input, signal);
+      },
+      buildResearchPath: (input, signal) => {
+        if (!webMcpHandlersRef.current) throw new Error("Seed Research is still preparing its site tools.");
+        return webMcpHandlersRef.current.buildResearchPath(input, signal);
+      },
+      inspectLearningProgress: (signal) => {
+        if (!webMcpHandlersRef.current) throw new Error("Seed Research is still preparing its site tools.");
+        return webMcpHandlersRef.current.inspectLearningProgress(signal);
+      },
+    };
+    void registerSeedResearchWebMcpTools(proxy)
+      .then((controller) => {
+        if (!active) {
+          controller?.abort();
+          return;
+        }
+        registration = controller;
+        setWebMcpStatus(controller ? "ready" : "unsupported");
+      })
+      .catch((error) => {
+        if (!active) return;
+        console.warn("seed_research_webmcp_registration_failed", {
+          error: error instanceof Error ? error.message : "Unknown error",
+        });
+        setWebMcpStatus("error");
+      });
+    return () => {
+      active = false;
+      registration?.abort();
+    };
+  }, [isReady]);
 
   const selectExperience = (experience: ChatExperience) => {
-    if ((experience === "research" || experience === "automated") && !(billing.plan === "founder_pro" && billing.premiumModels)) {
-      const proGateMessage = experience === "automated"
-        ? "Automated Research is included in Founder Pro. Sign in or upgrade to continue."
-        : "Deep Research is included in Founder Pro. Sign in or upgrade to continue.";
-      setStatusText(proGateMessage);
-      setAppView("settings");
-      return;
-    }
     setSelectedExperience(experience);
   };
 
   const navigateApp = (item: MobileNavItem) => {
+    navigationTouchedRef.current = true;
+    const access = CIVILMCP_FEATURE_ACCESS[item];
+    if (!access.enabled) {
+      setStatusText(`${access.label} is not enabled in this demo environment.`);
+      return;
+    }
+    if (!CIVILMCP_OPEN_ACCESS && access.requiresAuth && !isAuthenticated) {
+      setPendingFeature(item);
+      setAuthMode("signin");
+      try {
+        window.sessionStorage.setItem(AUTH_RETURN_FEATURE_KEY, item);
+      } catch {}
+      setStatusText(`Sign in to use ${access.label}.`);
+      setAppView("settings");
+      return;
+    }
+    setPendingFeature(null);
     setAppView(item);
     if (item === "explore") {
       setStatusText("");
@@ -6163,15 +7797,15 @@ export default function Home() {
         setActiveMobileNav={navigateApp}
         onNavigate={navigateApp}
       >
-        <div className="mobileBrandStrip" aria-label="CivilMCP status">
-          <span className="mobileBrandName">CivilMCP</span>
-          <span className="brandBadge">Research Preview</span>
+        <div className="mobileBrandStrip" aria-label="SEEDY status">
+          <span className="mobileBrandName">SEEDY</span>
+          <span className="brandBadge">Seed Research</span>
         </div>
         {showComposer ? (
           <section className="searchStage">
             <h1>
               {activeMobileNav === "explore"
-                ? "Thai civil engineering research, with sources."
+                ? "Thai research, with sources."
                 : "Research with sources."}
             </h1>
             {activeMobileNav === "explore" ? (
@@ -6179,15 +7813,22 @@ export default function Home() {
                 <p className="searchLead">
                   {feedCitableTotal
                     ? `Search ${feedCitableTotal.toLocaleString("en-US")} page-cited papers across ${Math.max(feedCatalogTotal, feedCitableTotal).toLocaleString("en-US")} Thai research records.`
-                    : "Search Thai civil engineering research. Compare findings. Verify every claim on the original page."}
+                    : "Search Thai research across local and global discovery sources. Compare findings. Verify every supported claim on the original page."}
                 </p>
-                <div className="corpusProof" aria-label="CivilMCP corpus coverage">
+                <div className="corpusProof" aria-label="Seed Research corpus coverage">
                   <span><strong>{feedCitableTotal ? feedCitableTotal.toLocaleString("en-US") : "—"}</strong> citable papers</span>
+                  <span><strong>{feedTotalSections ? feedTotalSections.toLocaleString("en-US") : "—"}</strong> page-linked sections</span>
                   <span><strong>{feedTotalChunks ? feedTotalChunks.toLocaleString("en-US") : "—"}</strong> cited passages</span>
                   {feedMetadataOnlyTotal ? <span><strong>{feedMetadataOnlyTotal.toLocaleString("en-US")}</strong> discovery records</span> : null}
                   <span>Exact-page citations</span>
                 </div>
-                <p className="corpusContext">Thai + English · Page-linked sources</p>
+                <p className="corpusContext">Thai-first corpus · Multidisciplinary discovery · Page-linked sources</p>
+                {webMcpStatus === "ready" ? (
+                  <p className="webMcpStatus" role="status" aria-label="WebMCP site tools ready">
+                    <span aria-hidden />
+                    WebMCP active · 5 site tools · shared human-agent view
+                  </p>
+                ) : null}
               </>
             ) : null}
             <SearchComposer
@@ -6214,28 +7855,12 @@ export default function Home() {
               isReady={isReady}
               isLoading={isLoading}
             />
-            <p className="researchDisclaimer">For research use. Not engineering advice.</p>
+            <p className="researchDisclaimer">For research use. Not professional advice.</p>
           </section>
         ) : null}
 
         {activeMobileNav === "explore" ? (
           <>
-            {activationVisible ? (
-              <ActivationGuide
-                steps={activationSteps}
-                onStart={() => {
-                  setDraft("road safety and serious crash factors in Thailand");
-                  setActiveFeedFilter("evidence");
-                }}
-                onDismiss={() => {
-                  setActivationVisible(false);
-                  try {
-                    const stored = JSON.parse(window.localStorage.getItem(ACTIVATION_KEY) ?? "{}") as Record<string, unknown>;
-                    window.localStorage.setItem(ACTIVATION_KEY, JSON.stringify({ ...stored, dismissed: true, steps: activationSteps, lastVisit: Date.now() }));
-                  } catch {}
-                }}
-              />
-            ) : null}
             <FilterBar
               activeFilter={activeFeedFilter}
               setActiveFilter={setActiveFeedFilter}
@@ -6250,11 +7875,21 @@ export default function Home() {
               onRefresh={() => setFeedRefreshNonce((value) => value + 1)}
             />
             <DiscoveryTrustBar citableTotal={feedCitableTotal} metadataOnlyTotal={feedMetadataOnlyTotal} />
-            <GlobalDiscoveryPanel
-              query={activeFeedFilter === "saved" ? "" : feedQuery}
-              state={globalDiscovery}
-              onExpand={() => void expandGlobalDiscovery()}
+            <ResearchPassportPanel
+              enabled={webMcpStatus === "ready"}
+              state={researchPassport}
+              onOpenEvidence={openResearchPassportEvidence}
+              onMarkReviewed={markResearchPassportReviewed}
+              onExport={exportResearchPassport}
+              onClear={clearResearchPassport}
             />
+            {researchPassport.phase === "ready" ? null : (
+              <GlobalDiscoveryPanel
+                query={activeFeedFilter === "saved" ? "" : feedQuery}
+                state={globalDiscovery}
+                onExpand={() => void expandGlobalDiscovery()}
+              />
+            )}
             <LivingReviewPanel
               authenticated={isAuthenticated}
               query={activeFeedFilter === "saved" ? "" : feedQuery}
@@ -6285,7 +7920,7 @@ export default function Home() {
             papers={workspacePapers}
             seedSources={workspaceSeedSources}
             authenticated={isAuthenticated}
-            proEnabled={billing.plan === "founder_pro" && billing.premiumModels}
+            accessEnabled={billing.openAccess || (billing.plan === "founder_pro" && billing.premiumModels)}
             onUpgrade={(message) => {
               setStatusText(message);
               setAppView("settings");
@@ -6305,12 +7940,15 @@ export default function Home() {
             error={researchPathError}
             completedStages={completedPathStages}
             stageMastery={pathStageMastery}
+            checkpointAnswers={pathCheckpointAnswers}
+            checkpointAssessments={pathCheckpointAssessments}
+            assessingStageId={pathAssessingStageId}
             onBuild={() => void buildResearchPath()}
             onReset={resetResearchPath}
-            onToggleStage={togglePathStage}
-            onMarkMastery={markPathMastery}
+            onAnswerChange={updatePathCheckpointAnswer}
+            onAssessCheckpoint={(stageId) => void assessPathCheckpoint(stageId)}
             onAdapt={adaptResearchPath}
-            onStudyStage={studyPathStage}
+            onExport={exportResearchPath}
             onOpenPaper={(source) => void openPaperDetailBySource(source)}
           />
         ) : activeMobileNav === "history" ? (

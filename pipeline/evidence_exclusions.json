@@ -1,0 +1,21 @@
+{
+  "manifest_version": 1,
+  "description": "Human-reviewed duplicate evidence exclusions enforced by pipeline/index.py.",
+  "exclusions": [
+    {
+      "source": "NCCE31_CEM-49.md",
+      "document_id": "NCCE31_CEM-49",
+      "canonical_source": "NCCE31_TRL-26.md",
+      "canonical_document_id": "NCCE31_TRL-26",
+      "reason": "The same proceedings paper appears twice under different footer codes; retain the transport-classified TRL-26 occurrence as canonical and exclude CEM-49 from evidence retrieval.",
+      "reviewed_by": "CivilMCP corpus QA",
+      "reviewed_at": "2026-08-31",
+      "body_similarity": 0.9988,
+      "evidence": [
+        "Normalized Thai/English title is identical in both extracted documents.",
+        "Normalized body similarity is 0.9988118258 across CEM-49 pages 510-519 and TRL-26 pages 1425-1434.",
+        "The paper topic is highway design and the TRL-26 transport classification is retained as canonical."
+      ]
+    }
+  ]
+}

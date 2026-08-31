@@ -32,6 +32,7 @@ except ModuleNotFoundError:  # pragma: no cover
 ROOT_DIR = Path(__file__).resolve().parents[1]
 DEFAULT_OUTPUT = ROOT_DIR / "pipeline" / "data" / "catalog" / "tci_thaijo.jsonl"
 DEFAULT_ALLOWLIST = ROOT_DIR / "pipeline" / "tci_source_allowlist.json"
+DEFAULT_ENDPOINT_REGISTRY = ROOT_DIR / "pipeline" / "tci_official_endpoint_registry.json"
 OAI_NS = "http://www.openarchives.org/OAI/2.0/"
 OAI_DC_NS = "http://www.openarchives.org/OAI/2.0/oai_dc/"
 DC_NS = "http://purl.org/dc/elements/1.1/"
@@ -69,6 +70,17 @@ CATALOG_STATE_FIELDS = REVIEWED_CATALOG_FIELDS + (
     "record_hash",
     "raw_metadata",
 )
+OFFICIAL_BROAD_DISCIPLINES = {
+    "science",
+    "life_sciences",
+    "physical_sciences",
+    "health_sciences",
+    "social_sciences",
+}
+NON_RESEARCH_CONTAINER_TITLES = {
+    "full issue",
+    "ฉบับเต็ม",
+}
 
 
 def utc_now() -> str:
@@ -156,6 +168,51 @@ def reviewed_source_sets(
     return []
 
 
+def official_endpoint_registration(
+    endpoint: str,
+    registry_path: Path = DEFAULT_ENDPOINT_REGISTRY,
+) -> dict[str, Any] | None:
+    """Return provenance for an exact official ThaiJO endpoint match."""
+    payload = json.loads(registry_path.read_text(encoding="utf-8"))
+    version = payload.get("version")
+    source_url = str(payload.get("source_url", "")).strip()
+    normalized_endpoint = endpoint.rstrip("/")
+    for item in payload.get("endpoints", []):
+        registered_endpoint = str(item.get("endpoint", "")).rstrip("/")
+        if registered_endpoint != normalized_endpoint:
+            continue
+        discipline = str(item.get("discipline", "")).strip()
+        if discipline not in OFFICIAL_BROAD_DISCIPLINES:
+            raise ValueError(f"Unsafe official ThaiJO discipline label: {discipline!r}")
+        return {
+            "registry_version": version,
+            "registry_source_url": source_url,
+            "endpoint": registered_endpoint,
+            "endpoint_family": str(item.get("family", "")).strip(),
+            "discipline": discipline,
+            "match": "exact_endpoint",
+        }
+    return None
+
+
+def apply_endpoint_discipline(
+    record: dict[str, Any],
+    registration: dict[str, Any],
+) -> dict[str, Any]:
+    """Apply a registry fallback and keep its provenance inside raw metadata."""
+    record["discipline"] = registration["discipline"]
+    raw_metadata = dict(record.get("raw_metadata") or {})
+    raw_metadata["discipline_provenance"] = {
+        "policy": "tci_thaijo_official_endpoint_registry_v1",
+        **registration,
+    }
+    record["raw_metadata"] = raw_metadata
+    record["record_hash"] = hashlib.sha256(
+        json.dumps(raw_metadata, ensure_ascii=False, sort_keys=True).encode("utf-8")
+    ).hexdigest()
+    return record
+
+
 def load_catalog_records(path: Path, endpoint: str) -> list[dict[str, Any]]:
     """Load one generated JSONL safely so a failed apply can resume offline."""
     records: list[dict[str, Any]] = []
@@ -181,6 +238,68 @@ def load_catalog_records(path: Path, endpoint: str) -> list[dict[str, Any]]:
     if not records:
         raise ValueError("The catalog JSONL contains no records.")
     return records
+
+
+def deduplicate_catalog_records(records: Iterable[dict[str, Any]]) -> list[dict[str, Any]]:
+    """Return one deterministic row per provider identifier.
+
+    Some ThaiJO endpoint-wide OAI feeds repeat an identical header across
+    resumption-token pages. Postgres cannot safely upsert the same conflict key
+    twice in one statement, so generated JSONL must be unique before it is
+    written or applied. A newer datestamp wins; a tombstone wins a timestamp
+    tie. Two different active payloads at the same datestamp are rejected for
+    review instead of choosing one silently.
+    """
+    by_id: dict[str, dict[str, Any]] = {}
+    for record in records:
+        provider_record_id = str(record.get("provider_record_id", "")).strip()
+        if not provider_record_id:
+            raise ValueError("ThaiJO record is missing provider_record_id.")
+        prior = by_id.get(provider_record_id)
+        if prior is None:
+            by_id[provider_record_id] = record
+            continue
+        if prior.get("record_hash") == record.get("record_hash"):
+            continue
+
+        prior_updated = str(prior.get("source_updated_at") or "")
+        record_updated = str(record.get("source_updated_at") or "")
+        if record_updated > prior_updated:
+            by_id[provider_record_id] = record
+            continue
+        if record_updated < prior_updated:
+            continue
+
+        prior_removed = is_oai_tombstone(prior)
+        record_removed = is_oai_tombstone(record)
+        if prior_removed != record_removed:
+            if record_removed:
+                by_id[provider_record_id] = record
+            continue
+        raise ValueError(
+            "Conflicting ThaiJO records share provider_record_id and source datestamp: "
+            f"{provider_record_id} ({record_updated or 'missing datestamp'})."
+        )
+    return list(by_id.values())
+
+
+def is_non_research_container(record: dict[str, Any]) -> bool:
+    """Identify provider rows that represent a whole issue, not one paper."""
+    if is_oai_tombstone(record):
+        return False
+    raw_metadata = record.get("raw_metadata")
+    titles = raw_metadata.get("titles") if isinstance(raw_metadata, dict) else []
+    normalized = {
+        " ".join(str(title).split()).casefold()
+        for title in (titles if isinstance(titles, list) else [])
+        if str(title).strip()
+    }
+    return bool(normalized & NON_RESEARCH_CONTAINER_TITLES)
+
+
+def catalog_eligible_records(records: Iterable[dict[str, Any]]) -> list[dict[str, Any]]:
+    """Keep paper-like metadata plus tombstones required for reconciliation."""
+    return [record for record in records if not is_non_research_container(record)]
 
 
 def thaijo_metadata_rights(
@@ -636,6 +755,11 @@ def parse_args() -> argparse.Namespace:
         "--discipline",
         choices=[
             "unknown",
+            "science",
+            "life_sciences",
+            "physical_sciences",
+            "health_sciences",
+            "social_sciences",
             "transport",
             "structural",
             "geotechnical",
@@ -723,6 +847,7 @@ def main() -> None:
     if not args.set_spec and not args.all_reviewed and not args.allow_unscoped:
         raise ValueError("Choose a reviewed --set-spec, or pass --allow-unscoped explicitly.")
     reviewed_scope = reviewed_source_scope(endpoint, args.set_spec)
+    endpoint_registration = official_endpoint_registration(endpoint)
     if args.set_spec and not reviewed_scope and not args.allow_unreviewed_set:
         raise ValueError(
             "The endpoint/set pair is not in pipeline/tci_source_allowlist.json. "
@@ -765,7 +890,7 @@ def main() -> None:
         records = list(records_by_id.values())
         applied_set = f"reviewed:{len(reviewed_sets)}"
     else:
-        records = list(
+        records = deduplicate_catalog_records(
             harvest(
                 endpoint=endpoint,
                 set_spec=args.set_spec,
@@ -777,8 +902,16 @@ def main() -> None:
             )
         )
         for record in records:
-            record["discipline"] = reviewed_scope or args.discipline
+            if reviewed_scope:
+                record["discipline"] = reviewed_scope
+            elif args.discipline != "unknown":
+                record["discipline"] = args.discipline
+            elif endpoint_registration:
+                apply_endpoint_discipline(record, endpoint_registration)
+            else:
+                record["discipline"] = "unknown"
         applied_set = args.set_spec
+    records = catalog_eligible_records(records)
     args.output.parent.mkdir(parents=True, exist_ok=True)
     args.output.write_text(
         "".join(json.dumps(record, ensure_ascii=False) + "\n" for record in records),

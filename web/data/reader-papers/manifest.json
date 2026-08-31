@@ -1,0 +1,200 @@
+{
+  "version": "civilmcp-rights-reviewed-reader-pack-v1",
+  "generatedAt": "2026-08-31T00:00:00Z",
+  "reviewedBy": "CivilMCP source-rights review",
+  "scope": "Three ThaiJO-hosted LEARN Journal papers with publisher-declared CC BY 4.0 rights.",
+  "licenseEvidenceUrl": "https://so04.tci-thaijo.org/index.php/LEARN/about",
+  "papers": [
+    {
+      "source": "thaijo:learn:291631",
+      "aliases": [
+        "oai:so04.tci-thaijo.org:article/291631",
+        "https://so04.tci-thaijo.org/index.php/LEARN/article/view/291631",
+        "https://so04.tci-thaijo.org/index.php/LEARN/article/download/291631/192945/1319073",
+        "doi:10.70730/jfow3489"
+      ],
+      "provider": "tci_thaijo",
+      "providerRecordId": "oai:so04.tci-thaijo.org:article/291631",
+      "title": "A Critical Analysis of Research on the Use of Artificial Intelligence in English Language Teaching in Thailand: Conflicting Results and Methodological Limitations",
+      "authors": [
+        "Supong Tangkiengsirisin",
+        "Le Van Canh",
+        "Sethawut Techasan"
+      ],
+      "doi": "10.70730/JFOW3489",
+      "publishedAt": "2026-07-31",
+      "journalTitle": "LEARN Journal: Language Education and Acquisition Research Network",
+      "publisher": "Language Institute, Thammasat University",
+      "sourceUrl": "https://so04.tci-thaijo.org/index.php/LEARN/article/view/291631",
+      "asset": {
+        "id": "thaijo-learn-291631-pdf",
+        "kind": "fulltext_pdf",
+        "version": "version_of_record",
+        "mimeType": "application/pdf",
+        "language": "en",
+        "pageCount": 17,
+        "contentSha256": "ae77db12d0d695ed890a5587f25a68996bbe489950721e408093eb57855eeff5",
+        "originUrl": "https://so04.tci-thaijo.org/index.php/LEARN/article/download/291631/192945/1319073",
+        "licenseExpression": "CC-BY-4.0",
+        "licenseUrl": "https://creativecommons.org/licenses/by/4.0/",
+        "rightsStatus": "open_license_verified",
+        "rightsActions": {
+          "metadata_indexing": true,
+          "source_download": true,
+          "asset_storage": true,
+          "text_extraction": true,
+          "native_fulltext_display": true,
+          "publisher_embedding": false,
+          "user_download": true,
+          "snippet_display": true,
+          "embedding": true,
+          "summarization": true,
+          "translation": true,
+          "annotation": true,
+          "redistribution": true,
+          "commercial_use": true,
+          "model_training": false
+        },
+        "rightsProvenance": {
+          "basis": "official_journal_license_statement",
+          "source": "https://so04.tci-thaijo.org/index.php/LEARN/about",
+          "articleSource": "https://so04.tci-thaijo.org/index.php/LEARN/article/view/291631",
+          "attribution": "A Critical Analysis of Research on the Use of Artificial Intelligence in English Language Teaching in Thailand: Conflicting Results and Methodological Limitations, Supong Tangkiengsirisin, Le Van Canh, Sethawut Techasan, LEARN Journal 19(2), 2026",
+          "transformationNotice": "Publisher PDF converted to page-addressable plain text; substantive content unchanged."
+        },
+        "rightsCheckedAt": "2026-08-31T00:00:00Z",
+        "rightsVerifiedAt": "2026-08-31T00:00:00Z",
+        "readerAccessMode": "native_verified"
+      },
+      "pagesFile": "291631.pages.json"
+    },
+    {
+      "source": "thaijo:learn:291543",
+      "aliases": [
+        "oai:so04.tci-thaijo.org:article/291543",
+        "https://so04.tci-thaijo.org/index.php/LEARN/article/view/291543",
+        "https://so04.tci-thaijo.org/index.php/LEARN/article/download/291543/192897/1318731",
+        "doi:10.70730/kvfs2893"
+      ],
+      "provider": "tci_thaijo",
+      "providerRecordId": "oai:so04.tci-thaijo.org:article/291543",
+      "title": "Enhancing Multidimensional Communicative Competence among Thai Lower Secondary EFL Students through Task-Based Grammar Instruction",
+      "authors": [
+        "Maythaporn Tangkanchanayuenyong",
+        "Virasuda Sribayak"
+      ],
+      "doi": "10.70730/KVFS2893",
+      "publishedAt": "2026-07-30",
+      "journalTitle": "LEARN Journal: Language Education and Acquisition Research Network",
+      "publisher": "Language Institute, Thammasat University",
+      "sourceUrl": "https://so04.tci-thaijo.org/index.php/LEARN/article/view/291543",
+      "asset": {
+        "id": "thaijo-learn-291543-pdf",
+        "kind": "fulltext_pdf",
+        "version": "version_of_record",
+        "mimeType": "application/pdf",
+        "language": "en",
+        "pageCount": 26,
+        "contentSha256": "05623331e36cc24f35e6783f1271144e0d754788ff72b9529ca00657f8e83ee5",
+        "originUrl": "https://so04.tci-thaijo.org/index.php/LEARN/article/download/291543/192897/1318731",
+        "licenseExpression": "CC-BY-4.0",
+        "licenseUrl": "https://creativecommons.org/licenses/by/4.0/",
+        "rightsStatus": "open_license_verified",
+        "rightsActions": {
+          "metadata_indexing": true,
+          "source_download": true,
+          "asset_storage": true,
+          "text_extraction": true,
+          "native_fulltext_display": true,
+          "publisher_embedding": false,
+          "user_download": true,
+          "snippet_display": true,
+          "embedding": true,
+          "summarization": true,
+          "translation": true,
+          "annotation": true,
+          "redistribution": true,
+          "commercial_use": true,
+          "model_training": false
+        },
+        "rightsProvenance": {
+          "basis": "official_journal_license_statement",
+          "source": "https://so04.tci-thaijo.org/index.php/LEARN/about",
+          "articleSource": "https://so04.tci-thaijo.org/index.php/LEARN/article/view/291543",
+          "attribution": "Enhancing Multidimensional Communicative Competence among Thai Lower Secondary EFL Students through Task-Based Grammar Instruction, Maythaporn Tangkanchanayuenyong, Virasuda Sribayak, LEARN Journal 19(2), 2026",
+          "transformationNotice": "Publisher PDF converted to page-addressable plain text; substantive content unchanged."
+        },
+        "rightsCheckedAt": "2026-08-31T00:00:00Z",
+        "rightsVerifiedAt": "2026-08-31T00:00:00Z",
+        "readerAccessMode": "native_verified"
+      },
+      "pagesFile": "291543.pages.json"
+    },
+    {
+      "source": "thaijo:learn:291567",
+      "aliases": [
+        "oai:so04.tci-thaijo.org:article/291567",
+        "https://so04.tci-thaijo.org/index.php/LEARN/article/view/291567",
+        "https://so04.tci-thaijo.org/index.php/LEARN/article/download/291567/192912/1318798",
+        "doi:10.70730/jcol6093"
+      ],
+      "provider": "tci_thaijo",
+      "providerRecordId": "oai:so04.tci-thaijo.org:article/291567",
+      "title": "AI Literacy, Integration, and Challenges in EFL Education: Perspectives of Higher Education Teachers in Thailand",
+      "authors": [
+        "Jenjira Jitpaiboon",
+        "Irina Elgort",
+        "Tatchakrit Matyakhan",
+        "Thidawan Wichanee",
+        "Atichat Rungswang",
+        "Passapong Sripicharn"
+      ],
+      "doi": "10.70730/JCOL6093",
+      "publishedAt": "2026-07-30",
+      "journalTitle": "LEARN Journal: Language Education and Acquisition Research Network",
+      "publisher": "Language Institute, Thammasat University",
+      "sourceUrl": "https://so04.tci-thaijo.org/index.php/LEARN/article/view/291567",
+      "asset": {
+        "id": "thaijo-learn-291567-pdf",
+        "kind": "fulltext_pdf",
+        "version": "version_of_record",
+        "mimeType": "application/pdf",
+        "language": "en",
+        "pageCount": 25,
+        "contentSha256": "ac918b24d6ce40dbd8a97ec1046501cc96f4b9d10f93c1b41678999a8da19ae1",
+        "originUrl": "https://so04.tci-thaijo.org/index.php/LEARN/article/download/291567/192912/1318798",
+        "licenseExpression": "CC-BY-4.0",
+        "licenseUrl": "https://creativecommons.org/licenses/by/4.0/",
+        "rightsStatus": "open_license_verified",
+        "rightsActions": {
+          "metadata_indexing": true,
+          "source_download": true,
+          "asset_storage": true,
+          "text_extraction": true,
+          "native_fulltext_display": true,
+          "publisher_embedding": false,
+          "user_download": true,
+          "snippet_display": true,
+          "embedding": true,
+          "summarization": true,
+          "translation": true,
+          "annotation": true,
+          "redistribution": true,
+          "commercial_use": true,
+          "model_training": false
+        },
+        "rightsProvenance": {
+          "basis": "official_journal_license_statement",
+          "source": "https://so04.tci-thaijo.org/index.php/LEARN/about",
+          "articleSource": "https://so04.tci-thaijo.org/index.php/LEARN/article/view/291567",
+          "attribution": "AI Literacy, Integration, and Challenges in EFL Education: Perspectives of Higher Education Teachers in Thailand, Jenjira Jitpaiboon, Irina Elgort, Tatchakrit Matyakhan, Thidawan Wichanee, Atichat Rungswang, Passapong Sripicharn, LEARN Journal 19(2), 2026",
+          "transformationNotice": "Publisher PDF converted to page-addressable plain text; substantive content unchanged."
+        },
+        "rightsCheckedAt": "2026-08-31T00:00:00Z",
+        "rightsVerifiedAt": "2026-08-31T00:00:00Z",
+        "readerAccessMode": "native_verified"
+      },
+      "pagesFile": "291567.pages.json"
+    }
+  ]
+}

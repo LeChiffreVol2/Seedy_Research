@@ -33,8 +33,46 @@ SOURCES = {
     "tci_thaijo": SourceSpec(
         provider="tci_thaijo",
         collection="tci_journal",
-        label="TCI / ThaiJO Journals",
+        # Legacy provider ID retained for rows already harvested from ThaiJO.
+        # TCI is a separate citation index and must not be conflated with the
+        # ThaiJO publishing platform.
+        label="ThaiJO Journals",
         ingestion_mode="metadata_first",
+        default_rights_status="metadata_only_unverified",
+    ),
+    "tci_citation": SourceSpec(
+        provider="tci_citation",
+        collection="tci_citation",
+        label="TCI Citation Index",
+        ingestion_mode="partner_metadata",
+        default_rights_status="metadata_only_unverified",
+    ),
+    "tnrr": SourceSpec(
+        provider="tnrr",
+        collection="tnrr_output",
+        label="Thai National Research Repository (TNRR)",
+        ingestion_mode="authenticated_metadata",
+        default_rights_status="metadata_only_unverified",
+    ),
+    "thailis_tdc": SourceSpec(
+        provider="thailis_tdc",
+        collection="thailis_tdc",
+        label="ThaiLIS / TDC",
+        ingestion_mode="partner_metadata",
+        default_rights_status="restricted",
+    ),
+    "thai_conference": SourceSpec(
+        provider="thai_conference",
+        collection="thai_conference",
+        label="Thai Conference Proceedings",
+        ingestion_mode="registry_metadata",
+        default_rights_status="metadata_only_unverified",
+    ),
+    "thai_ir": SourceSpec(
+        provider="thai_ir",
+        collection="thai_ir",
+        label="Thai Institutional Repositories",
+        ingestion_mode="repository_metadata",
         default_rights_status="metadata_only_unverified",
     ),
 }

@@ -1,3 +1,7 @@
+import { NextRequest, NextResponse } from "next/server";
+
+import { applyChatIdentityCookies, chatIdentityErrorResponse, featureAccessDeniedResponse, resolveChatIdentity } from "@/lib/chat-auth";
+import { CIVILMCP_FEATURE_ACCESS, CIVILMCP_OPEN_ACCESS } from "@/lib/product-access";
 import { getPaperDetail, type PaperEvidenceTarget } from "@/lib/research-feed";
 import { safeTraceId } from "@/lib/server-guards";
 
@@ -10,7 +14,28 @@ function boundedIndex(value: string | null): number | null {
   return Number.isFinite(parsed) && parsed >= 0 && parsed <= 100_000 ? parsed : null;
 }
 
-export async function GET(request: Request) {
+export async function GET(request: NextRequest) {
+  let finalize = (response: NextResponse) => response;
+  if (CIVILMCP_OPEN_ACCESS) {
+    if (!CIVILMCP_FEATURE_ACCESS.explore.enabled) {
+      return NextResponse.json(
+        { error: "Explore is not enabled in this environment.", code: "feature_disabled", feature: "explore" },
+        { status: 404, headers: { "Cache-Control": "no-store" } },
+      );
+    }
+  } else {
+    let resolved: Awaited<ReturnType<typeof resolveChatIdentity>>;
+    try {
+      resolved = await resolveChatIdentity(request);
+    } catch (error) {
+      return chatIdentityErrorResponse(error, request);
+    }
+    const { identity, applyAuthCookies } = resolved;
+    const accessDenied = featureAccessDeniedResponse("explore", identity, applyAuthCookies);
+    if (accessDenied) return accessDenied;
+    finalize = (response) => applyChatIdentityCookies(response, identity, applyAuthCookies);
+  }
+
   try {
     const url = new URL(request.url);
     const sourceFromPath = url.pathname.startsWith("/api/papers/")
@@ -18,7 +43,7 @@ export async function GET(request: Request) {
       : "";
     const source = (url.searchParams.get("source") || sourceFromPath).trim();
     if (!source) {
-      return Response.json({ error: "Paper source is required." }, { status: 400, headers: { "Cache-Control": "no-store" } });
+      return finalize(NextResponse.json({ error: "Paper source is required." }, { status: 400, headers: { "Cache-Control": "no-store" } }));
     }
 
     const evidenceTarget: PaperEvidenceTarget = {
@@ -29,27 +54,30 @@ export async function GET(request: Request) {
     };
     const payload = await getPaperDetail(source, true, evidenceTarget);
     if (!payload) {
-      return Response.json({ error: "Paper not found." }, { status: 404, headers: { "Cache-Control": "no-store" } });
+      return finalize(NextResponse.json({ error: "Paper not found." }, { status: 404, headers: { "Cache-Control": "no-store" } }));
     }
 
-    return Response.json(payload, {
-      headers: {
-        "Cache-Control": "public, max-age=0, s-maxage=60, stale-while-revalidate=300",
-      },
-    });
+    const response = CIVILMCP_OPEN_ACCESS
+      ? NextResponse.json(payload, {
+          headers: { "Cache-Control": "public, max-age=0, s-maxage=60, stale-while-revalidate=300" },
+        })
+      : NextResponse.json(payload, {
+          headers: { "Cache-Control": "private, max-age=0" },
+        });
+    return finalize(response);
   } catch (error) {
     const traceId = safeTraceId();
     console.error("civilmcp_paper_detail_failed", {
       traceId,
       error: error instanceof Error ? error.message : "Unknown error",
     });
-    return Response.json(
+    return finalize(NextResponse.json(
       {
         error: "Failed to load paper detail.",
         traceId,
         generatedAt: new Date().toISOString(),
       },
       { status: 500, headers: { "Cache-Control": "no-store" } },
-    );
+    ));
   }
 }
