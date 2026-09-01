@@ -408,7 +408,7 @@ test("registers non-trivial WebMCP tools and keeps agent actions visible to the 
   }) as { thaiEvidence?: Array<{ source?: string }>; globalMetadata?: unknown[] };
   expect(discovery.thaiEvidence?.[0]?.source).toBe(researchCard.source);
   expect(discovery.globalMetadata).toHaveLength(1);
-  await expect(page.getByRole("heading", { name: "Thai research, with sources." })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Connect Thai evidence to global research." })).toBeVisible();
   await expect(page.getByText(researchCard.title).first()).toBeVisible();
 
   const discoveryOnlyError = await page.evaluate(async () => {
@@ -537,10 +537,22 @@ test("registers non-trivial WebMCP tools and keeps agent actions visible to the 
   await evidenceButton.focus();
   expect(await evidenceButton.evaluate((element) => getComputedStyle(element).outlineStyle)).toBe("solid");
   expect(await evidenceButton.evaluate((element) => getComputedStyle(element).outlineWidth)).toBe("2px");
+  const mockedReaderPopup = page.waitForEvent("popup");
   await evidenceButton.click();
-  await expect(page.getByRole("dialog", { name: "Paper detail" })).toBeVisible();
-  await expect(page.getByLabel("Cited evidence packet")).toContainText("p.2067");
-  await page.getByRole("button", { name: "Close paper detail" }).click();
+  await (await mockedReaderPopup).close();
+  await page.evaluate(({ passportId }) => {
+    window.localStorage.setItem("seed-research-reader-review-receipt-v1", JSON.stringify({
+      passportId,
+      evidenceId: "evidence-road-1",
+      source: "NCCE29_TRL42.md",
+      pageStart: 2067,
+      readerPageNumber: 2067,
+      readerAnchor: "asset-webmcp-native-page-2067",
+      accessMode: "native_verified",
+      visitedAt: new Date().toISOString(),
+    }));
+    window.dispatchEvent(new Event("focus"));
+  }, { passportId: passport.passportId });
   const markPagesReviewed = passportPanel.getByRole("button", { name: "Mark pages reviewed" });
   await expect(markPagesReviewed).toBeEnabled();
   await markPagesReviewed.click();
@@ -726,10 +738,12 @@ test("completes the production-seed Passport trust gate in exactly three site-to
   const passportPanel = page.getByLabel("Thai-to-global research passport");
   const exportPassport = passportPanel.getByRole("button", { name: "Export passport" });
   await expect(exportPassport).toBeDisabled();
+  const readerPopupPromise = page.waitForEvent("popup");
   await passportPanel.getByRole("button", { name: "Open evidence thaijo-learn-291631-page-2 at p.2" }).click();
-  await expect(page.getByRole("dialog", { name: "Paper detail" })).toBeVisible();
-  await expect(page.getByTestId("paper-reader-action")).toHaveText(/Read verified full paper/);
-  await page.getByRole("button", { name: "Close paper detail" }).click();
+  const readerPopup = await readerPopupPromise;
+  await expect(readerPopup.getByTestId("paper-reader")).toContainText("Verified native reader", { timeout: 20_000 });
+  await expect.poll(() => passportPanel.getByRole("button", { name: "Mark pages reviewed" }).isEnabled()).toBe(true);
+  await readerPopup.close();
   await passportPanel.getByRole("button", { name: "Mark pages reviewed" }).click();
   await expect(exportPassport).toBeEnabled();
   const downloadPromise = page.waitForEvent("download");

@@ -224,7 +224,7 @@ python3.10 pipeline/ingest_reader_pack.py --apply
 (cd web && npx playwright test tests/e2e/webmcp.spec.ts)
 ```
 
-ชุด WebMCP ต้องคงจำนวน site tools ที่ห้าตัว และ
+ชุด WebMCP ต้องคงจำนวน site tools ที่หกตัว และ
 `inspect_paper_evidence` ส่งเพียง access mode, สถานะการอ่าน และ stable reader
 anchor ที่ตรวจแล้ว โดยไม่ส่ง full page text กลับใน tool result.
 

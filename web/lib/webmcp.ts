@@ -27,6 +27,10 @@ export type BuildResearchPathInput = {
   collection: WebMcpCollection;
   knowledgeGaps: string[];
   globalLeadIds: string[];
+  passportId?: string;
+  source?: string;
+  evidenceIds: string[];
+  gapLens?: WebMcpGapLens;
 };
 
 export type DraftResearchPassportInput = {
@@ -162,7 +166,7 @@ function parseTraceResearchConnections(input: unknown): TraceResearchConnections
 
 function parseBuildResearchPath(input: unknown): BuildResearchPathInput {
   const record = inputRecord(input);
-  assertAllowedKeys(record, ["goal", "level", "outcome", "collection", "knowledgeGaps", "globalLeadIds"]);
+  assertAllowedKeys(record, ["goal", "level", "outcome", "collection", "knowledgeGaps", "globalLeadIds", "passportId", "source", "evidenceIds", "gapLens"]);
   const rawGaps = record.knowledgeGaps;
   if (rawGaps != null && !Array.isArray(rawGaps)) throw new Error("knowledgeGaps must be an array of strings.");
   const knowledgeGaps = (rawGaps ?? []).map((value) => {
@@ -182,6 +186,24 @@ function parseBuildResearchPath(input: unknown): BuildResearchPathInput {
   });
   if (globalLeadIds.length > 4) throw new Error("globalLeadIds supports at most four items.");
   if (new Set(globalLeadIds).size !== globalLeadIds.length) throw new Error("globalLeadIds must be unique.");
+  const passportId = optionalText(record, "passportId", 120);
+  const source = optionalText(record, "source", 320);
+  const rawEvidenceIds = record.evidenceIds;
+  if (rawEvidenceIds != null && !Array.isArray(rawEvidenceIds)) throw new Error("evidenceIds must be an array of visible Passport evidence IDs.");
+  const evidenceIds = (rawEvidenceIds ?? []).map((value) => {
+    if (typeof value !== "string") throw new Error("Each evidence ID must be text.");
+    const id = value.trim();
+    if (!id || id.length > 120) throw new Error("Each evidence ID must contain 1-120 characters.");
+    return id;
+  });
+  if (evidenceIds.length > 3 || new Set(evidenceIds).size !== evidenceIds.length) throw new Error("evidenceIds supports at most three unique items.");
+  const gapLens = record.gapLens == null || record.gapLens === ""
+    ? undefined
+    : enumValue(record, "gapLens", ["method", "context", "population", "outcome", "validation"], "validation");
+  const hasPassportContext = Boolean(passportId || source || evidenceIds.length || gapLens);
+  if (hasPassportContext && (!passportId || !source || !evidenceIds.length || !gapLens)) {
+    throw new Error("passportId, source, evidenceIds, and gapLens must be supplied together.");
+  }
   return {
     goal: requiredText(record, "goal", 8, 280),
     level: enumValue(record, "level", ["foundation", "applied", "research"], "foundation"),
@@ -189,6 +211,10 @@ function parseBuildResearchPath(input: unknown): BuildResearchPathInput {
     collection: enumValue(record, "collection", ["all", "ncce", "ce_project"], "all"),
     knowledgeGaps: [...new Set(knowledgeGaps)],
     globalLeadIds,
+    passportId,
+    source,
+    evidenceIds,
+    gapLens,
   };
 }
 
@@ -303,6 +329,10 @@ export async function registerSeedResearchWebMcpTools(
           collection: { type: "string", enum: ["all", "ncce", "ce_project"], description: "Thai evidence collection; defaults to all." },
           knowledgeGaps: { type: "array", maxItems: 4, items: { type: "string", minLength: 2, maxLength: 180 }, description: "Optional evidence-backed gaps from a prior checkpoint." },
           globalLeadIds: { type: "array", maxItems: 4, uniqueItems: true, items: { type: "string", pattern: "^https://openalex\\.org/W[0-9]+$" }, description: "Optional metadata-only OpenAlex work IDs returned by trace_research_connections to carry as global comparison leads." },
+          passportId: { type: "string", maxLength: 120, description: "Optional active Research Passport ID. Supply with source, evidenceIds, and gapLens to preserve the reviewed evidence trail." },
+          source: { type: "string", maxLength: 320, description: "Exact Thai paper source carried by the active Research Passport." },
+          evidenceIds: { type: "array", maxItems: 3, uniqueItems: true, items: { type: "string", minLength: 1, maxLength: 120 }, description: "Exact-page evidence IDs carried by the active Research Passport." },
+          gapLens: { type: "string", enum: ["method", "context", "population", "outcome", "validation"], description: "Candidate-gap lens carried by the active Research Passport." },
         },
         required: ["goal"],
         additionalProperties: false,

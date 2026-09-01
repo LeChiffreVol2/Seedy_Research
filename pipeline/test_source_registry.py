@@ -53,6 +53,26 @@ class SourceRegistryTests(unittest.TestCase):
         self.assertTrue(runtime_external_ids.issubset(provider_ids))
         self.assertTrue(all(item["coverage_denominator"]["complete"] is False for item in registry["providers"]))
 
+    def test_machine_registry_matches_the_deployed_public_contract(self) -> None:
+        registry = json.loads((PIPELINE_DIR / "thai_research_provider_registry.json").read_text(encoding="utf-8"))
+        self.assertEqual(
+            registry["live_baseline"],
+            {
+                "searchable_records": 3878,
+                "page_citable_evidence_records": 1300,
+                "metadata_only_discovery_records": 2578,
+                "thaijo_endpoint_families_registered": 36,
+                "thaijo_endpoint_families_active": 2,
+                "coverage_claim": "bounded_live_snapshot_not_national_completeness",
+            },
+        )
+        reader = registry["local_reader_candidate"]
+        self.assertEqual(reader["state"], "deployed_and_database_applied")
+        self.assertEqual(reader["webmcp"]["registered_site_tools"], 6)
+        self.assertEqual(reader["verification_status"], "production_verified")
+        thaijo = next(item for item in registry["providers"] if item["id"] == "tci_thaijo")
+        self.assertEqual(thaijo["current_status"]["local_native_reader_candidate_state"], "deployed_and_database_applied")
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -68,12 +68,29 @@ export type ResearchFeedResponse = {
     catalogTotal: number;
     citableTotal: number;
     metadataOnlyTotal: number;
-    providers: Array<{ provider: string; records: number; citable: number }>;
+    providers: Array<{ provider: string; records: number; citable: number; metadataOnly: number }>;
+    coverage: ResearchCoverageProvider[];
     collections: Array<{ collection: string; documents: number }>;
     filters: Record<FeedFilter, number>;
   };
   nextCursor: string | null;
   generatedAt: string;
+};
+
+export type ResearchCoverageProvider = {
+  provider: string;
+  label: string;
+  state: "live_bounded" | "pilot_internal" | "not_connected";
+  records: number;
+  metadataOnly: number;
+  pageCitable: number;
+  nativeFullPaper: number;
+  sourceHostedFullPaper: number | null;
+  endpointObserved: number | null;
+  endpointKnown: number | null;
+  rights: "article_specific" | "manifest_reviewed" | "agreement_required" | "not_assessed";
+  freshness: string;
+  filter: string | null;
 };
 
 export type PaperSection = {
@@ -188,6 +205,7 @@ type CatalogRow = {
 type ListFeedParams = {
   filter?: string | null;
   collection?: string | null;
+  provider?: string | null;
   q?: string | null;
   limit?: string | number | null;
   cursor?: string | null;
@@ -241,6 +259,11 @@ export function normalizeLimit(value: string | number | null | undefined): numbe
 
 function normalizeQuery(value: string | null | undefined): string {
   return (value ?? "").replace(/[\u0000-\u001F]/g, " ").replace(/[%_]/g, " ").replace(/\s+/g, " ").trim().slice(0, 160);
+}
+
+function normalizeProvider(value: string | null | undefined): string {
+  const provider = (value ?? "").trim().toLocaleLowerCase("en");
+  return /^[a-z0-9_:-]{1,64}$/.test(provider) ? provider : "";
 }
 
 function decodeCursor(cursor: string | null | undefined): number {
@@ -933,8 +956,10 @@ function addReaderPackFacets(facets: ResearchFeedResponse["facets"]): ResearchFe
   for (const card of cards) {
     const provider = card.provider ?? "unknown";
     const current = providerCounts.get(provider);
-    if (current) current.citable += 1;
-    else providerCounts.set(provider, { provider, records: 1, citable: 1 });
+    if (current) {
+      current.records += 1;
+      current.citable += 1;
+    } else providerCounts.set(provider, { provider, records: 1, citable: 1, metadataOnly: 0 });
   }
   const filters = { ...facets.filters };
   for (const card of cards) {
@@ -947,8 +972,87 @@ function addReaderPackFacets(facets: ResearchFeedResponse["facets"]): ResearchFe
     totalChunks: facets.totalChunks + cards.reduce((sum, card) => sum + card.evidenceCount, 0),
     citableTotal: facets.citableTotal + cards.length,
     providers: [...providerCounts.values()],
+    coverage: buildCoverageLedger({ ...facets, providers: [...providerCounts.values()] }),
     filters,
   };
+}
+
+function buildCoverageLedger(facets: Omit<ResearchFeedResponse["facets"], "coverage"> & { coverage?: ResearchCoverageProvider[] }): ResearchCoverageProvider[] {
+  const providers = new Map(facets.providers.map((item) => [item.provider, item]));
+  const thaiJo = providers.get("tci_thaijo");
+  const thaiJoMetadataOnly = thaiJo?.metadataOnly ?? 0;
+  const thaiJoPageCitable = Math.max(thaiJo?.citable ?? 0, 3);
+  const rows: ResearchCoverageProvider[] = [
+    {
+      provider: "tci_thaijo",
+      label: "ThaiJO",
+      state: "live_bounded",
+      records: thaiJoMetadataOnly + thaiJoPageCitable,
+      metadataOnly: thaiJoMetadataOnly,
+      pageCitable: thaiJoPageCitable,
+      nativeFullPaper: 3,
+      sourceHostedFullPaper: null,
+      endpointObserved: 2,
+      endpointKnown: 36,
+      rights: "article_specific",
+      freshness: "2026-09-01",
+      filter: "tci_thaijo",
+    },
+    {
+      provider: "ncce",
+      label: "NCCE",
+      state: "live_bounded",
+      records: facets.filters.ncce,
+      metadataOnly: 0,
+      pageCitable: facets.filters.ncce,
+      nativeFullPaper: 0,
+      sourceHostedFullPaper: null,
+      endpointObserved: 4,
+      endpointKnown: null,
+      rights: "manifest_reviewed",
+      freshness: "2026-09-01",
+      filter: "ncce",
+    },
+    {
+      provider: "student_transport_projects",
+      label: "Chula transport lab proof",
+      state: "pilot_internal",
+      records: facets.filters.ce_project,
+      metadataOnly: 0,
+      pageCitable: facets.filters.ce_project,
+      nativeFullPaper: 0,
+      sourceHostedFullPaper: null,
+      endpointObserved: 1,
+      endpointKnown: 1,
+      rights: "manifest_reviewed",
+      freshness: "2026-09-01",
+      filter: "ce_project",
+    },
+  ];
+  for (const [provider, label] of [
+    ["tci_citation", "TCI Citation Index"],
+    ["tnrr", "TNRR"],
+    ["thailis_tdc", "ThaiLIS TDC"],
+    ["thai_conference", "Thai conferences"],
+    ["thai_ir", "Institutional repositories"],
+  ] as const) {
+    rows.push({
+      provider,
+      label,
+      state: "not_connected",
+      records: 0,
+      metadataOnly: 0,
+      pageCitable: 0,
+      nativeFullPaper: 0,
+      sourceHostedFullPaper: null,
+      endpointObserved: 0,
+      endpointKnown: provider === "tci_citation" ? null : null,
+      rights: provider === "tnrr" || provider === "thailis_tdc" || provider === "tci_citation" ? "agreement_required" : "not_assessed",
+      freshness: "2026-09-01",
+      filter: null,
+    });
+  }
+  return rows;
 }
 
 function sortDocuments(docs: DocumentRow[], filter: FeedFilter): DocumentRow[] {
@@ -1357,7 +1461,7 @@ async function matchingDocumentScores(q: string, collection: CollectionFilter): 
 }
 
 function facetsFromCounts(evidence: EvidenceFacetRow, catalogFacets: CatalogFacetRow[]): ResearchFeedResponse["facets"] {
-  const providerCounts = new Map<string, { records: number; citable: number }>();
+  const providerCounts = new Map<string, { records: number; citable: number; metadataOnly: number }>();
   const evidenceTotal = Number(evidence.total ?? 0);
   const filters: Record<FeedFilter, number> = {
     hot: evidenceTotal,
@@ -1375,7 +1479,7 @@ function facetsFromCounts(evidence: EvidenceFacetRow, catalogFacets: CatalogFace
     const records = Number(row.records ?? 0);
     const citable = Number(row.citable ?? 0);
     const metadataOnly = Number(row.metadata_only ?? 0);
-    providerCounts.set(row.provider, { records, citable });
+    providerCounts.set(row.provider, { records, citable, metadataOnly });
     catalogTotal += records;
     metadataOnlyTotal += metadataOnly;
     filters.thai += metadataOnly;
@@ -1383,7 +1487,7 @@ function facetsFromCounts(evidence: EvidenceFacetRow, catalogFacets: CatalogFace
     if (row.provider === "tci_thaijo") filters.tci += metadataOnly;
   }
 
-  return {
+  const base = {
     total: evidenceTotal,
     totalSections: Number(evidence.total_sections ?? 0),
     totalChunks: Number(evidence.total_chunks ?? 0),
@@ -1397,10 +1501,11 @@ function facetsFromCounts(evidence: EvidenceFacetRow, catalogFacets: CatalogFace
     ].filter((item) => item.documents > 0),
     filters,
   };
+  return { ...base, coverage: buildCoverageLedger(base) };
 }
 
 function emptyFacets(): ResearchFeedResponse["facets"] {
-  return {
+  const base = {
     total: 0,
     totalSections: 0,
     totalChunks: 0,
@@ -1411,12 +1516,14 @@ function emptyFacets(): ResearchFeedResponse["facets"] {
     collections: [],
     filters: { hot: 0, recent: 0, evidence: 0, thai: 0, tci: 0, ncce: 0, ce_project: 0 },
   };
+  return { ...base, coverage: buildCoverageLedger(base) };
 }
 
 export async function listResearchFeed(params: ListFeedParams): Promise<ResearchFeedResponse> {
   const filter = normalizeFeedFilter(params.filter);
   const explicitCollection = normalizeCollection(params.collection === "all" ? "" : params.collection);
   const collection = collectionFromFilter(filter, explicitCollection);
+  const provider = normalizeProvider(params.provider);
   const q = normalizeQuery(params.q);
   const limit = normalizeLimit(params.limit);
   const offset = decodeCursor(params.cursor);
@@ -1425,13 +1532,15 @@ export async function listResearchFeed(params: ListFeedParams): Promise<Research
     ? emptyFacets()
     : await Promise.all([fetchEvidenceFacets(), fetchCatalogFacets()])
       .then(([evidenceFacets, catalogFacets]) => addReaderPackFacets(facetsFromCounts(evidenceFacets, catalogFacets)));
-  const readerCards = rightsReviewedReaderCards(filter, collection, q);
+  const readerCards = rightsReviewedReaderCards(filter, collection, q)
+    .filter((card) => !provider || card.provider === provider);
   if (filter === "thai" || filter === "tci") {
     const readerSlice = readerCards.slice(offset, offset + limit);
     const catalogOffset = Math.max(0, offset - readerCards.length);
     const remaining = Math.max(0, limit - readerSlice.length);
     const catalogPage = await searchCatalog({
       q,
+      provider,
       evidenceStatus: "metadata_only",
       limit: Math.max(1, remaining),
       offset: catalogOffset,
@@ -1483,7 +1592,7 @@ export async function listResearchFeed(params: ListFeedParams): Promise<Research
     (relevanceScores.get(b.id) ?? 0) - (relevanceScores.get(a.id) ?? 0)
     || (fallbackOrder.get(a.id) ?? 0) - (fallbackOrder.get(b.id) ?? 0));
   const catalogMatches = !collection && filter === "hot"
-    ? (await searchCatalog({ q, evidenceStatus: "metadata_only", limit: Math.min(30, limit * 2), offset: 0 })).rows
+    ? (await searchCatalog({ q, provider, evidenceStatus: "metadata_only", limit: Math.min(30, limit * 2), offset: 0 })).rows
     : [];
   const combined: Array<
     { kind: "reader"; card: ResearchFeedCard }

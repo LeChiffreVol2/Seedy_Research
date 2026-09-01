@@ -495,6 +495,23 @@ class GASecurityContracts(unittest.TestCase):
         self.assertIn('aria-label="PRISMA-guided scoping review"', workspace_ui)
         self.assertIn('PRISMA-ScR', workspace_ui)
         self.assertIn('screening[row.source]?.decision === "included"', workspace_ui)
+        for notebook_contract in (
+            'action: z.literal("ask")',
+            'scope: "research_notebook_ask"',
+            'shareable: packets.every((packet) => packet.shareable)',
+            'getResearchWorkspace(identity.userId, parsed.data.workspaceId)',
+            'parsed.data.sources.some((source) => !allowedSources.has(source))',
+            'detail.document.citable !== true',
+            'detail.document.discoveryLayer === "thai_discovery"',
+            'shareable: false',
+            'AbortSignal.timeout(WORKSPACE_GENERATION_TIMEOUT_MS)',
+        ):
+            self.assertIn(notebook_contract, workspace)
+        self.assertIn('.eq("owner_id", ownerId)', workspace_store)
+        self.assertIn('.eq("workspace_id", workspaceId.trim().slice(0, 96))', workspace_store)
+        self.assertIn('aria-label="Research Notebook"', workspace_ui)
+        self.assertIn('OpenRAG-compatible · Seedy evidence authority', workspace_ui)
+        self.assertIn('answer text is not persisted in Workspace state', workspace_ui)
         self.assertIn('label: "Workspace"', page)
         self.assertIn('label: "Automated Research"', page)
 

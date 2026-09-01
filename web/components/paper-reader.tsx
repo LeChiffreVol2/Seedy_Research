@@ -121,6 +121,13 @@ type PaperReaderProps = {
   openInAppUrl: string;
   fallbackOutline?: PaperReaderOutlineItem[];
   fallbackCitation?: string;
+  reviewReceipt?: {
+    passportId: string;
+    evidenceId: string;
+    source: string;
+    pageStart: number | null;
+    readerPageNumber: number | null;
+  } | null;
 };
 
 type NormalizedPage = {
@@ -147,6 +154,7 @@ type ReaderAnnotation = {
 };
 
 const MAX_SELECTION_LENGTH = 1_200;
+const READER_REVIEW_RECEIPT_KEY = "seed-research-reader-review-receipt-v1";
 
 function normalizeMode(value?: string | null): ReaderAccessMode {
   switch ((value || "").toLowerCase()) {
@@ -348,6 +356,7 @@ export function PaperReader({
   openInAppUrl,
   fallbackOutline = [],
   fallbackCitation,
+  reviewReceipt = null,
 }: PaperReaderProps) {
   const [payload, setPayload] = useState<PaperReaderPayload | null>(null);
   const [loading, setLoading] = useState(true);
@@ -367,7 +376,9 @@ export function PaperReader({
     const controller = new AbortController();
     setLoading(true);
     setLoadError(null);
-    fetch(`/api/papers/${encodeURIComponent(source)}/reader`, {
+    const requestedPage = reviewReceipt?.readerPageNumber;
+    const readerQuery = requestedPage && requestedPage > 0 ? `?page=${requestedPage}&limit=10` : "";
+    fetch(`/api/papers/${encodeURIComponent(source)}/reader${readerQuery}`, {
       cache: "no-store",
       headers: { Accept: "application/json" },
       signal: controller.signal,
@@ -385,7 +396,7 @@ export function PaperReader({
         if (!controller.signal.aborted) setLoading(false);
       });
     return () => controller.abort();
-  }, [source]);
+  }, [reviewReceipt?.readerPageNumber, source]);
 
   useEffect(() => {
     try {
@@ -427,6 +438,26 @@ export function PaperReader({
   const license = access.licenseExpression || access.license;
   const hasMorePages = payload?.pagination?.hasMore === true;
   const totalPages = payload?.pagination?.totalPages || asset?.pageCount || pages.length;
+
+  useEffect(() => {
+    if (!reviewReceipt || mode !== "native_verified" || !pages.length) return;
+    const reviewedPage = reviewReceipt.readerPageNumber
+      ? pages.find((page) => page.pageNumber === reviewReceipt.readerPageNumber)
+      : pages[0];
+    if (!reviewedPage) return;
+    try {
+      window.localStorage.setItem(READER_REVIEW_RECEIPT_KEY, JSON.stringify({
+        ...reviewReceipt,
+        readerPageNumber: reviewedPage.pageNumber,
+        readerAnchor: reviewedPage.anchor,
+        accessMode: "native_verified",
+        visitedAt: new Date().toISOString(),
+      }));
+    } catch {
+      // The paper remains readable when local storage is unavailable; the
+      // originating Passport simply stays locked until another review path is used.
+    }
+  }, [mode, pages, reviewReceipt]);
 
   useEffect(() => {
     if (pages.length && currentPage == null) setCurrentPage(pages[0].pageNumber);

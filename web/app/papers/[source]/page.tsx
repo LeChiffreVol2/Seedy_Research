@@ -10,7 +10,15 @@ import styles from "./page.module.css";
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
-type PageProps = { params: Promise<{ source: string }> };
+type PageProps = {
+  params: Promise<{ source: string }>;
+  searchParams?: Promise<Record<string, string | string[] | undefined>>;
+};
+
+function safeQueryValue(value: string | string[] | undefined, limit: number): string {
+  const text = Array.isArray(value) ? value[0] : value;
+  return typeof text === "string" ? text.replace(/[\u0000-\u001F]/g, "").trim().slice(0, limit) : "";
+}
 
 function appUrl(): string {
   return (process.env.NEXT_PUBLIC_APP_URL || "https://seedresearch.vercel.app").replace(/\/+$/, "");
@@ -35,8 +43,9 @@ export async function generateMetadata({ params }: PageProps): Promise<Metadata>
   };
 }
 
-export default async function PublicPaperPage({ params }: PageProps) {
+export default async function PublicPaperPage({ params, searchParams }: PageProps) {
   const { source } = await params;
+  const query = await searchParams;
   const detail = await getPaperDetail(source, true).catch(() => null);
   if (!detail) notFound();
   const paper = detail.document;
@@ -98,6 +107,13 @@ export default async function PublicPaperPage({ params }: PageProps) {
           canonicalUrl={paper.canonicalUrl}
           openInAppUrl={openInApp}
           fallbackCitation={`${paper.title}. ${paper.sourceLabel}${paper.proceedingYear ? ` (${paper.proceedingYear})` : ""}.`}
+          reviewReceipt={safeQueryValue(query?.passport, 120) && safeQueryValue(query?.evidence, 120) ? {
+            passportId: safeQueryValue(query?.passport, 120),
+            evidenceId: safeQueryValue(query?.evidence, 120),
+            source: paper.source,
+            pageStart: Number.parseInt(safeQueryValue(query?.page, 12), 10) || null,
+            readerPageNumber: Number.parseInt(safeQueryValue(query?.readerPage, 12), 10) || null,
+          } : null}
           fallbackOutline={detail.sections.slice(0, 24).flatMap((section) => section.pageStart == null ? [] : [{
             id: section.id,
             title: section.title,

@@ -34,9 +34,17 @@ export async function GET(request: NextRequest) {
 
   try {
     const url = new URL(request.url);
+    const provider = url.searchParams.get("provider");
+    if (provider && !/^[a-z0-9_:-]{1,64}$/.test(provider.trim().toLocaleLowerCase("en"))) {
+      return finalize(NextResponse.json(
+        { error: "Provider filter is invalid.", code: "invalid_provider" },
+        { status: 422, headers: { "Cache-Control": "no-store" } },
+      ));
+    }
     const payload = await listResearchFeed({
       filter: url.searchParams.get("filter"),
       collection: url.searchParams.get("collection"),
+      provider,
       q: url.searchParams.get("q"),
       limit: url.searchParams.get("limit"),
       cursor: url.searchParams.get("cursor"),

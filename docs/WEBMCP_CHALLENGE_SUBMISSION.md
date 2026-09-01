@@ -69,6 +69,16 @@ The repository and production release now contain:
   highlights, browser-local notes, citation/source export, and fail-closed
   `native_verified`, `source_hosted`, `restricted`, `metadata_only`, and
   `unavailable` modes;
+- a dated Coverage Ledger that makes metadata, page-citable, native,
+  source-hosted, rights, endpoint, and not-yet-connected coverage inspectable
+  without claiming national completeness;
+- a selected-source Research Notebook inside the owner-scoped Workspace. It
+  returns allow-listed exact-page citations, keeps private answers
+  non-shareable and non-persistent, and promotes only public findings into the
+  existing Passport human-review gate;
+- a fail-closed, disabled-by-default OpenRAG adapter boundary. The Challenge
+  candidate does not deploy OpenSearch, Langflow, or Docling and does not let an
+  external retriever become the evidence or rights authority;
 - an enrichment to the existing `inspect_paper_evidence` WebMCP flow that reports
   reader access state and a verified reopenable page anchor while keeping full page text out of the
   tool result; the browser contract now exposes exactly six site tools;
@@ -143,7 +153,7 @@ The browser bridge is implemented in `web/lib/webmcp.ts` and wired from `web/app
 | `inspect_paper_evidence` | Opens the visible paper drawer and a reopenable page/evidence deep link. | `readOnlyHint: true`; source/evidence/page inputs are bounded; returned excerpts are short and labelled untrusted. |
 | `trace_research_connections` | Opens a bounded Thai-to-global connection map for the active citable paper. | `readOnlyHint: true`; structured DOI/title/year matching; only an exact DOI seed may return at most 12 metadata-only nodes; all title-based, conflicting, and ambiguous matches return no graph and require human review. |
 | `draft_research_passport` | Creates a visible Thai → Global Research Passport from evidence already opened in the active paper; reopening every selected page and acknowledging page review unlocks Markdown export. | `readOnlyHint: false`; accepts one active public citable source, an 8–180 character focus, one to three visible exact-page evidence IDs, and one gap lens. Private, discovery-only, off-paper, and non-page-linked inputs fail closed. Translation is limited to the selected Thai excerpts and retains the original. OpenAlex leads return `citable: false`; novelty, evidence relation, and transferability remain unestablished. |
-| `build_research_path` | Creates or adapts visible local Research Path state, carries selected verified-map leads into planning, and returns a structured provisional gap plus study protocol. | `readOnlyHint: false`; goal, level, outcome, collection, at most four gaps, and at most four exact OpenAlex work IDs are validated; stale or arbitrary lead IDs fail closed; selected global records are untrusted metadata targets, never evidence; `candidate_unvalidated` and `draft_framework` artifacts remain available under deterministic fallback. |
+| `build_research_path` | Creates or adapts visible local Research Path state, carries selected verified-map leads or a reviewed Passport into planning, and returns a structured provisional gap plus study protocol. | `readOnlyHint: false`; goal, level, outcome, collection, at most four gaps, and at most four exact OpenAlex work IDs are validated; Passport source/evidence/lens fields must arrive as one coherent reviewed context and are revalidated against the current citable paper; stale or arbitrary IDs fail closed; selected global records are untrusted metadata targets, never evidence; `candidate_unvalidated` and `draft_framework` artifacts remain available under deterministic fallback. |
 | `inspect_learning_progress` | Reads current stage status, scores, reviewed evidence count, and learning gaps. | `readOnlyHint: true`; raw learner answers are deliberately omitted. |
 
 Implementation details:
@@ -255,6 +265,9 @@ The pre-existing product already had a Next.js research UI, a remote MCP server,
   fail-closed access resolver, plus reader-access enrichment inside the
   existing WebMCP contract without returning full page text;
 - guarded OpenAlex seed resolution plus selected-lead carryover into a Research Path that ends in a candidate gap and Next-Study Protocol;
+- Passport-to-Path continuity with server-revalidated exact evidence locators;
+- the dated Coverage Ledger and provider filter;
+- the selected-source Research Notebook and optional OpenRAG adapter boundary;
 - this challenge-specific public submission and demo package.
 
 Git history separates the pre-existing baseline from the Challenge work: `1179b09` is the August 20 baseline before the competition window, `e9f8ed8` is the August 31 challenge extension, `9523b7c` is the September 1 pre-release candidate, and `e681d0c` is the verified application candidate containing the final SeedyMCP connection trace and structured Research Path. Do not claim pre-existing product work as new Challenge work.

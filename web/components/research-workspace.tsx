@@ -54,6 +54,8 @@ type WorkspaceEvidence = {
   snippet: string;
 };
 
+export type ResearchWorkspaceEvidenceTarget = Pick<WorkspaceEvidence, "id" | "pageStart" | "pageEnd" | "sectionTitle">;
+
 type WorkspaceCell = {
   columnId: string;
   value: string;
@@ -113,6 +115,42 @@ type RunResponse = {
     }>;
   }>;
   generatedAt: string;
+};
+
+type ResearchNotebookCitation = {
+  id: string;
+  evidenceId: string;
+  source: string;
+  pageStart: number;
+  pageEnd: number;
+  sectionTitle: string | null;
+  snippet: string;
+  shareable: boolean;
+};
+
+type ResearchNotebookAnswer = {
+  version: "seed-research-notebook-answer-v1";
+  workspaceId: string;
+  model: ChatModel;
+  answer: string;
+  citations: ResearchNotebookCitation[];
+  insufficient: boolean;
+  shareable: boolean;
+  adapter: {
+    requested: "openrag";
+    active: false;
+    status: string;
+    retrievalAuthority: "seedy_bounded_retrieval";
+    evidenceAuthority: "seedy_rights_and_exact_page_contract";
+  };
+  generatedAt: string;
+};
+
+export type ResearchNotebookFinding = {
+  question: string;
+  answer: string;
+  citations: ResearchNotebookCitation[];
+  insufficient: boolean;
 };
 
 type PrivateLibraryItem = {
@@ -275,13 +313,17 @@ export function ResearchWorkspacePanel({
   accessEnabled,
   onUpgrade,
   onOpenPaper,
+  onPromoteNotebookFinding,
+  onContinueNotebookPath,
 }: {
   papers: ResearchWorkspacePaper[];
   seedSources?: string[];
   authenticated: boolean;
   accessEnabled: boolean;
   onUpgrade: (message: string) => void;
-  onOpenPaper: (source: string) => void;
+  onOpenPaper: (source: string, evidenceTarget?: ResearchWorkspaceEvidenceTarget) => void;
+  onPromoteNotebookFinding: (finding: ResearchNotebookFinding) => void;
+  onContinueNotebookPath: (finding: ResearchNotebookFinding) => void;
 }) {
   const defaultColumns = TEMPLATE_COLUMNS.literature_matrix;
   const [workspaceId, setWorkspaceId] = useState("workspace-local");
@@ -308,6 +350,9 @@ export function ResearchWorkspacePanel({
   const [status, setStatus] = useState<"idle" | "running" | "paused" | "saving" | "saved" | "error">("idle");
   const [statusText, setStatusText] = useState("Saved locally");
   const [runProgress, setRunProgress] = useState({ completed: 0, total: 0 });
+  const [notebookQuestion, setNotebookQuestion] = useState(DEFAULT_REVIEW_PROTOCOL.question);
+  const [notebookAnswer, setNotebookAnswer] = useState<ResearchNotebookAnswer | null>(null);
+  const [notebookBusy, setNotebookBusy] = useState(false);
   const appliedSeedRef = useRef("");
   const stopRunRef = useRef(false);
 
@@ -458,6 +503,13 @@ export function ResearchWorkspacePanel({
   const activeRow = activeCell ? rows.find((row) => row.source === activeCell.source) : null;
   const activeColumn = activeCell ? columns.find((column) => column.id === activeCell.columnId) : null;
   const activeCellValue = activeRow && activeColumn ? activeRow.cells.find((cell) => cell.columnId === activeColumn.id) : null;
+  const selectedPrivateSourceCount = selectedSources.filter((source) => source.startsWith("private:")).length;
+  const notebookFinding: ResearchNotebookFinding | null = notebookAnswer ? {
+    question: notebookQuestion.trim(),
+    answer: notebookAnswer.answer,
+    citations: notebookAnswer.citations,
+    insufficient: notebookAnswer.insufficient,
+  } : null;
   const importCitation = async () => {
     if (!importValue.trim() || importBusy) return;
     setImportBusy(true);
@@ -647,11 +699,11 @@ export function ResearchWorkspacePanel({
     }
   };
 
-  const saveWorkspace = async () => {
+  const saveWorkspace = async (): Promise<boolean> => {
     if (!authenticated) {
       setStatus("saved");
       setStatusText("Workspace saved locally · sign in only for cross-device sync");
-      return;
+      return false;
     }
     setStatus("saving");
     setStatusText("Saving workspace...");
@@ -682,9 +734,39 @@ export function ResearchWorkspacePanel({
       });
       setStatus("saved");
       setStatusText("Workspace synced to your account");
+      return true;
     } catch (error) {
       setStatus("error");
       setStatusText(error instanceof Error ? error.message : "Workspace could not be synced.");
+      return false;
+    }
+  };
+
+  const askNotebook = async () => {
+    const question = notebookQuestion.trim();
+    const sources = selectedSources.filter((source) => rows.some((row) => row.source === source)).slice(0, 10);
+    if (!authenticated) {
+      onUpgrade("Sign in to bind Research Notebook to an owner-scoped Workspace and use private sources safely.");
+      return;
+    }
+    if (question.length < 8 || !sources.length || notebookBusy) return;
+    setNotebookBusy(true);
+    setNotebookAnswer(null);
+    try {
+      const saved = await saveWorkspace();
+      if (!saved) return;
+      const answer = await fetchWorkspaceJson<ResearchNotebookAnswer>("/api/research-workspaces", {
+        method: "POST",
+        body: JSON.stringify({ action: "ask", workspaceId, question, model, sources }),
+      });
+      setNotebookAnswer(answer);
+      setStatusText(answer.insufficient
+        ? "Research Notebook needs more page-citable evidence"
+        : `Research Notebook answered from ${answer.citations.length} exact-page source${answer.citations.length === 1 ? "" : "s"}`);
+    } catch (error) {
+      setStatusText(error instanceof Error ? error.message : "Research Notebook could not answer this question.");
+    } finally {
+      setNotebookBusy(false);
     }
   };
 
@@ -920,6 +1002,74 @@ export function ResearchWorkspacePanel({
         </div>
       ) : null}
 
+      <section className="researchNotebook" aria-label="Research Notebook">
+        <header>
+          <div>
+            <span className="workspaceEyebrow">Research Notebook</span>
+            <h2>Ask this Workspace</h2>
+            <p>Answers stay inside the selected source set and must resolve to exact pages. Metadata-only records return insufficient evidence.</p>
+          </div>
+          <span className="notebookAuthority"><ShieldCheck size={14} aria-hidden /> OpenRAG-compatible · Seedy evidence authority</span>
+        </header>
+        <div className="notebookComposer">
+          <textarea
+            aria-label="Ask this Workspace"
+            value={notebookQuestion}
+            onChange={(event) => setNotebookQuestion(event.target.value)}
+            rows={3}
+            maxLength={800}
+            placeholder="What do these selected papers show, where do they disagree, and what evidence is still missing?"
+          />
+          <div>
+            <span>{selectedSources.length} selected source{selectedSources.length === 1 ? "" : "s"}{selectedPrivateSourceCount ? ` · ${selectedPrivateSourceCount} private` : ""}</span>
+            <button type="button" onClick={() => void askNotebook()} disabled={notebookBusy || notebookQuestion.trim().length < 8 || !selectedSources.length}>
+              {notebookBusy ? <LoaderCircle size={15} className="workspaceSpinner" aria-hidden /> : <Sparkles size={15} aria-hidden />}
+              {notebookBusy ? "Reading selected sources…" : authenticated ? "Ask selected sources" : "Sign in to ask"}
+            </button>
+          </div>
+        </div>
+        {selectedPrivateSourceCount ? (
+          <p className="notebookPrivateBoundary" role="note">Private PDF text is sent only to the selected model for this owner-scoped answer. Private citations are marked non-shareable and never enter the public corpus or Passport.</p>
+        ) : null}
+        {notebookAnswer ? (
+          <article className={`notebookAnswer ${notebookAnswer.insufficient ? "insufficient" : ""}`} aria-live="polite">
+            <div className="notebookAnswerBody">
+              <span>{notebookAnswer.insufficient ? "Insufficient evidence" : "Bounded answer"}</span>
+              <p>{notebookAnswer.answer}</p>
+            </div>
+            <div className="notebookCitations" aria-label="Research Notebook exact-page citations">
+              {notebookAnswer.citations.map((citation) => (
+                <button
+                  key={citation.id}
+                  type="button"
+                  onClick={() => onOpenPaper(citation.source, {
+                    id: citation.evidenceId,
+                    pageStart: citation.pageStart,
+                    pageEnd: citation.pageEnd,
+                    sectionTitle: citation.sectionTitle,
+                  })}
+                >
+                  <strong>[{citation.id}] {pageLabel(citation)}</strong>
+                  <span>{citation.sectionTitle || "Evidence packet"}{citation.shareable ? "" : " · private / non-shareable"}</span>
+                  <small>{citation.snippet}</small>
+                </button>
+              ))}
+            </div>
+            <footer>
+              <span>{notebookAnswer.adapter.active ? "OpenRAG adapter active" : "Bounded Seedy retrieval active"} · answer text is not persisted in Workspace state</span>
+              <div>
+                <button
+                  type="button"
+                  disabled={!notebookFinding || notebookFinding.insufficient || !notebookAnswer.shareable}
+                  onClick={() => notebookFinding && onPromoteNotebookFinding(notebookFinding)}
+                >Promote to Passport</button>
+                <button type="button" disabled={!notebookFinding || notebookFinding.insufficient || !notebookAnswer.shareable} onClick={() => notebookFinding && onContinueNotebookPath(notebookFinding)}>Continue to Path</button>
+              </div>
+            </footer>
+          </article>
+        ) : null}
+      </section>
+
       {pickerOpen ? (
         <section className="workspacePaperPicker" aria-label="Add papers to workspace">
           <div><strong>Add papers</strong><span>Choose up to 50. Seedy Research processes six at a time and saves each batch.</span></div>
@@ -1116,7 +1266,7 @@ export function ResearchWorkspacePanel({
             <section>
               <strong>Exact-page evidence</strong>
               {activeCellValue.evidence.length ? activeCellValue.evidence.map((evidence) => (
-                <button key={evidence.id} type="button" onClick={() => onOpenPaper(evidence.source)}>
+                <button key={evidence.id} type="button" onClick={() => onOpenPaper(evidence.source, evidence)}>
                   <span>[{evidence.id}] {pageLabel(evidence)}</span>
                   <strong>{evidence.sectionTitle || "Indexed evidence"}</strong>
                   <small>{evidence.snippet}</small>

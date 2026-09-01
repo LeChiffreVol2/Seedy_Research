@@ -59,7 +59,7 @@ test("desktop feed keeps the approved research hierarchy", async ({ page }) => {
   await page.setViewportSize({ width: 1440, height: 1000 });
   await page.goto("/");
   await page.getByRole("button", { name: "Explore" }).click();
-  await expect(page.getByRole("heading", { name: "Thai research, with sources." })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Connect Thai evidence to global research." })).toBeVisible();
   await expect(page.getByLabel("Seedy Research corpus coverage")).toContainText("papers");
   await expect(page.getByLabel("Seedy Research corpus coverage")).toContainText("page-linked sections");
   await expect(page.getByLabel("Seedy Research corpus coverage")).toContainText("Exact-page citations");
@@ -75,16 +75,20 @@ test("desktop feed keeps the approved research hierarchy", async ({ page }) => {
   await expect(page.getByRole("menuitemradio", { name: /Quick Answer/ })).toBeVisible();
   await expect(page.getByRole("button", { name: "Workspace" })).toBeVisible();
   await page.keyboard.press("Escape");
+  const coverageLedger = page.getByRole("region", { name: "Thai research coverage ledger" });
+  await expect(coverageLedger).toBeVisible();
+  await expect(coverageLedger.getByText("2,581", { exact: true })).toBeVisible();
   await expect(page.getByRole("region", { name: "Seedy Research feed", exact: true })).toBeVisible({ timeout: 45_000 });
   await expect.poll(() => page.locator(".researchCard").count()).toBeGreaterThan(0);
   await expect(page.locator(".researchCard .paperMeta span", { hasText: /^Indexed\b/i })).toHaveCount(0);
+  await page.locator(".researchCard").first().scrollIntoViewIfNeeded();
   await expect
     .poll(() =>
       page.locator(".researchCard").evaluateAll((cards) => {
         if (cards.length < 2) return false;
         const first = cards[0].getBoundingClientRect();
         const second = cards[1].getBoundingClientRect();
-        return first.bottom <= window.innerHeight && second.top < window.innerHeight;
+        return first.top >= 0 && first.bottom <= window.innerHeight && first.bottom <= second.top;
       }),
     )
     .toBe(true);
@@ -96,6 +100,9 @@ test("Explore separates ThaiJO discovery metadata from citable evidence", async 
   await page.setViewportSize({ width: 1440, height: 1000 });
   await page.goto("/");
   await page.getByRole("button", { name: "Explore" }).click();
+
+  const invalidProvider = await page.request.get("/api/research-feed?filter=thai&provider=%2Funsafe&limit=3");
+  expect(invalidProvider.status()).toBe(422);
 
   await page.getByRole("button", { name: /^Thai discovery/ }).click();
   const feed = page.getByRole("region", { name: "Seedy Research feed" });
@@ -140,6 +147,54 @@ test("Explore separates ThaiJO discovery metadata from citable evidence", async 
   const student = await studentResponse.json() as { cards?: Array<{ collection?: string; citable?: boolean }> };
   expect(student.cards?.length).toBeGreaterThan(0);
   expect(student.cards?.every((card) => card.collection === "ce_project" && card.citable === true)).toBe(true);
+});
+
+test("Coverage Ledger separates access classes and filters the connected provider", async ({ page }) => {
+  const feedRequests: string[] = [];
+  await page.route("**/api/research-feed**", async (route) => {
+    feedRequests.push(route.request().url());
+    await route.fulfill({ json: {
+      cards: [],
+      facets: {
+        total: 1300,
+        totalSections: 11591,
+        totalChunks: 11591,
+        catalogTotal: 2578,
+        citableTotal: 1300,
+        metadataOnlyTotal: 2578,
+        filters: { hot: 1300, thai: 2581, tci: 2581, ncce: 940 },
+        providers: [{ provider: "tci_thaijo", records: 2581, citable: 3, metadataOnly: 2578 }],
+        coverage: [{
+          provider: "tci_thaijo",
+          label: "ThaiJO",
+          state: "live_bounded",
+          records: 2581,
+          metadataOnly: 2578,
+          pageCitable: 3,
+          nativeFullPaper: 3,
+          sourceHostedFullPaper: null,
+          endpointObserved: 2,
+          endpointKnown: 36,
+          rights: "article_specific",
+          freshness: "2026-09-01",
+          filter: "tci_thaijo",
+        }],
+      },
+      nextCursor: null,
+      generatedAt: "2026-09-01T00:00:00.000Z",
+    } });
+  });
+
+  await page.setViewportSize({ width: 1440, height: 1000 });
+  await page.goto("/");
+  await page.getByRole("button", { name: "Explore" }).click();
+  const ledger = page.getByLabel("Thai research coverage ledger");
+  await expect(ledger).toContainText("Coverage Ledger");
+  await expect(ledger).toContainText("2,578 metadata-only");
+  await expect(ledger).toContainText("3 native full papers");
+  await expect(ledger).toContainText("2 of 36 endpoints observed");
+  await ledger.getByRole("button", { name: "View ThaiJO records" }).click();
+  await expect.poll(() => feedRequests.some((url) => url.includes("provider=tci_thaijo"))).toBe(true);
 });
 
 test("global discovery is explicit, metadata-only, and recoverable", async ({ page }) => {
@@ -328,7 +383,7 @@ test("intermediate responsive widths stay collision-free", async ({ page }) => {
     await page.setViewportSize(viewport);
     await page.goto("/");
     await page.getByRole("button", { name: "Explore" }).click();
-    await expect(page.getByRole("heading", { name: "Thai research, with sources." })).toBeVisible();
+    await expect(page.getByRole("heading", { name: "Connect Thai evidence to global research." })).toBeVisible();
     await expectNoPageOverflow(page);
     await expectNoInteractiveOverlap(page);
   }
@@ -657,9 +712,40 @@ test("Open Access can batch-run, inspect, review, and export workspace cells", a
       rows?: Array<{ source: string }>;
       columns?: Array<{ id: string }>;
       state?: unknown;
+      question?: string;
+      sources?: string[];
     };
     if (request.action === "save") {
       await route.fulfill({ json: { workspace: { workspaceId: request.workspaceId, state: request.state } } });
+      return;
+    }
+    if (request.action === "ask") {
+      await route.fulfill({ json: {
+        version: "seed-research-notebook-answer-v1",
+        workspaceId: request.workspaceId,
+        model: "gpt-5.6-luna",
+        answer: "Both selected studies report a page-linked road-safety finding [N1], while cross-context validation remains missing [N2].",
+        citations: (request.sources ?? []).slice(0, 2).map((source, index) => ({
+          id: `N${index + 1}`,
+          evidenceId: `evidence-${index + 1}`,
+          source,
+          pageStart: 3 + index,
+          pageEnd: 3 + index,
+          sectionTitle: "Results",
+          snippet: "Mocked exact-page Notebook evidence.",
+          shareable: true,
+        })),
+        insufficient: false,
+        shareable: true,
+        adapter: {
+          requested: "openrag",
+          active: false,
+          status: "disabled_for_challenge_candidate",
+          retrievalAuthority: "seedy_bounded_retrieval",
+          evidenceAuthority: "seedy_rights_and_exact_page_contract",
+        },
+        generatedAt: "2026-09-01T00:02:00.000Z",
+      } });
       return;
     }
     await route.fulfill({ json: {
@@ -706,6 +792,20 @@ test("Open Access can batch-run, inspect, review, and export workspace cells", a
   await page.getByRole("button", { name: "Compare in Workspace" }).click();
   const workspace = page.getByLabel("Open Access Research Workspace");
   await expect(workspace.locator("tbody tr")).toHaveCount(2);
+  const notebook = workspace.getByLabel("Research Notebook", { exact: true });
+  await expect(notebook).toContainText("OpenRAG-compatible · Seedy evidence authority");
+  await notebook.getByRole("button", { name: "Ask selected sources" }).click();
+  await expect(notebook).toContainText("Both selected studies report a page-linked road-safety finding");
+  await expect(notebook.getByLabel("Research Notebook exact-page citations").getByRole("button")).toHaveCount(2);
+  const exactEvidenceRequest = page.waitForRequest((request) => {
+    const url = new URL(request.url());
+    return url.pathname.includes("/api/papers/") && url.searchParams.get("evidence") === "evidence-1" && url.searchParams.get("page") === "3";
+  });
+  await notebook.getByLabel("Research Notebook exact-page citations").getByRole("button").first().click();
+  await exactEvidenceRequest;
+  await page.getByRole("button", { name: "Close paper detail" }).click();
+  await expect(notebook.getByRole("button", { name: "Promote to Passport" })).toBeEnabled();
+  await expect(notebook.getByRole("button", { name: "Continue to Path" })).toBeEnabled();
   await workspace.getByRole("button", { name: /Run selected/ }).click();
   await expect(workspace.getByText(/Review run complete · verify generated cells/)).toBeVisible();
   await workspace.getByRole("button", { name: /Method for Thai road safety evidence 1/ }).click();

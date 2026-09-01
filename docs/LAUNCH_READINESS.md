@@ -25,7 +25,12 @@ The launch promise is narrow and testable:
   mastery/gap state, and local progress.
 - Research Workspace: up-to-50-paper Verified Review Project, six-paper bounded
   server batches, Scientific Evidence Snapshot, private PDF/citation imports,
-  human review, and PRISMA-ScR guided export.
+  human review, PRISMA-ScR guided export, and a selected-source Research
+  Notebook with exact-page citations. Public findings may continue to a
+  review-gated Passport or Research Path; private findings remain non-shareable.
+- Coverage Ledger: dated, provider-filterable counts that separate searchable
+  metadata, page-citable evidence, native reader assets, source-hosted links,
+  rights state, endpoint coverage, and providers not yet connected.
 - Living Review and citation map: explicit, bounded Thai/OpenAlex discovery
   checks with metadata/evidence separation.
 - Public paper records: indexable metadata, canonical URL, JSON-LD, page ranges,
@@ -78,6 +83,13 @@ All of the following must pass against the same source state:
     ChatGPT's built-in browser using a configuration where Site tools are
     visibly available and in Chrome with native WebMCP testing enabled. Record
     the exact host build, account class, selected model, permissions, and calls.
+14. Research Notebook ownership and saved-source membership fail closed;
+    citations resolve only to supplied exact-page packets; private answers are
+    non-shareable and not persisted; public promotion returns to the Passport
+    page-review gate.
+15. Passport-to-Path continuity rejects stale or off-paper evidence and carries
+    the reviewed Passport ID, source, exact evidence locators, gap lens, and
+    selected metadata-only global leads into the visible path.
 
 The August 31, 2026 production dependency audit found no high or critical
 advisories and five transitive low-severity advisories in the current AI SDK

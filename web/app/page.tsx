@@ -65,7 +65,7 @@ import {
   type ChatModel,
 } from "@/lib/chat-models";
 import { CIVILMCP_FEATURE_ACCESS, CIVILMCP_OPEN_ACCESS, CIVILMCP_OPEN_ACCESS_LABEL, type CivilMcpFeature } from "@/lib/product-access";
-import { ResearchWorkspacePanel, type ResearchWorkspacePaper } from "@/components/research-workspace";
+import { ResearchWorkspacePanel, type ResearchNotebookFinding, type ResearchWorkspacePaper, type ResearchWorkspaceEvidenceTarget } from "@/components/research-workspace";
 import { GlassMenuSelect, type GlassMenuOption } from "@/components/glass-menu-select";
 import {
   registerSeedResearchWebMcpTools,
@@ -320,12 +320,29 @@ type ResearchFeedResponse = {
     catalogTotal?: number;
     citableTotal?: number;
     metadataOnlyTotal?: number;
-    providers?: Array<{ provider: string; records: number; citable: number }>;
+    providers?: Array<{ provider: string; records: number; citable: number; metadataOnly?: number }>;
+    coverage?: ResearchCoverageProvider[];
     collections?: Array<{ collection: string; documents: number }>;
     filters?: Partial<Record<FeedFilter, number>>;
   };
   nextCursor?: string | null;
   generatedAt?: string;
+};
+
+type ResearchCoverageProvider = {
+  provider: string;
+  label: string;
+  state: "live_bounded" | "pilot_internal" | "not_connected";
+  records: number;
+  metadataOnly: number;
+  pageCitable: number;
+  nativeFullPaper: number;
+  sourceHostedFullPaper: number | null;
+  endpointObserved: number | null;
+  endpointKnown: number | null;
+  rights: "article_specific" | "manifest_reviewed" | "agreement_required" | "not_assessed";
+  freshness: string;
+  filter: string | null;
 };
 
 type GlobalDiscoveryStatus = "connected" | "link_only" | "unavailable" | "rate_limited" | "disabled";
@@ -562,6 +579,15 @@ type ResearchPath = {
   level: PathLevel;
   outcome: PathOutcome;
   sourceCodes: string[];
+  passportContext?: {
+    passportId: string;
+    source: string;
+    evidenceIds: string[];
+    gapLens: WebMcpGapLens;
+    reviewedAt: string;
+    globalLeadIds: string[];
+    evidence: Array<{ id: string; pageStart: number; pageEnd: number; sectionTitle: string | null }>;
+  } | null;
   adaptedFromGaps?: string[];
   coverage?: {
     status: "strong" | "limited";
@@ -761,6 +787,7 @@ const THAI_TEXT_PATTERN = /[\u0E00-\u0E7F]/;
 const TRANSLATION_CACHE_KEY = "civilmcp-paper-translations-v1";
 const PAPER_LANGUAGE_KEY = "civilmcp-paper-language-v1";
 const RESEARCH_PATH_KEY = "civilmcp-research-path-v3";
+const READER_REVIEW_RECEIPT_KEY = "seed-research-reader-review-receipt-v1";
 const RESEARCH_PATH_DEMO_GOAL = "Urban road safety";
 const RESEARCH_PATH_DEMO_LEVEL: PathLevel = "foundation";
 const RESEARCH_PATH_DEMO_OUTCOME: PathOutcome = "study_plan";
@@ -2794,6 +2821,65 @@ function DiscoveryTrustBar({
   );
 }
 
+function CoverageLedger({
+  providers,
+  activeProvider,
+  onViewProvider,
+  onClearProvider,
+}: {
+  providers: ResearchCoverageProvider[];
+  activeProvider: string;
+  onViewProvider: (provider: ResearchCoverageProvider) => void;
+  onClearProvider: () => void;
+}) {
+  if (!providers.length) return null;
+  const connected = providers.filter((provider) => provider.state !== "not_connected" && provider.records > 0);
+  const planned = providers.filter((provider) => provider.state === "not_connected");
+  return (
+    <section className="coverageLedger" aria-label="Thai research coverage ledger">
+      <header>
+        <div>
+          <span className="workspaceEyebrow">Coverage Ledger</span>
+          <h2>What Seedy can discover, cite, and lawfully read</h2>
+          <p>Counts are dated access classes, not a claim that Thai research is nationally complete.</p>
+        </div>
+        {activeProvider ? <button type="button" className="textAction" onClick={onClearProvider}>Show all sources</button> : null}
+      </header>
+      <div className="coverageRows">
+        {connected.map((provider) => (
+          <article key={provider.provider} className={activeProvider === provider.provider ? "active" : ""}>
+            <div className="coverageIdentity">
+              <strong>{provider.label}</strong>
+              <span>{provider.state === "pilot_internal" ? "institutional proof" : "bounded live source"}</span>
+            </div>
+            <dl>
+              <div><dt>Records</dt><dd>{provider.records.toLocaleString("en-US")}</dd></div>
+              <div><dt>Evidence</dt><dd>{provider.pageCitable.toLocaleString("en-US")} page-citable</dd></div>
+              <div><dt>Discovery</dt><dd>{provider.metadataOnly.toLocaleString("en-US")} metadata-only</dd></div>
+              <div><dt>Reader</dt><dd>{provider.nativeFullPaper.toLocaleString("en-US")} native full papers</dd></div>
+            </dl>
+            <div className="coverageFoot">
+              <span>{provider.endpointKnown ? `${provider.endpointObserved ?? 0} of ${provider.endpointKnown} endpoints observed` : `${provider.endpointObserved ?? 0} bounded source slices`}</span>
+              <span>{provider.sourceHostedFullPaper == null ? "source-hosted full-paper count unmeasured" : `${provider.sourceHostedFullPaper} source-hosted full papers`}</span>
+              {provider.filter ? (
+                <button type="button" onClick={() => onViewProvider(provider)} aria-label={`View ${provider.label} records`}>
+                  View records
+                </button>
+              ) : null}
+            </div>
+          </article>
+        ))}
+      </div>
+      {planned.length ? (
+        <details>
+          <summary>{planned.length} national providers tracked, not yet connected</summary>
+          <p>{planned.map((provider) => provider.label).join(" · ")}. Rights or repeatable access must be agreed before ingestion.</p>
+        </details>
+      ) : null}
+    </section>
+  );
+}
+
 function GlobalDiscoveryPanel({
   query,
   state,
@@ -2906,6 +2992,7 @@ function ResearchPassportPanel({
   onMarkReviewed,
   onExport,
   onClear,
+  onContinueToPath,
 }: {
   enabled: boolean;
   state: ResearchPassportState;
@@ -2913,6 +3000,7 @@ function ResearchPassportPanel({
   onMarkReviewed: () => void;
   onExport: () => void;
   onClear: () => void;
+  onContinueToPath: (artifact: ResearchPassportArtifact) => void;
 }) {
   if (!enabled || state.phase === "idle") return null;
   const artifact = state.artifact;
@@ -3057,6 +3145,10 @@ function ResearchPassportPanel({
             <button type="button" className="cardAction" disabled={!reviewed || artifact.stale} onClick={onExport}>
               <Download size={16} aria-hidden />
               <span>Export passport</span>
+            </button>
+            <button type="button" className="cardAction" disabled={!reviewed || artifact.stale} onClick={() => onContinueToPath(artifact)}>
+              <Route size={16} aria-hidden />
+              <span>Continue to Research Path</span>
             </button>
             <button type="button" className="cardAction" onClick={onClear}>
               <X size={16} aria-hidden />
@@ -4352,6 +4444,15 @@ function PersonalizedResearchPathPanel({
                 ))}
               </ol>
             </div>
+            {path.passportContext ? (
+              <div className="pathPassportContinuity" role="note" aria-label="Research Passport continuity">
+                <ShieldCheck size={17} aria-hidden />
+                <div>
+                  <strong>Continued from {path.passportContext.passportId}</strong>
+                  <span>{path.passportContext.evidenceIds.length} reviewed exact-page anchor{path.passportContext.evidenceIds.length === 1 ? "" : "s"} · {path.passportContext.gapLens} gap lens · source retained in full-paper stage</span>
+                </div>
+              </div>
+            ) : null}
             {path.coverage?.status === "limited" ? (
               <div className="pathCoverageNotice" role="note">
                 <TriangleAlert size={16} aria-hidden />
@@ -5325,6 +5426,8 @@ export default function Home() {
   const [feedTotalSections, setFeedTotalSections] = useState(0);
   const [feedTotalChunks, setFeedTotalChunks] = useState(0);
   const [feedFilterCounts, setFeedFilterCounts] = useState<Partial<Record<FeedFilter, number>>>({});
+  const [feedCoverage, setFeedCoverage] = useState<ResearchCoverageProvider[]>([]);
+  const [activeFeedProvider, setActiveFeedProvider] = useState("");
   const [feedGeneratedAt, setFeedGeneratedAt] = useState("");
   const [feedNextCursor, setFeedNextCursor] = useState<string | null>(null);
   const [isFeedLoadingMore, setIsFeedLoadingMore] = useState(false);
@@ -5421,7 +5524,7 @@ export default function Home() {
   }, [citationMap]);
 
   useEffect(() => {
-    const contextKey = `${feedQuery}\u0000${selectedCollection || "all"}\u0000${activeFeedFilter}`;
+    const contextKey = `${feedQuery}\u0000${selectedCollection || "all"}\u0000${activeFeedFilter}\u0000${activeFeedProvider || "all-providers"}`;
     if (!feedResearchContextKeyRef.current) {
       feedResearchContextKeyRef.current = contextKey;
       return;
@@ -5429,7 +5532,7 @@ export default function Home() {
     if (feedResearchContextKeyRef.current === contextKey) return;
     feedResearchContextKeyRef.current = contextKey;
     invalidateResearchContext();
-  }, [activeFeedFilter, feedQuery, invalidateResearchContext, selectedCollection]);
+  }, [activeFeedFilter, activeFeedProvider, feedQuery, invalidateResearchContext, selectedCollection]);
 
   const mode: Mode = useMcp ? "mcp" : "baseline";
   const { messages, append, isLoading, setMessages, error: chatError } = useChat({
@@ -5520,15 +5623,16 @@ export default function Home() {
         limit: "12",
       });
       if (feedQuery) params.set("q", feedQuery);
+      if (activeFeedProvider) params.set("provider", activeFeedProvider);
       if (cursor) params.set("cursor", cursor);
       return params;
     },
-    [activeFeedFilter, feedQuery, selectedCollection],
+    [activeFeedFilter, activeFeedProvider, feedQuery, selectedCollection],
   );
 
   useEffect(() => {
-    feedKeyRef.current = `${activeFeedFilter}|${feedQuery}|${selectedCollection}`;
-  }, [activeFeedFilter, feedQuery, selectedCollection]);
+    feedKeyRef.current = `${activeFeedFilter}|${activeFeedProvider}|${feedQuery}|${selectedCollection}`;
+  }, [activeFeedFilter, activeFeedProvider, feedQuery, selectedCollection]);
 
   useEffect(() => {
     globalDiscoveryRequestIdRef.current += 1;
@@ -5941,6 +6045,7 @@ export default function Home() {
         setFeedTotalSections(payload.facets?.totalSections ?? 0);
         setFeedTotalChunks(payload.facets?.totalChunks ?? 0);
         setFeedFilterCounts(payload.facets?.filters ?? {});
+        setFeedCoverage(payload.facets?.coverage ?? []);
         setFeedGeneratedAt(payload.generatedAt ?? "");
         setFeedNextCursor(payload.nextCursor ?? null);
         setFeedStatus("ready");
@@ -5963,6 +6068,7 @@ export default function Home() {
         setFeedTotalSections(0);
         setFeedTotalChunks(0);
         setFeedFilterCounts({});
+        setFeedCoverage([]);
         setFeedNextCursor(null);
         setFeedStatus("error");
         setFeedError("The indexed paper collection could not be loaded. Please try again.");
@@ -6969,14 +7075,97 @@ export default function Home() {
       evidenceCount: artifact.evidence.length,
       globalLeadCount: artifact.globalWorks.length,
     });
+    trackProductEvent("verified_research_outcome", {
+      surface: "research_passport_export",
+      passportId: artifact.passportId,
+      source: artifact.paper.source,
+      evidenceCount: artifact.evidence.length,
+      globalLeadCount: artifact.globalWorks.length,
+    });
     recordActivationStep("outcome");
     setStatusText("Page-reviewed Research Passport exported as Markdown with its candidate-inference warning intact.");
   }, [recordActivationStep, researchPassport]);
+
+  const consumeReaderReviewReceipt = useCallback(() => {
+    type ReaderReviewReceipt = {
+      passportId?: unknown;
+      evidenceId?: unknown;
+      source?: unknown;
+      pageStart?: unknown;
+      readerPageNumber?: unknown;
+      accessMode?: unknown;
+      visitedAt?: unknown;
+    };
+    let receipt: ReaderReviewReceipt | null = null;
+    try {
+      receipt = JSON.parse(window.localStorage.getItem(READER_REVIEW_RECEIPT_KEY) ?? "null") as ReaderReviewReceipt | null;
+    } catch {
+      return;
+    }
+    if (!receipt || receipt.accessMode !== "native_verified" || typeof receipt.visitedAt !== "string") return;
+    const visitedAt = new Date(receipt.visitedAt).getTime();
+    if (!Number.isFinite(visitedAt) || Date.now() - visitedAt > 15 * 60_000) return;
+    const current = researchPassportRef.current;
+    const artifact = current.artifact;
+    if (
+      current.phase !== "ready"
+      || !artifact
+      || artifact.stale
+      || receipt.passportId !== artifact.passportId
+      || receipt.source !== artifact.paper.source
+      || typeof receipt.evidenceId !== "string"
+    ) return;
+    const evidence = artifact.evidence.find((item) => item.id === receipt?.evidenceId);
+    if (
+      !evidence
+      || !evidence.readerAnchor
+      || evidence.readerPageNumber !== receipt.readerPageNumber
+      || evidence.pageStart !== receipt.pageStart
+    ) return;
+    try {
+      window.localStorage.removeItem(READER_REVIEW_RECEIPT_KEY);
+    } catch {}
+    if (artifact.openedEvidenceIds.includes(evidence.id)) return;
+    const next: ResearchPassportState = {
+      ...current,
+      artifact: { ...artifact, openedEvidenceIds: [...artifact.openedEvidenceIds, evidence.id] },
+    };
+    researchPassportRef.current = next;
+    setResearchPassport(next);
+    setStatusText(`${evidence.id} loaded in the verified full-paper reader at ${passportEvidencePage(evidence)}. Return to acknowledge page review.`);
+  }, []);
+
+  useEffect(() => {
+    const onStorage = (event: StorageEvent) => {
+      if (event.key === READER_REVIEW_RECEIPT_KEY) consumeReaderReviewReceipt();
+    };
+    window.addEventListener("storage", onStorage);
+    window.addEventListener("focus", consumeReaderReviewReceipt);
+    consumeReaderReviewReceipt();
+    return () => {
+      window.removeEventListener("storage", onStorage);
+      window.removeEventListener("focus", consumeReaderReviewReceipt);
+    };
+  }, [consumeReaderReviewReceipt]);
 
   const openResearchPassportEvidence = useCallback((item: ResearchPassportEvidence) => {
     const artifact = researchPassport.artifact;
     if (!artifact) return;
     const passportId = artifact.passportId;
+    if (item.readerAnchor && item.readerPageNumber && item.pageStart != null) {
+      const params = new URLSearchParams({
+        passport: passportId,
+        evidence: item.id,
+        page: String(item.pageStart),
+        readerPage: String(item.readerPageNumber),
+      });
+      const readerUrl = `/papers/${encodeURIComponent(artifact.paper.source)}?${params.toString()}#${item.readerAnchor.replace(/[^a-zA-Z0-9_-]+/g, "-")}`;
+      const readerWindow = window.open(readerUrl, "_blank", "noopener,noreferrer");
+      setStatusText(readerWindow
+        ? `Opened ${item.id} in the verified full-paper reader. Its review receipt will unlock the Passport after the page loads.`
+        : "The verified reader window was blocked. Allow pop-ups for this site and open the evidence again.");
+      return;
+    }
     const target: CivilEvidenceItem = {
       evidenceId: item.id,
       citation: `${artifact.paper.paperCode || artifact.paper.title} · ${passportEvidencePage(item)}`,
@@ -7005,9 +7194,76 @@ export default function Home() {
         researchPassportRef.current = next;
         return next;
       });
-      setStatusText(`${item.id} reopened at ${passportEvidencePage(item)}. Review every Passport anchor before export.`);
+      setStatusText(`${item.id} reopened in the exact-page evidence view at ${passportEvidencePage(item)}. Review every Passport anchor before export.`);
     });
   }, [openPaperDetailBySource, researchPassport.artifact]);
+
+  const promoteNotebookFinding = useCallback(async (finding: ResearchNotebookFinding) => {
+    const publicCitations = finding.citations.filter((citation) => citation.shareable && !citation.source.startsWith("private:"));
+    const seed = publicCitations[0];
+    if (!seed || finding.insufficient) {
+      setStatusText("Only supported public exact-page evidence can be promoted to a Research Passport.");
+      return;
+    }
+    const target: CivilEvidenceItem = {
+      evidenceId: seed.evidenceId,
+      citation: `${seed.source} · p.${seed.pageStart}${seed.pageEnd !== seed.pageStart ? `-${seed.pageEnd}` : ""}`,
+      source: seed.source,
+      id: seed.evidenceId,
+      pageStart: seed.pageStart,
+      pageEnd: seed.pageEnd,
+      sectionTitle: seed.sectionTitle ?? undefined,
+    };
+    const opened = await openPaperDetailBySource(seed.source, undefined, target);
+    const detail = webMcpEvidenceContextRef.current;
+    if (!opened || !detail || detail.document.source !== seed.source || detail.document.citable !== true) {
+      setStatusText("The Notebook citation could not be reopened in the current citable paper.");
+      return;
+    }
+    const citationIds = new Set(publicCitations.filter((citation) => citation.source === seed.source).map((citation) => citation.evidenceId));
+    const evidence = detail.evidence.filter((item) => citationIds.has(item.id) && item.pageStart != null && item.pageEnd != null).slice(0, 3);
+    if (!evidence.length) {
+      setStatusText("The Notebook citation no longer resolves to an exact-page evidence packet.");
+      return;
+    }
+    const fallbackSearchUrl = `https://openalex.org/works?search=${encodeURIComponent(finding.question)}`;
+    const globalResponse = await fetchJson<GlobalDiscoveryResponse>("/api/global-discovery", {
+      method: "POST",
+      body: JSON.stringify({ query: finding.question }),
+    }).catch((): GlobalDiscoveryResponse => ({
+      status: "unavailable",
+      provider: "openalex",
+      generatedAt: new Date().toISOString(),
+      searchUrl: fallbackSearchUrl,
+      works: [],
+    }));
+    const gap = passportGapCopy(finding.question, "validation");
+    const artifact: ResearchPassportArtifact = {
+      version: "seed-research-passport-v1",
+      passportId: `SR-${Date.now().toString(36).toUpperCase()}-NB`,
+      createdAt: new Date().toISOString(),
+      reviewedAt: null,
+      stale: false,
+      openedEvidenceIds: [],
+      runSteps: [{ tool: "research_notebook", detail: `${evidence.length} exact-page citations promoted · page review pending`, completedAt: new Date().toISOString() }],
+      translationStatus: evidence.some((item) => THAI_TEXT_PATTERN.test(item.snippet)) ? "unavailable" : "not_needed",
+      focus: finding.question,
+      gapLens: "validation",
+      paper: detail.document,
+      evidence: evidence.map((item) => ({ ...item, englishSnippet: null })),
+      globalStatus: globalResponse.status,
+      globalSearchUrl: globalResponse.searchUrl || fallbackSearchUrl,
+      globalWorks: globalResponse.works.slice(0, 4),
+      candidateGap: { ...gap, localBasisEvidenceIds: evidence.map((item) => item.id), relationValidated: false },
+    };
+    const ready: ResearchPassportState = { phase: "ready", artifact, error: "" };
+    researchPassportRef.current = ready;
+    setResearchPassport(ready);
+    setGlobalDiscovery({ phase: "ready", query: finding.question, response: globalResponse, error: "" });
+    closePaperDetail();
+    setAppView("explore");
+    setStatusText("Notebook evidence promoted to a Research Passport. Open every exact page in the reader before acknowledging review.");
+  }, [closePaperDetail, openPaperDetailBySource]);
 
   const createLivingReview = async () => {
     const query = feedQuery.trim();
@@ -7070,6 +7326,7 @@ export default function Home() {
       setFeedTotalSections(payload.facets?.totalSections ?? feedTotalSections);
       setFeedTotalChunks(payload.facets?.totalChunks ?? feedTotalChunks);
       setFeedFilterCounts(payload.facets?.filters ?? feedFilterCounts);
+      setFeedCoverage(payload.facets?.coverage ?? feedCoverage);
       setFeedGeneratedAt(payload.generatedAt ?? feedGeneratedAt);
       setFeedNextCursor(payload.nextCursor ?? null);
     } catch (error) {
@@ -7219,12 +7476,26 @@ export default function Home() {
     setStatusText("");
   };
 
-  const buildResearchPath = async (knowledgeGaps: string[] = [], preserveMastered = false) => {
-    const goal = pathGoal.trim();
+  const buildResearchPath = async (
+    knowledgeGaps: string[] = [],
+    preserveMastered = false,
+    passportArtifact: ResearchPassportArtifact | null = null,
+    goalOverride = "",
+  ) => {
+    const goal = (passportArtifact?.focus ?? (goalOverride || pathGoal)).trim();
     if (goal.length < 8 || researchPathStatus === "loading") return;
     const requestId = ++pathBuildRequestIdRef.current;
     const previousPath = researchPath;
-    const preservedGlobalLeads = preserveMastered
+    const preservedGlobalLeads = passportArtifact
+      ? passportArtifact.globalWorks.slice(0, 4).flatMap((lead) => /^https:\/\/openalex\.org\/W\d+$/i.test(lead.id) ? [{
+          id: lead.id,
+          title: lead.title,
+          year: lead.year,
+          relation: "related" as const,
+          topic: lead.topic ?? null,
+          citable: false as const,
+        }] : [])
+      : preserveMastered
       ? previousPath?.globalConnections?.leads.map((lead) => ({
           id: lead.id,
           title: lead.title,
@@ -7240,7 +7511,22 @@ export default function Home() {
     try {
       const path = await fetchJson<ResearchPath>("/api/research-path", {
         method: "POST",
-        body: JSON.stringify({ goal, level: pathLevel, outcome: pathOutcome, collection: selectedCollection, knowledgeGaps, globalLeads: preservedGlobalLeads }),
+        body: JSON.stringify({
+          goal,
+          level: passportArtifact ? "research" : pathLevel,
+          outcome: passportArtifact ? "study_plan" : pathOutcome,
+          collection: passportArtifact?.paper.collection ?? selectedCollection,
+          knowledgeGaps,
+          globalLeads: preservedGlobalLeads,
+          passportContext: passportArtifact?.reviewedAt ? {
+            passportId: passportArtifact.passportId,
+            source: passportArtifact.paper.source,
+            evidenceIds: passportArtifact.evidence.map((item) => item.id),
+            gapLens: passportArtifact.gapLens,
+            reviewedAt: passportArtifact.reviewedAt,
+            globalLeadIds: preservedGlobalLeads.map((lead) => lead.id),
+          } : null,
+        }),
       });
       if (!isResearchPath(path)) throw new Error("Seedy Research returned an invalid research path.");
       if (pathBuildRequestIdRef.current !== requestId) return;
@@ -7272,6 +7558,7 @@ export default function Home() {
         outcome: path.outcome,
         paperCount: path.stages.reduce((count, stage) => count + stage.papers.length, 0),
         collection: selectedCollection || "all",
+        passportId: path.passportContext?.passportId ?? null,
       });
     } catch (error) {
       if (pathBuildRequestIdRef.current !== requestId) return;
@@ -7380,6 +7667,8 @@ export default function Home() {
       `- Target outcome: ${researchPath.outcome.replace(/_/g, " ")}`,
       `- Progress: ${completedPathStages.length}/${researchPath.stages.length} stages mastered`,
       researchPath.coverage ? `- Coverage: ${researchPath.coverage.status} (${researchPath.coverage.paperCount} matching papers)` : "",
+      researchPath.passportContext ? `- Continued from page-reviewed Passport: ${researchPath.passportContext.passportId}` : "",
+      researchPath.passportContext ? `- Retained evidence: ${researchPath.passportContext.evidence.map((item) => `${item.id} (p.${item.pageStart}${item.pageEnd !== item.pageStart ? `-${item.pageEnd}` : ""})`).join("; ")}` : "",
       "",
       ...researchPath.stages.flatMap((stage, index) => {
         const assessment = pathCheckpointAssessments[stage.id];
@@ -7486,6 +7775,7 @@ export default function Home() {
         setFeedTotalSections(payload.facets?.totalSections ?? 0);
         setFeedTotalChunks(payload.facets?.totalChunks ?? 0);
         setFeedFilterCounts(payload.facets?.filters ?? {});
+        setFeedCoverage(payload.facets?.coverage ?? []);
         setFeedGeneratedAt(payload.generatedAt ?? "");
         setFeedNextCursor(payload.nextCursor ?? null);
         setFeedStatus("ready");
@@ -7824,13 +8114,6 @@ export default function Home() {
           researchPassportRef.current = readyPassport;
           setResearchPassport(readyPassport);
           setGlobalDiscovery({ phase: "ready", query: input.focus, response: globalResponse, error: "" });
-          trackProductEvent("verified_research_outcome", {
-            surface: "research_passport_draft",
-            source: artifact.paper.source,
-            evidenceCount: exactEvidence.length,
-            globalLeadCount: artifact.globalWorks.length,
-            gapLens: input.gapLens,
-          });
           setStatusText("WebMCP drafted a Research Passport. Open every exact page before acknowledging page review and exporting.");
 
           return {
@@ -7883,10 +8166,35 @@ export default function Home() {
       },
       buildResearchPath: async (input, signal) => {
         const collection: CollectionFilter = input.collection === "all" ? "" : input.collection;
+        const activePassport = researchPassportRef.current.artifact;
+        const passportRequested = Boolean(input.passportId);
+        if (passportRequested) {
+          const evidenceIds = activePassport?.evidence.map((item) => item.id) ?? [];
+          if (
+            researchPassportRef.current.phase !== "ready"
+            || !activePassport
+            || activePassport.stale
+            || !activePassport.reviewedAt
+            || input.passportId !== activePassport.passportId
+            || input.source !== activePassport.paper.source
+            || input.gapLens !== activePassport.gapLens
+            || input.evidenceIds.length !== evidenceIds.length
+            || input.evidenceIds.some((id) => !evidenceIds.includes(id))
+          ) {
+            throw new Error("Open and page-review the active Research Passport before carrying it into a Research Path.");
+          }
+        }
         const connectionResponse = citationMapRef.current.phase === "ready" ? citationMapRef.current.response : null;
         const connectionTraceable = isTraceableOpenAlexMatch(connectionResponse?.match);
-        const selectedGlobalLeads = input.globalLeadIds.map((id) => connectionResponse?.nodes.find((node) => node.id === id)).filter((node): node is CitationMapResponse["nodes"][number] => Boolean(node));
-        if (input.globalLeadIds.length && (!connectionTraceable || selectedGlobalLeads.length !== input.globalLeadIds.length)) {
+        const selectedConnectionLeads = input.globalLeadIds.map((id) => connectionResponse?.nodes.find((node) => node.id === id)).filter((node): node is CitationMapResponse["nodes"][number] => Boolean(node));
+        const selectedPassportLeads = passportRequested && activePassport
+          ? input.globalLeadIds.flatMap((id) => {
+              const lead = activePassport.globalWorks.find((work) => work.id === id);
+              return lead ? [{ id: lead.id, title: lead.title, year: lead.year, relation: "related" as const, topic: lead.topic ?? null, citable: false as const }] : [];
+            })
+          : [];
+        const selectedGlobalLeads = selectedConnectionLeads.length === input.globalLeadIds.length ? selectedConnectionLeads : selectedPassportLeads;
+        if (input.globalLeadIds.length && selectedGlobalLeads.length !== input.globalLeadIds.length) {
           throw new Error("Trace and review the active paper connections before carrying these global leads into a Research Path.");
         }
         const requestId = ++pathBuildRequestIdRef.current;
@@ -7907,7 +8215,7 @@ export default function Home() {
               level: input.level,
               outcome: input.outcome,
               collection,
-              knowledgeGaps: input.knowledgeGaps,
+              knowledgeGaps: [...input.knowledgeGaps, ...(passportRequested && activePassport ? [activePassport.candidateGap.missingValidation] : [])].slice(0, 4),
               globalLeads: selectedGlobalLeads.map((lead) => ({
                 id: lead.id,
                 title: lead.title,
@@ -7916,19 +8224,27 @@ export default function Home() {
                 topic: lead.topic ?? null,
                 citable: false,
               })),
+              passportContext: passportRequested && activePassport?.reviewedAt ? {
+                passportId: activePassport.passportId,
+                source: activePassport.paper.source,
+                evidenceIds: activePassport.evidence.map((item) => item.id),
+                gapLens: activePassport.gapLens,
+                reviewedAt: activePassport.reviewedAt,
+                globalLeadIds: selectedGlobalLeads.map((lead) => lead.id),
+              } : null,
             }),
           });
           if (!isResearchPath(path)) throw new Error("Seedy Research returned an invalid research path.");
           if (signal.aborted || pathBuildRequestIdRef.current !== requestId) {
             throw new DOMException("The Research Path build was cancelled.", "AbortError");
           }
-          const enrichedPath: ResearchPath = selectedGlobalLeads.length && connectionResponse ? {
+          const enrichedPath: ResearchPath = selectedConnectionLeads.length && connectionResponse && connectionTraceable ? {
             ...path,
             globalConnections: {
               match: connectionResponse.match,
               source: citationMapSourceRef.current,
               evidenceBoundary: "OpenAlex relationships are metadata-only Global Research Leads and are not used as Research Path evidence.",
-              leads: selectedGlobalLeads,
+              leads: selectedConnectionLeads,
             },
           } : path;
           setResearchPath(enrichedPath);
@@ -7937,9 +8253,11 @@ export default function Home() {
           setPathCheckpointAnswers({});
           setPathCheckpointAssessments({});
           setResearchPathStatus("ready");
-          setStatusText(input.knowledgeGaps.length
-            ? "WebMCP adapted the visible Research Path around the reviewed gaps."
-            : "WebMCP built a visible Research Path for the learner to review.");
+          setStatusText(passportRequested
+            ? "WebMCP carried the page-reviewed Research Passport into the visible Research Path."
+            : input.knowledgeGaps.length
+              ? "WebMCP adapted the visible Research Path around the reviewed gaps."
+              : "WebMCP built a visible Research Path for the learner to review.");
           trackProductEvent("research_path_created", {
             level: enrichedPath.level,
             outcome: enrichedPath.outcome,
@@ -7955,6 +8273,13 @@ export default function Home() {
             goal: enrichedPath.goal,
             planningMode: enrichedPath.planningMode,
             coverage: enrichedPath.coverage,
+            passportContext: enrichedPath.passportContext ? {
+              passportId: enrichedPath.passportContext.passportId,
+              source: enrichedPath.passportContext.source,
+              evidenceIds: enrichedPath.passportContext.evidenceIds,
+              gapLens: enrichedPath.passportContext.gapLens,
+              reviewedAt: enrichedPath.passportContext.reviewedAt,
+            } : null,
             adaptedFromGaps: enrichedPath.adaptedFromGaps ?? input.knowledgeGaps,
             candidateGap: enrichedPath.candidateGap,
             nextStudyProtocol: enrichedPath.nextStudyProtocol,
@@ -8134,15 +8459,15 @@ export default function Home() {
           <section className="searchStage">
             <h1>
               {activeMobileNav === "explore"
-                ? "Thai research, with sources."
+                ? "Connect Thai evidence to global research."
                 : "Research with sources."}
             </h1>
             {activeMobileNav === "explore" ? (
               <>
                 <p className="searchLead">
                   {feedCitableTotal
-                    ? `Search ${feedCitableTotal.toLocaleString("en-US")} page-cited papers across ${Math.max(feedCatalogTotal, feedCitableTotal).toLocaleString("en-US")} Thai research records.`
-                    : "Search Thai research across local and global discovery sources. Compare findings. Verify every supported claim on the original page."}
+                    ? `Discover ${Math.max(feedCatalogTotal, feedCitableTotal + feedMetadataOnlyTotal, feedCitableTotal).toLocaleString("en-US")} bounded Thai records, verify ${feedCitableTotal.toLocaleString("en-US")} page-citable papers, and carry reviewed evidence into a Passport, Research Path, and next-study plan.`
+                    : "Discover local evidence, verify every supported claim on its original page, and carry it into a bounded Thai-to-global research path."}
                 </p>
                 <div className="corpusProof" aria-label="Seedy Research corpus coverage">
                   <span><strong>{feedCitableTotal ? feedCitableTotal.toLocaleString("en-US") : "—"}</strong> citable papers</span>
@@ -8192,7 +8517,10 @@ export default function Home() {
           <>
             <FilterBar
               activeFilter={activeFeedFilter}
-              setActiveFilter={setActiveFeedFilter}
+              setActiveFilter={(filter) => {
+                setActiveFeedProvider("");
+                setActiveFeedFilter(filter);
+              }}
               totalDocuments={feedTotal}
               savedCount={Object.keys(bookmarkedCards).length}
               filterCounts={feedFilterCounts}
@@ -8204,6 +8532,20 @@ export default function Home() {
               onRefresh={() => setFeedRefreshNonce((value) => value + 1)}
             />
             <DiscoveryTrustBar citableTotal={feedCitableTotal} metadataOnlyTotal={feedMetadataOnlyTotal} />
+            <CoverageLedger
+              providers={feedCoverage}
+              activeProvider={activeFeedProvider}
+              onClearProvider={() => setActiveFeedProvider("")}
+              onViewProvider={(provider) => {
+                if (provider.filter === "tci_thaijo") {
+                  setActiveFeedProvider(provider.provider);
+                  setActiveFeedFilter("thai");
+                } else if (provider.filter === "ncce" || provider.filter === "ce_project") {
+                  setActiveFeedProvider("");
+                  setActiveFeedFilter(provider.filter);
+                }
+              }}
+            />
             <ResearchPassportPanel
               enabled={webMcpStatus === "ready"}
               state={researchPassport}
@@ -8211,6 +8553,14 @@ export default function Home() {
               onMarkReviewed={markResearchPassportReviewed}
               onExport={exportResearchPassport}
               onClear={clearResearchPassport}
+              onContinueToPath={(artifact) => {
+                setPathGoal(artifact.focus);
+                setPathLevel("research");
+                setPathOutcome("study_plan");
+                setSelectedCollection(artifact.paper.collection);
+                setAppView("path");
+                void buildResearchPath([artifact.candidateGap.missingValidation], false, artifact);
+              }}
             />
             {researchPassport.phase === "ready" ? null : (
               <GlobalDiscoveryPanel
@@ -8254,7 +8604,23 @@ export default function Home() {
               setStatusText(message);
               setAppView("settings");
             }}
-            onOpenPaper={(source) => void openPaperDetailBySource(source)}
+            onOpenPaper={(source, target?: ResearchWorkspaceEvidenceTarget) => void openPaperDetailBySource(source, undefined, target ? {
+              evidenceId: target.id,
+              citation: `${source} · ${target.pageStart == null ? "page unavailable" : `p.${target.pageStart}${target.pageEnd != null && target.pageEnd !== target.pageStart ? `-${target.pageEnd}` : ""}`}`,
+              source,
+              id: target.id,
+              pageStart: target.pageStart ?? undefined,
+              pageEnd: target.pageEnd ?? undefined,
+              sectionTitle: target.sectionTitle ?? undefined,
+            } : null)}
+            onPromoteNotebookFinding={(finding) => void promoteNotebookFinding(finding)}
+            onContinueNotebookPath={(finding) => {
+              setPathGoal(finding.question);
+              setPathLevel("research");
+              setPathOutcome("study_plan");
+              setAppView("path");
+              void buildResearchPath([boundedToolText(finding.answer, 180)], false, null, finding.question);
+            }}
           />
         ) : activeMobileNav === "path" ? (
           <PersonalizedResearchPathPanel

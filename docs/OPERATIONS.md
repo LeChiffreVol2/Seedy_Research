@@ -48,6 +48,7 @@ Required variables:
 - Restore model-based routing for otherwise-unclassified prompts: `LLM_ROUTER_ENABLED=true`.
 - Disable agentic orchestration: `AGENTIC_CONTEXT_ENABLED=false`.
 - Return MCP retrieval to v1: `RETRIEVAL_VERSION=v1`.
+- Keep the optional OpenRAG sidecar disabled: `OPENRAG_ADAPTER_ENABLED=false`.
 - Exclude NCCE without DB changes: use `collection=ce_project`.
 - Web deployments can be rolled back in Vercel if a UI/API regression appears.
 
@@ -90,6 +91,16 @@ the distributed per-user/IP quota. A busy response is retryable and should not
 be converted into an immediate client retry loop. Sparse but relevant coverage
 is returned with `coverage.status=limited`; zero relevant evidence remains a
 recoverable `422 insufficient_path_evidence` response.
+
+Research Notebook asks use the separate `research_notebook_ask` distributed
+quota and `MAX_ACTIVE_NOTEBOOK_ASKS` per-instance cap (8 by default). A `429`
+or `503` is deliberate backpressure and must not trigger an immediate retry
+loop. Confirm that the authenticated owner still owns the saved workspace and
+that every requested source is a current workspace member before investigating
+provider output. Private-source responses must be `Cache-Control: no-store`,
+`shareable: false`, absent from workspace persistence, and excluded from
+Passport promotion. Keep `OPENRAG_ADAPTER_ENABLED=false` during the Challenge;
+no OpenSearch/Langflow/Docling service is required by this release.
 
 The current OpenAI `429 credit_balance_exhausted` response is billing/quota
 exhaustion, not ordinary request pacing. Restore the API balance in

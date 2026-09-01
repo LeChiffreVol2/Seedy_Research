@@ -25,6 +25,7 @@ type PathRequest = {
   collection?: unknown;
   knowledgeGaps?: unknown;
   globalLeads?: unknown;
+  passportContext?: unknown;
 };
 
 const CHECKPOINT_MODEL = "gpt-5.6-luna" as const;
@@ -64,6 +65,15 @@ const globalLeadSchema = z.object({
   relation: z.enum(["cites", "cited_by", "related"]),
   topic: z.string().trim().min(1).max(180).nullable().optional(),
   citable: z.literal(false),
+});
+
+const passportContextSchema = z.object({
+  passportId: z.string().trim().regex(/^SR-[A-Z0-9-]{4,100}$/),
+  source: z.string().trim().min(1).max(320),
+  evidenceIds: z.array(z.string().trim().min(1).max(120)).min(1).max(3).refine((items) => new Set(items).size === items.length),
+  gapLens: z.enum(["method", "context", "population", "outcome", "validation"]),
+  reviewedAt: z.string().datetime(),
+  globalLeadIds: z.array(z.string().regex(/^https:\/\/openalex\.org\/W\d+$/)).max(4).default([]),
 });
 
 const candidateGapSchema = z.object({
@@ -163,6 +173,7 @@ async function planResearchStages(input: {
   knowledgeGaps: string[];
   cards: ResearchFeedCard[];
   globalLeads: GlobalLead[];
+  passportContext?: { source: string; evidenceIds: string[] } | null;
 }) {
   if (!process.env.OPENAI_API_KEY) return null;
   const candidates = input.cards.slice(0, 8);
@@ -170,7 +181,11 @@ async function planResearchStages(input: {
   const sourceMap = new Map(candidates.map((card, index) => [`P${index + 1}`, card]));
   const sourcePackets = candidates.map((card, index) => {
     const detail = details[index];
-    const evidence = detail?.evidence.slice(0, 2).map((item) => (
+    const preferredIds = card.source === input.passportContext?.source ? new Set(input.passportContext.evidenceIds) : null;
+    const orderedEvidence = detail?.evidence.slice().sort((left, right) => (
+      Number(Boolean(preferredIds?.has(right.id))) - Number(Boolean(preferredIds?.has(left.id)))
+    )) ?? [];
+    const evidence = orderedEvidence.slice(0, 2).map((item) => (
       `- ${evidencePageLabel(item)}${item.sectionTitle ? ` · ${safeText(item.sectionTitle, 100)}` : ""}: ${safeText(item.snippet, 520)}`
     )) ?? [];
     return [
@@ -214,6 +229,7 @@ async function planResearchStages(input: {
       `LEARNER LEVEL: ${input.level}`,
       `TARGET OUTCOME: ${input.outcome}`,
       `KNOWN GAPS: ${input.knowledgeGaps.join("; ") || "None"}`,
+      input.passportContext ? `PAGE-REVIEWED PASSPORT SOURCE: ${input.passportContext.source}\nRETAINED EVIDENCE IDS: ${input.passportContext.evidenceIds.join(", ")}` : "",
       "STAGE PURPOSES:\nstage-1 Map the Thai evidence field and its coverage limits\nstage-2 Inspect methods and claims on exact pages or rights-cleared full text\nstage-3 Connect Thai evidence to metadata-only global comparison leads\nstage-4 Frame a candidate gap and a falsifiable Next-Study Protocol",
       `ALLOW-LISTED SOURCES:\n${sourcePackets.join("\n\n---\n\n")}`,
       globalLeadPackets.length
@@ -440,9 +456,15 @@ export async function POST(request: NextRequest) {
   const collection = body.collection === "ncce" || body.collection === "ce_project" ? body.collection : "";
   const knowledgeGaps = compactGaps(body.knowledgeGaps);
   const globalLeads = compactGlobalLeads(body.globalLeads);
+  const parsedPassportContext = body.passportContext == null
+    ? { success: true as const, data: null }
+    : passportContextSchema.safeParse(body.passportContext);
   if (!isCheckpoint && goal.length < 8) return finalize(NextResponse.json({ error: "Describe a research goal in at least 8 characters." }, { status: 422 }));
   if (!isCheckpoint && globalLeads === null) {
     return finalize(NextResponse.json({ error: "Global leads must be selected from the active verified OpenAlex connection map." }, { status: 422 }));
+  }
+  if (!isCheckpoint && !parsedPassportContext.success) {
+    return finalize(NextResponse.json({ error: "Research Passport continuity is invalid or has not been page-reviewed." }, { status: 422 }));
   }
 
   const quota = await consumeChatQuota({
@@ -503,15 +525,36 @@ export async function POST(request: NextRequest) {
   activePathBuilds += 1;
   try {
     const buildStarted = performance.now();
+    const passportContext = parsedPassportContext.success ? parsedPassportContext.data : null;
+    const passportDetail = passportContext
+      ? await getPaperDetail(passportContext.source, true).catch(() => null)
+      : null;
+    const passportEvidence = passportContext && passportDetail
+      ? passportContext.evidenceIds.map((id) => passportDetail.evidence.find((item) => item.id === id) ?? null)
+      : [];
+    if (
+      passportContext
+      && (
+        !passportDetail
+        || passportDetail.document.citable !== true
+        || passportDetail.document.discoveryLayer === "thai_discovery"
+        || passportEvidence.some((item) => !item || item.pageStart == null || item.pageEnd == null)
+      )
+    ) {
+      return finalize(NextResponse.json(
+        { error: "The Research Passport source or exact-page evidence no longer matches the current corpus.", code: "stale_passport_context" },
+        { status: 409, headers: quotaHeaders },
+      ));
+    }
     const retrievalGoal = [goal, ...knowledgeGaps].join(" ").slice(0, 280);
     const [matched, openAlexResult] = await Promise.all([
       listResearchFeed({ filter: "evidence", collection, q: retrievalGoal, limit: 12, includeFacets: false }),
       discoverOpenAlex(goal, { maxResults: 4, timeoutMs: 2_500 }),
     ]);
-    let cards = uniqueCards(matched.cards);
+    let cards = uniqueCards([...(passportDetail ? [passportDetail.document] : []), ...matched.cards]);
     if (!cards.length && knowledgeGaps.length) {
       const broader = await listResearchFeed({ filter: "evidence", collection, q: goal, limit: 12, includeFacets: false });
-      cards = uniqueCards(broader.cards);
+      cards = uniqueCards([...(passportDetail ? [passportDetail.document] : []), ...broader.cards]);
     }
     if (!cards.length) {
       return finalize(NextResponse.json(
@@ -556,9 +599,18 @@ export async function POST(request: NextRequest) {
         stagePapers[index] = uniqueCards([primary, secondary], 2);
       });
     }
+    const passportPaper = passportDetail?.document ?? null;
     let modelPlanResult: Awaited<ReturnType<typeof planResearchStages>> = null;
     try {
-      modelPlanResult = await planResearchStages({ goal, level, outcome, knowledgeGaps, cards, globalLeads: globalLeads ?? [] });
+      modelPlanResult = await planResearchStages({
+        goal,
+        level,
+        outcome,
+        knowledgeGaps,
+        cards,
+        globalLeads: globalLeads ?? [],
+        passportContext: passportContext ? { source: passportContext.source, evidenceIds: passportContext.evidenceIds } : null,
+      });
     } catch (error) {
       console.warn("civilmcp_research_path_planning_degraded", {
         reason: error instanceof Error && error.name === "TimeoutError" ? "provider_timeout" : "provider_error",
@@ -571,7 +623,8 @@ export async function POST(request: NextRequest) {
 
     const stages = STAGE_TITLES.map((title, index) => {
       const modelPlan = modelPlans?.[index];
-      const papers = modelPlan?.papers.length ? modelPlan.papers.slice(0, 2) : stagePapers[index].slice(0, 2);
+      const plannedPapers = modelPlan?.papers.length ? modelPlan.papers.slice(0, 2) : stagePapers[index].slice(0, 2);
+      const papers = index === 1 && passportPaper ? uniqueCards([passportPaper, ...plannedPapers], 2) : plannedPapers;
       const codes = papers.map((paper) => paper.paperCode || paper.source.replace(/\.md$/i, ""));
       const objectives = [
         `Map the Thai evidence field around ${goal}, identify its main themes, and state the current coverage limit.`,
@@ -634,6 +687,7 @@ export async function POST(request: NextRequest) {
       openAlexStatus: openAlex.status,
       adapted: knowledgeGaps.length > 0,
       selectedGlobalLeadCount: (globalLeads ?? []).length,
+      passportId: passportContext?.passportId ?? null,
       latencyMs: timings.totalMs,
     });
 
@@ -643,6 +697,15 @@ export async function POST(request: NextRequest) {
       level,
       outcome,
       sourceCodes,
+      passportContext: passportContext ? {
+        ...passportContext,
+        evidence: passportEvidence.flatMap((item) => item ? [{
+          id: item.id,
+          pageStart: item.pageStart,
+          pageEnd: item.pageEnd,
+          sectionTitle: item.sectionTitle ?? null,
+        }] : []),
+      } : null,
       adaptedFromGaps: knowledgeGaps,
       coverage,
       planningMode,

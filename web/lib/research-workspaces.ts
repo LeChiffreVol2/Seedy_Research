@@ -71,6 +71,17 @@ export async function listResearchWorkspaces(ownerId: string, limit = 20): Promi
   return ((data ?? []) as WorkspaceRow[]).map(normalizeRow);
 }
 
+export async function getResearchWorkspace(ownerId: string, workspaceId: string): Promise<SavedResearchWorkspace | null> {
+  const { data, error } = await getSupabaseAdmin()
+    .from("civil_paper_workspaces")
+    .select("workspace_id, owner_id, title, collection, paper_sources, notes, created_at, updated_at")
+    .eq("owner_id", ownerId)
+    .eq("workspace_id", workspaceId.trim().slice(0, 96))
+    .maybeSingle();
+  if (error) throw new Error(`Failed to read research workspace: ${error.message}`);
+  return data ? normalizeRow(data as WorkspaceRow) : null;
+}
+
 export async function upsertResearchWorkspace(input: {
   workspaceId: string;
   ownerId: string;

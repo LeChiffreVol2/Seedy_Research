@@ -43,6 +43,8 @@ REQUIRED_ENV_KEYS = [
     "MCP_TOOL_TIMEOUT_MS",
     "MAX_ACTIVE_PATH_BUILDS",
     "MAX_ACTIVE_CHECKPOINTS",
+    "MAX_ACTIVE_NOTEBOOK_ASKS",
+    "OPENRAG_ADAPTER_ENABLED",
 ]
 SERVER_SECRET_KEYS = [
     "OPENAI_API_KEY",
@@ -570,7 +572,7 @@ def check_product_contract() -> Check:
             for marker in (
                 "feedCitableTotal",
                 "feedTotalChunks",
-                "Search ${feedCitableTotal.toLocaleString",
+                "feedCitableTotal + feedMetadataOnlyTotal",
                 "Exact-page citations",
             )
         ),

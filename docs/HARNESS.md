@@ -15,6 +15,7 @@ python3.10 harness/run_memory_eval.py
 python3.10 harness/run_eval.py --mode smoke
 python3.10 harness/score_quality.py
 python3.10 -m unittest pipeline.test_reader_pack
+python3.10 -m unittest pipeline.test_source_registry harness.test_ga_security
 (cd web && npm run harness:web-smoke)
 (cd web && node --test lib/paper-reader.test.mjs)
 (cd web && npx playwright test tests/e2e/paper-reader.spec.ts)
@@ -43,6 +44,16 @@ established; page-review acknowledgment is disabled until every selected anchor
 has been reopened; export is enabled only after that acknowledgment while the
 candidate inference remains unvalidated; bounded Thai-to-English rendering retains both source and translation; and the downloaded Markdown plus visible WebMCP activity trace
 preserve the same boundary.
+
+The same browser suite verifies Passport-to-Path continuity: reviewed source
+and exact evidence IDs are revalidated server-side and remain visible in the
+path while arbitrary or stale context fails closed. The global frontend suite
+also exercises the Coverage Ledger/provider filter and the selected-source
+Research Notebook, including private non-shareability and public promotion.
+`pipeline.test_source_registry` pins the deployed provider, record, reader, and
+six-tool counts so submission copy cannot drift from the machine-readable
+registry. `harness.test_ga_security` pins the Notebook owner/membership,
+non-persistence, citation allow-list, and private-source boundaries.
 
 Before a challenge release, also run one manual pass in ChatGPT's built-in
 browser with Site tools visibly available and one pass in Chrome with native
