@@ -108,6 +108,37 @@ test.describe("OpenAlex Thai-to-global connection contract", () => {
     }
   });
 
+  test("returns metadata for a researcher question without sending OpenAlex wildcard syntax", async () => {
+    const originalFetch = globalThis.fetch;
+    globalThis.fetch = async (input) => {
+      const url = new URL(typeof input === "string" ? input : input instanceof URL ? input.toString() : input.url);
+      const search = url.searchParams.get("search") ?? "";
+      if (search.includes("?") || search.includes("*")) {
+        return new Response(JSON.stringify({ error: "Invalid query parameters error." }), { status: 400 });
+      }
+      return response([{
+        id: "https://openalex.org/W2997300544",
+        display_name: "Preparing teachers for the application of AI-powered technologies in foreign language education",
+        publication_year: 2020,
+        cited_by_count: 54,
+        primary_topic: { display_name: "AI in language education" },
+      }]);
+    };
+    try {
+      const result = await discoverOpenAlex(
+        "How should a longitudinal mixed-methods Thai ELT study test AI learning outcomes beyond novelty effects?",
+        { maxResults: 1 },
+      );
+      expect(result.status).toBe("connected");
+      expect(result.works).toEqual([expect.objectContaining({
+        id: "https://openalex.org/W2997300544",
+        citable: false,
+      })]);
+    } finally {
+      globalThis.fetch = originalFetch;
+    }
+  });
+
   test("treats an exact DOI as verified and returns bounded metadata-only relations", async () => {
     const restore = installOpenAlexStub([{
       id: "https://openalex.org/W-SEED",

@@ -20,6 +20,14 @@ _Avoid_: paper database, scraped corpus
 The first subject collection and proof vertical within Seedy Research, focused on Thai civil-engineering evidence.
 _Avoid_: CivilMCP, the whole platform
 
+**Whole Thai Research**:
+The north-star objective of measuring and connecting Thai research provider by provider, document type by document type, and rights state by rights state.
+_Avoid_: a claim that the current catalog, evidence index, or native reader is nationally complete
+
+**Production Preview**:
+A publicly runnable, monitored candidate whose bounded workflows and rollback path have passed the recorded release gates; it is not institution-ready general availability.
+_Avoid_: production-ready when implying national coverage, institutional procurement readiness, or unlimited traffic
+
 **Primary Researcher**:
 A Thai researcher or Thai–global research team seeking to turn under-indexed local evidence into a visible, reusable, and testable contribution to global research.
 _Avoid_: every paper reader, a university administrator as the primary user

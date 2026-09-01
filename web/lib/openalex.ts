@@ -250,17 +250,23 @@ function searchUrlFor(query: string): string {
   return `https://openalex.org/works?search=${encodeURIComponent(query)}`;
 }
 
+function openAlexSearchQuery(query: string): string {
+  return query.replace(/[?*]+/g, " ").replace(/\s+/g, " ").trim();
+}
+
 export async function discoverOpenAlex(
   rawQuery: unknown,
   options: { maxResults?: number; timeoutMs?: number } = {},
 ): Promise<OpenAlexDiscoveryResult> {
   const query = normalizeOpenAlexQuery(rawQuery);
-  const searchUrl = searchUrlFor(query);
+  const providerQuery = openAlexSearchQuery(query);
+  const searchUrl = searchUrlFor(providerQuery || query);
   const enabled = process.env.FEDERATED_DISCOVERY_ENABLED?.trim() !== "false";
   if (!enabled) return { status: "disabled", searchUrl, works: [] };
 
   const access = openAlexAccess();
   if (!access.allowed) return { status: "link_only", searchUrl, works: [] };
+  if (!providerQuery) return { status: "link_only", searchUrl, works: [] };
 
   try {
     const limit = boundedResultCount(options.maxResults);
@@ -268,7 +274,7 @@ export async function discoverOpenAlex(
       ? Math.max(1_000, Math.min(OPENALEX_TIMEOUT_MS, Math.floor(options.timeoutMs ?? OPENALEX_TIMEOUT_MS)))
       : OPENALEX_TIMEOUT_MS;
     const url = new URL("https://api.openalex.org/works");
-    url.searchParams.set("search", query);
+    url.searchParams.set("search", providerQuery);
     url.searchParams.set("per_page", String(limit));
     url.searchParams.set("select", "id,doi,display_name,publication_year,cited_by_count,primary_topic");
     addOpenAlexAccess(url, access.apiKey);

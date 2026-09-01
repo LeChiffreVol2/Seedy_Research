@@ -33,12 +33,12 @@ exact duplicate cleanup remain separately gated.
 The separate discovery catalog currently adds **2,578 active ThaiJO-hosted
 research metadata records** across 16 contributing OAI set specs in two official
 endpoint families, bringing Explore to **3,878 searchable records**. The
-August 31 `sc01` pilot contributed 198 net-new active records after duplicate and
+August 31 `sc01` metadata expansion contributed 198 net-new active records after duplicate and
 whole-issue filtering. All 2,578 have a publisher link, 833 have a DOI, and none
 is eligible for AI answers or citations until full-text rights and page
 provenance pass the evidence promotion gates. Another 44 provider-deleted
 records remain only as non-discoverable audit tombstones: 38 from `ph01` and
-six added by the `sc01` pilot.
+six added by the `sc01` metadata expansion.
 
 The deployed application can search this corpus, synthesize findings across
 papers, reopen exact-page evidence targets, and translate bounded Thai evidence

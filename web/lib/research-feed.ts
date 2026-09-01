@@ -1015,7 +1015,7 @@ function buildCoverageLedger(facets: Omit<ResearchFeedResponse["facets"], "cover
     },
     {
       provider: "student_transport_projects",
-      label: "Chula transport lab proof",
+      label: "Chula transport collection",
       state: "pilot_internal",
       records: facets.filters.ce_project,
       metadataOnly: 0,

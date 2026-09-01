@@ -89,8 +89,12 @@ A qualifying outcome is one of:
 An `evidence_open` alone is activation, not an outcome. WVRO should be reported
 with guardrails: exact-page coverage, citation correctness, zero-result rate,
 helpfulness, provider/language slice, rights incidents, and fabricated citations.
-Until dedicated completion events exist, use the existing evidence-open plus
-save/export/path-created funnel as a clearly labelled proxy.
+The application now emits a dedicated `verified_research_outcome` event only
+after reviewed exact-page evidence reaches an eligible artifact boundary. That
+event definition is instrumentation, not adoption evidence: report a WVRO only
+with a dated denominator, traffic class, release/deployment fingerprint, and
+clearly labelled sample. Historical evidence-open plus save/export/path-created
+funnels remain activation proxies rather than verified outcomes.
 
 ## Moat and compounding loop
 

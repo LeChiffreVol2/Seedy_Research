@@ -117,6 +117,18 @@ proof materially changes national provider coverage.
 
 Seedy Research lets a person and browser agent turn a rights-reviewed Thai paper into an exact-page Research Passport that cannot be exported until the person reopens and reviews its evidence; global metadata and candidate gaps remain explicitly unvalidated.
 
+## Impact-evidence posture — no consented pilot
+
+The Challenge submission uses a reproducible public benchmark, not a user
+testimonial. Existing internal use informed product design but has no public
+consent and is not represented as a pilot, endorsement, adoption result, or
+institutional validation. Judge-facing impact claims therefore stop at the
+replayable product outcome: a person and browser agent can produce a portable
+Passport from a lawful paper and exact page while preserving the metadata and
+candidate-inference boundaries. Product telemetry and target rollout metrics
+are instrumentation and future gates, not evidence that researchers have
+already adopted the product.
+
 ## Devpost description
 
 ### The problem
@@ -125,7 +137,7 @@ Important Thai research is fragmented across conference proceedings, university 
 
 ### What Seedy Research does
 
-Seedy Research is built for whole Thai research and begins with a production civil-engineering proof vertical plus a three-paper rights-reviewed ThaiJO reader: 1,300 page-citable records and 11,591 page-linked sections/pages. A separate 2,578-record ThaiJO-hosted catalog brings Explore to 3,878 searchable records without silently treating metadata as evidence. The latest bounded pilot added 198 net-new discovery records with zero full-text downloads or evidence links. This is measurable proof of the ingestion and trust architecture, not a claim of national completeness. OpenAlex adds bounded global research metadata while preserving the same boundary and degrading visibly when unavailable.
+Seedy Research is built toward whole Thai research and begins with a production civil-engineering proof vertical plus a three-paper rights-reviewed ThaiJO reader: 1,300 page-citable records and 11,591 page-linked sections/pages. A separate 2,578-record ThaiJO-hosted catalog brings Explore to 3,878 searchable records without silently treating metadata as evidence. The latest bounded metadata expansion added 198 net-new discovery records with zero full-text downloads or evidence links. This is measurable proof of the ingestion and trust architecture, not a claim of national completeness. OpenAlex adds bounded global research metadata while preserving the same boundary and degrading visibly when unavailable.
 
 The Challenge hero is the Passport Trust Gate. The agent discovers a rights-reviewed ThaiJO paper, opens one exact page, and drafts a Research Passport from only that visible evidence. The page keeps global OpenAlex results non-citable, labels the validation gap unproven, and blocks export. The person—not the agent—must reopen the selected page and acknowledge review before the real Markdown artifact becomes available. The broader Research Path, verified connection mapping, and Next-Study Protocol remain available after the timed proof; they do not dilute its consequential human checkpoint. Reopening a page verifies access to the claimed provenance; it does not establish scientific correctness, novelty, transferability, or a comprehensive literature gap.
 
@@ -246,7 +258,7 @@ trace rather than relying on narration alone.
 
 - Source code is MIT licensed.
 - The MIT license does not grant rights to source papers, extracted text, previews, embeddings, or third-party datasets.
-- The public repository contains a synthetic redistributable fixture, not the production paper corpus.
+- The public repository contains a synthetic redistributable fixture plus page-mapped extracted text for exactly three rights-reviewed LEARN Journal CC BY 4.0 papers; it contains no paper PDF binaries and no generated NCCE previews.
 - Current production paper pages expose rights-safe metadata, page ranges, and source links without redistributing raw full text.
 - ThaiJO and OpenAlex remain metadata-only by default. The local exception is the explicit 3-paper LEARN Journal pack whose asset actions, license evidence, checksums, and page provenance are recorded; it does not grant rights for any other ThaiJO asset.
 - Submission copy must say “structured and curated evidence” rather than implying ownership of the underlying papers or official Thai-government endorsement.
@@ -262,7 +274,7 @@ The pre-existing product already had a Next.js research UI, a remote MCP server,
 - strict browser-tool input validation and cancellation;
 - a visible WebMCP readiness indicator;
 - deterministic browser execution coverage;
-- an official 36-family ThaiJO endpoint registry, duplicate-safe metadata harvesting, whole-issue filtering, and a live `sc01` pilot that adds 198 net-new discovery records without promoting full text;
+- an official 36-family ThaiJO endpoint registry, duplicate-safe metadata harvesting, whole-issue filtering, and a live `sc01` metadata expansion that adds 198 net-new discovery records without promoting full text;
 - a deployed 3-paper/68-page rights-reviewed reader slice and
   fail-closed access resolver, plus reader-access enrichment inside the
   existing WebMCP contract without returning full page text;
@@ -277,13 +289,13 @@ Git history separates the pre-existing baseline from the Challenge work: `1179b0
 ## Final freeze checklist
 
 - [ ] Register on Devpost with the eligible team representative.
-- [ ] Resolve the public repository URL and display the MIT license in repository About metadata.
-- [ ] Remove secrets, private corpus files, copyrighted previews, local output, and generated harness reports from the public history.
-- [ ] Record the baseline commit and every competition-period WebMCP commit with real timestamps.
+- [x] Resolve the public repository URL and verify GitHub detects the MIT license; update the About homepage and description to the frozen Seedy Research candidate before submission.
+- [x] Remove generated NCCE previews from the current candidate and scan all reachable Git revisions for common secret-token signatures; history rewrite remains a separate destructive approval because the previews existed in the initial public commit.
+- [x] Record the baseline commit and every competition-period WebMCP commit with real timestamps.
 - [x] Run `git diff --check` and `python3.10 harness/check_invariants.py`.
 - [x] Run `python3.10 -m unittest pipeline.test_reader_pack`, the combined reader/feed units, and the focused `paper-reader.spec.ts` browser suite.
 - [x] Run the focused WebMCP E2E with exact-six, fail-closed connection matching, and no-full-page-text assertions.
-- [x] Run all 40 local desktop/mobile/reader/OpenAlex/WebMCP E2E scenarios serially.
+- [x] Run all 41 local desktop/mobile/reader/OpenAlex/WebMCP E2E scenarios serially for candidate `81937d8`; rerun the final candidate after the OpenAlex question-query fix.
 - [ ] Rerun the judge flow against the frozen deployment candidate in a WebMCP-enabled browser.
 - [ ] Run the web build, security checks, strict data quality, live smoke, retrieval eval, memory eval, and quality score against one candidate fingerprint.
 - [ ] Test the deployed candidate in ChatGPT's built-in browser with Site tools visibly available; record the exact host/account/model configuration, all six visible tools, and the three-call Passport review/export flow.

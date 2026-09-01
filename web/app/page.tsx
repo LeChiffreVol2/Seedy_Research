@@ -2850,7 +2850,7 @@ function CoverageLedger({
           <article key={provider.provider} className={activeProvider === provider.provider ? "active" : ""}>
             <div className="coverageIdentity">
               <strong>{provider.label}</strong>
-              <span>{provider.state === "pilot_internal" ? "institutional proof" : "bounded live source"}</span>
+              <span>{provider.state === "pilot_internal" ? "bounded internal corpus" : "bounded live source"}</span>
             </div>
             <dl>
               <div><dt>Records</dt><dd>{provider.records.toLocaleString("en-US")}</dd></div>

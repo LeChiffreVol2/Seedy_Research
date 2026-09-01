@@ -96,6 +96,12 @@ without silently changing provenance.
 
 [fixtures/synthetic-civil-paper.json](fixtures/synthetic-civil-paper.json) is deliberately synthetic and redistributable. It demonstrates the document/section/chunk contract without reproducing any source paper.
 
+The public repository also contains page-mapped extracted text for exactly
+three LEARN Journal papers whose version-of-record assets and journal-level
+CC BY 4.0 statement are recorded in the reader manifest. It contains no paper
+PDF binaries. All other paper text, generated previews, and embeddings remain
+excluded; software MIT licensing does not replace the recorded paper licence.
+
 ## Takedown or correction
 
 For a source correction or rights concern, identify the collection, source filename or paper code, and affected page. The operator can mark records stale, remove them from retrieval, and re-index without changing the embedding schema.

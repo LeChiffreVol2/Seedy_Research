@@ -1,9 +1,11 @@
 """
-Generate CivilMCP paper preview thumbnails from source PDFs.
+Generate private review thumbnails from locally available source PDFs.
 
 The feed is document-level: CE documents map to one PDF, while NCCE documents
 map to a proceedings PDF plus a paper-level page_start. This script renders the
-document start page into a small static JPG under web/public/paper-previews.
+document start page into a small JPG under tmp/paper-previews for local quality
+review only. Generated paper previews are not public web assets and must not be
+committed without an asset-level redistribution decision.
 """
 
 from __future__ import annotations
@@ -23,8 +25,8 @@ from PIL import Image
 
 ROOT_DIR = Path(__file__).resolve().parents[1]
 MARKDOWN_DIR = ROOT_DIR / "pipeline" / "data" / "markdown"
-WEB_PREVIEW_DIR = ROOT_DIR / "web" / "public" / "paper-previews"
-TMP_DIR = ROOT_DIR / "tmp" / "paper-previews"
+WEB_PREVIEW_DIR = ROOT_DIR / "tmp" / "paper-previews"
+TMP_DIR = ROOT_DIR / "tmp" / "paper-preview-work"
 DEFAULT_CE_PDF_DIR = ROOT_DIR / "CE Project Database"
 DEFAULT_NCCE_PDF_DIR = ROOT_DIR / "NCCE Project Database"
 
@@ -197,7 +199,7 @@ def main() -> int:
             counts[status] = counts.get(status, 0) + 1
             source = str(result.get("source"))
             if status in {"generated", "skipped"} and result.get("path"):
-                manifest[source] = "/" + str(result["path"]).split("web/public/", 1)[-1]
+                manifest[source] = str(result["path"])
             elif status not in {"generated", "skipped"}:
                 failures.append(result)
             if index % 50 == 0 or index == len(jobs):

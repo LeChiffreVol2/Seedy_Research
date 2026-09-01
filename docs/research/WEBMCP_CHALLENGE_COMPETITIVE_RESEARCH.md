@@ -201,7 +201,7 @@ records the bounded reader and national-coverage contract.
 | Actual challenge-host verification is unresolved | The checklist still lacks deployed ChatGPT and Chrome passes. | A deterministic shim cannot prove the real judge host discovers and executes the tools. |
 | No actual demo latency/tool-count measurement | The checklist explicitly forbids inventing it. | Weakens Execution and makes the video harder to pace honestly. |
 | Target-user evidence is thin | The repository demonstrates technical quality but not a dated user pilot or quote. | Impact is credible in theory but less persuasive than a demonstrated researcher/student outcome. |
-| National coverage is far from the stated ambition | Production documents 3,875 searchable records, 1,297 page-citable papers, 2,578 metadata-only records, 2 of 36 ThaiJO endpoint families, and only 3 rights-verified native-reader papers. | “All Thai research” would be an overclaim and an easy credibility failure. |
+| National coverage is far from the stated ambition | Production documents 3,878 searchable records, 1,300 page-citable papers, 2,578 metadata-only records, 2 of 36 ThaiJO endpoint families, and only 3 rights-verified native-reader papers. | “All Thai research” would be an overclaim and an easy credibility failure. |
 | Product identity is migrating | Public title is Seedy Research, while the stable domains and internal compatibility identifiers remain CivilMCP. | State the compatibility-first migration in one sentence so it reads as deliberate rather than unfinished. |
 | AlphaXiv-like retention loops are incomplete | No comparable public researcher-follow graph, paper community, or mature library habit loop is claimed. | Important post-Challenge roadmap, not a reason to dilute the submission now. |
 
@@ -230,7 +230,7 @@ Avoid these claims:
 - “the complete database of Thai research”;
 - “the AlphaXiv of Thailand” as the primary identity;
 - “AI validates novelty, scientific correctness, or transferability”;
-- “3,875 full papers” or any conflation of catalog records, page-citable
+- “3,878 full papers” or any conflation of catalog records, page-citable
   evidence, and native full text; and
 - “the Challenge work built the whole product.”
 
@@ -288,10 +288,10 @@ automation or a remote answer detached from the human review surface.
 2. **Show one failure boundary.** For example, attempt export before page review
    or show an OpenAlex result remaining non-citable. One visible refusal is more
    persuasive than a slide listing many safety controls.
-3. **Add one target-user proof if time permits.** A short moderated task with
-   three to five Thai students/researchers can capture task completion, time to
-   a verified page, citation correctness, and one attributable quote with
-   consent. Label the sample size; do not imply population validity.
+3. **Use a reproducible impact benchmark under the no-consent posture.** Record
+   the actual host, task, tool count, duration, exact-page outcome, and review
+   boundary. Do not turn internal use into a public pilot, endorsement, quote,
+   or adoption result without explicit consent.
 4. **Explain the compatibility-first rebrand.** “Seedy Research is the product;
    SeedyMCP is its shared human-agent layer; CivilMCP identifiers remain stable
    while the Civil Research Pack is the first proof vertical.” The production
