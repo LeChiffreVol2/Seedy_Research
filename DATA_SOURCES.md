@@ -62,10 +62,10 @@ full text passes page-provenance and OCR quality gates.
 As of 31 August 2026, 16 contributing OAI set specs across the official `ph01`
 and `sc01` endpoint families contribute 2,578 active metadata-only records. The
 catalog stores publisher links for all 2,578 and DOI values for 833. The bounded
-`sc01` pilot added 198 net-new active records after collapsing one repeated OAI
+`sc01` metadata expansion added 198 net-new active records after collapsing one repeated OAI
 identifier and excluding six whole-issue containers from the paper count.
 Another 44 provider-deleted headers remain only as removed audit tombstones:
-38 from `ph01` and six added by the `sc01` pilot. A
+38 from `ph01` and six added by the `sc01` metadata expansion. A
 versioned, default-deny rights manifest records each allowed operation separately;
 provider-supplied license strings are retained as provenance but do not
 automatically authorize embedding, summarization, translation, redistribution,

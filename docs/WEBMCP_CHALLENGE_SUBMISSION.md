@@ -9,22 +9,23 @@
 - Deadline: **September 3, 2026 at 1:00 PM PDT** (**September 4 at 3:00 AM ICT**)
 - Public source repository: <https://github.com/LeChiffreVol2/Seedy_Research>
 - Public YouTube demo under three minutes: **REQUIRED — add the final URL before submission**
-- Verified application candidate commit: [`81937d8`](https://github.com/LeChiffreVol2/Seedy_Research/commit/81937d8)
-  (the following repository commit changes submission metadata only)
-- Candidate production deployment ID: `dpl_8vYz8CFcgFuBVfTmSrSbTav9sTyH`
+- Frozen application candidate commit: [`dd759d870b357e50b8fa00b97b48ab1189a192c1`](https://github.com/LeChiffreVol2/Seedy_Research/commit/dd759d870b357e50b8fa00b97b48ab1189a192c1)
+  (the following repository commit changes submission evidence only)
+- Candidate production deployment ID: `dpl_A21DF8nU5zQ6YMQMeqgudCBHbVUC`
+- Rollback deployment ID: `dpl_8vYz8CFcgFuBVfTmSrSbTav9sTyH`
 
 Do not submit while any `REQUIRED` field above is unresolved. The Devpost entry, video, repository, and supporting text must be public and in English. The repository must expose the MIT license in its About section and remain frozen during judging except for an organizer-approved correction.
 
 ## Release verification — September 1, 2026 ICT
 
 - Production build: pass (all routes compiled and type-checked; 23 static pages generated).
-- Browser suite: pass, 41/41 serial Chromium scenarios across desktop, mobile, accessibility, Coverage Ledger/provider filtering, Research Notebook exact-page continuity, research workflows, the real reader-pack route, OpenAlex identity safety, and WebMCP.
-- Focused WebMCP contract: pass, 8/8 scenarios including the production-seed three-call Passport Trust Gate, arbitrary-ID rejection, lawful reader enrichment, non-native fail-closed access, global-provider outage, stale-context cancellation, bounded Thai-to-English rendering, and missing-page rejection. The separate OpenAlex adapter contract passes 7/7 scenarios covering explicit bounded anonymous access, metadata-only discovery, exact-DOI verification, fail-soft optional relationship enrichment, title and fuzzy candidates, and ambiguity fail-closed behavior.
+- Browser suite: pass, 42/42 serial Chromium scenarios across desktop, mobile, accessibility, Coverage Ledger/provider filtering, Research Notebook exact-page continuity, research workflows, the real reader-pack route, OpenAlex identity safety, and WebMCP.
+- Focused WebMCP contract: pass, 8/8 scenarios including the production-seed three-call Passport Trust Gate, arbitrary-ID rejection, lawful reader enrichment, non-native fail-closed access, global-provider outage, stale-context cancellation, bounded Thai-to-English rendering, and missing-page rejection. The separate OpenAlex adapter contract passes 8/8 scenarios, including regression coverage proving that question marks and asterisks cannot turn a natural-language research question into an invalid OpenAlex wildcard query.
 - Repository invariants: pass.
-- GitHub Actions: candidate `81937d8` plus its docs-only release manifest pass CI run `33528606168` and Preview/source-gate run `33528606130`; both reran the source, architecture, data-quality contract, and production web-build gates from the pushed main branch.
-- Security, provider-registry, and rights-reviewed reader units: pass, 31/31.
-- Strict cross-service production baseline: the preceding clean candidate passed against the canonical web and MCP aliases. Its 15-question retrieval/evidence eval recorded 100% citation coverage/correctness, intent accuracy, and collection accuracy with 18.47-second p95 latency, and memory continuity passed after one transient network-timeout rerun. Candidate `81937d8` changes only web orchestration/UI; record the post-alias strict rerun before final submission.
-- Quality baseline: 93.6/100 with six passes, no failures, and one local-only warning because the system Python lacks `psycopg`. Candidate `81937d8` passes current invariants, build, units, and browser gates and does not change the Supabase schema or indexed corpus.
+- GitHub Actions: the preceding public candidate passed CI run `33528606168` and Preview/source-gate run `33528606130`. Record the final `dd759d8` source-gate runs after pushing the frozen candidate; do not substitute this local result for GitHub-hosted CI.
+- Security, provider-registry, data-integrity, and rights-reviewed reader units: pass, 36/36; the separate paper-reader JavaScript contract passes 5/5.
+- Strict cross-service production gate: pass against the canonical web and MCP aliases with target `production`, deployment ID `dpl_A21DF8nU5zQ6YMQMeqgudCBHbVUC`, and candidate SHA `dd759d8`. The 15-question retrieval/evidence eval recorded 100% citation coverage, citation correctness, intent accuracy, and collection accuracy. Latency was 14.22 seconds mean, 19.96 seconds p95, 20.17 seconds max, and 3.15 seconds context p95; all remained inside the recorded 25/30/8-second SLOs. Memory continuity and full strict cross-service smoke passed.
+- Quality score: 100/100 with seven passes, no warnings, and no failures against one clean production fingerprint. Supabase-backed data quality passed from the same run.
 - Supabase production data quality: the unchanged production corpus has 1,297 indexed documents, zero missing document pages, zero missing chunk embeddings, and zero unknown disciplines. No schema or embedding migration is required by this release.
 - Local corpus integrity: pass; 1,300 markdown paper files, 1,299 index-eligible papers, zero page-boundary violations, and zero unresolved probable duplicates. Production still serves the 1,297-document baseline until the reviewed 152-job embedding refresh and exact duplicate cleanup receive explicit approval.
 - Production dependency audit: zero high or critical advisories. Five transitive low-severity AI SDK advisories remain; the project maintainer owns an isolated post-challenge major-upgrade test rather than forcing a breaking dependency change into the candidate freeze.
@@ -35,7 +36,7 @@ Do not submit while any `REQUIRED` field above is unresolved. The Devpost entry,
   direct `anon`/`authenticated` table reads. Production build, rights/integrity units, repository
   invariants, and focused reader/WebMCP browser, mobile, and accessibility gates
   pass.
-- Live deployments: web `dpl_8vYz8CFcgFuBVfTmSrSbTav9sTyH` and MCP
+- Live deployments: web `dpl_A21DF8nU5zQ6YMQMeqgudCBHbVUC` and MCP
   `dpl_GXE63yQfqtQDfxZMXqpGHEx3SVmE` are READY production releases. The canonical
   aliases are `https://seedresearch.vercel.app` and
   `https://civil-mcp-server.vercel.app`. Vercel reports the web candidate at
@@ -43,6 +44,17 @@ Do not submit while any `REQUIRED` field above is unresolved. The Devpost entry,
   `seedresearch.vercel.app` and the compatibility alias
   `civil-mcp-web.vercel.app` were assigned to the same deployment. This release
   changes neither the MCP server nor the Supabase schema/corpus.
+- Live browser proof: the OpenAI in-app browser exposed all six top-level Site
+  tools and completed the frozen judge path without login in exactly three
+  calls: discovery in 6.915 seconds, exact-page inspection in 3.322 seconds,
+  and Passport drafting in 5.645 seconds (15.882 seconds total). The result used
+  `thaijo:learn:291631`, reopened `thaijo-learn-291631-page-2`, returned four
+  non-citable OpenAlex leads, used zero global records as evidence, kept the
+  candidate gap unvalidated, required page review, and produced the exported
+  Markdown success state. The connected Chrome instance loaded the production
+  UI without login or console errors, but did not expose a WebMCP capability or
+  `modelContext`; native Chrome tool execution therefore remains a host
+  prerequisite to verify after enabling the Challenge testing flag.
 
 Judge expansion contract: [Thai Research Full-Text System](THAI_RESEARCH_FULL_TEXT_SYSTEM.md).
 
@@ -207,6 +219,13 @@ Implementation details:
 2. Enable `chrome://flags/#enable-webmcp-testing` and relaunch Chrome.
 3. Open the same live URL and inspect/call the registered tools with the WebMCP inspector.
 
+Observed September 1: the connected Chrome instance loaded the production UI
+without login and with no console errors, but its automation capability list
+did not expose WebMCP and the page had no `modelContext`. This is a failed host
+prerequisite, not a passing native-WebMCP run. Relaunch a Challenge-compatible
+Chrome after enabling the testing flag, confirm all six tools, and execute the
+same three-call prompt before checking the Chrome freeze item.
+
 ### Deterministic repository test
 
 ```bash
@@ -258,7 +277,8 @@ trace rather than relying on narration alone.
 
 - Source code is MIT licensed.
 - The MIT license does not grant rights to source papers, extracted text, previews, embeddings, or third-party datasets.
-- The public repository contains a synthetic redistributable fixture plus page-mapped extracted text for exactly three rights-reviewed LEARN Journal CC BY 4.0 papers; it contains no paper PDF binaries and no generated NCCE previews.
+- The current public branch contains a synthetic redistributable fixture plus page-mapped extracted text for exactly three rights-reviewed LEARN Journal CC BY 4.0 papers; it contains no paper PDF binaries and no generated NCCE previews.
+- Generated preview images existed in an older reachable public commit. They are removed from the frozen branch and from production, but purging them from Git history is a separate destructive operation requiring an explicit maintainer decision before submission.
 - Current production paper pages expose rights-safe metadata, page ranges, and source links without redistributing raw full text.
 - ThaiJO and OpenAlex remain metadata-only by default. The local exception is the explicit 3-paper LEARN Journal pack whose asset actions, license evidence, checksums, and page provenance are recorded; it does not grant rights for any other ThaiJO asset.
 - Submission copy must say “structured and curated evidence” rather than implying ownership of the underlying papers or official Thai-government endorsement.
@@ -284,7 +304,7 @@ The pre-existing product already had a Next.js research UI, a remote MCP server,
 - the selected-source Research Notebook and optional OpenRAG adapter boundary;
 - this challenge-specific public submission and demo package.
 
-Git history separates the pre-existing baseline from the Challenge work: `1179b09` is the August 20 baseline before the competition window, `e9f8ed8` is the August 31 challenge extension, `9523b7c` is the September 1 pre-release candidate, `e681d0c` contains the SeedyMCP connection trace and structured Research Path, and `81937d8` adds the dated Coverage Ledger, selected-source Research Notebook, verified-reader receipt, and Passport-to-Path continuity. Do not claim pre-existing product work as new Challenge work.
+Git history separates the pre-existing baseline from the Challenge work: `1179b09` is the August 20 baseline before the competition window, `e9f8ed8` is the August 31 challenge extension, `9523b7c` is the September 1 pre-release candidate, `e681d0c` contains the SeedyMCP connection trace and structured Research Path, `81937d8` adds the dated Coverage Ledger, selected-source Research Notebook, verified-reader receipt, and Passport-to-Path continuity, and `dd759d8` hardens the frozen candidate by fixing natural-language OpenAlex question queries, removing generated previews from the release tree, and correcting unsupported proof language. Do not claim pre-existing product work as new Challenge work.
 
 ## Final freeze checklist
 
@@ -295,13 +315,13 @@ Git history separates the pre-existing baseline from the Challenge work: `1179b0
 - [x] Run `git diff --check` and `python3.10 harness/check_invariants.py`.
 - [x] Run `python3.10 -m unittest pipeline.test_reader_pack`, the combined reader/feed units, and the focused `paper-reader.spec.ts` browser suite.
 - [x] Run the focused WebMCP E2E with exact-six, fail-closed connection matching, and no-full-page-text assertions.
-- [x] Run all 41 local desktop/mobile/reader/OpenAlex/WebMCP E2E scenarios serially for candidate `81937d8`; rerun the final candidate after the OpenAlex question-query fix.
-- [ ] Rerun the judge flow against the frozen deployment candidate in a WebMCP-enabled browser.
-- [ ] Run the web build, security checks, strict data quality, live smoke, retrieval eval, memory eval, and quality score against one candidate fingerprint.
-- [ ] Test the deployed candidate in ChatGPT's built-in browser with Site tools visibly available; record the exact host/account/model configuration, all six visible tools, and the three-call Passport review/export flow.
-- [ ] Test the deployed candidate in Chrome with WebMCP enabled.
+- [x] Run all 42 local desktop/mobile/reader/OpenAlex/WebMCP E2E scenarios serially for candidate `dd759d8`, including the OpenAlex question-query regression.
+- [x] Rerun the judge flow against the frozen deployment candidate in the OpenAI in-app browser with Site tools visibly available: six-tool inventory, exact three-call Passport path, page review, and export success state all passed without login.
+- [x] Run the web build, security checks, Supabase-backed data quality, full strict live smoke, 15-question retrieval eval, memory eval, and 100/100 quality score against one candidate fingerprint.
+- [ ] Test the deployed candidate in ChatGPT's built-in browser if it differs from the recorded OpenAI in-app host; record the exact app build, account class, selected model, all six visible tools, and the three-call Passport review/export flow.
+- [ ] Test the deployed candidate in Chrome with native WebMCP enabled. The connected Chrome UI pass is insufficient because that host exposed no WebMCP capability or `modelContext`.
 - [x] Confirm the live deployment SHA matches the public candidate commit.
-- [ ] Record actual demo latency and tool-call count; do not invent a before/after number.
+- [x] Record actual demo latency and tool-call count: 3 calls, 15.882 seconds total on the production OpenAI in-app run.
 - [ ] Upload a public English YouTube video shorter than three minutes.
 - [ ] Complete every Devpost text field in English, add test credentials if needed, and submit before the deadline.
 - [ ] Freeze the repository and live candidate during judging unless organizers approve a correction.
