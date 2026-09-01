@@ -7,6 +7,7 @@ import { applyChatIdentityCookies, chatIdentityErrorResponse, featureAccessDenie
 import { consumeChatQuota } from "@/lib/chat-store";
 import { discoverOpenAlex, normalizeOpenAlexQuery } from "@/lib/openalex";
 import { getPaperDetail, listResearchFeed, type ResearchFeedCard } from "@/lib/research-feed";
+import { filterResearchCardsByRelevance } from "@/lib/research-relevance.mjs";
 import { clampEnvNumber, getRequestIp, rateLimitHeaders, readBoundedJson, safeTraceId } from "@/lib/server-guards";
 
 export const runtime = "nodejs";
@@ -551,10 +552,13 @@ export async function POST(request: NextRequest) {
       listResearchFeed({ filter: "evidence", collection, q: retrievalGoal, limit: 12, includeFacets: false }),
       discoverOpenAlex(goal, { maxResults: 4, timeoutMs: 2_500 }),
     ]);
-    let cards = uniqueCards([...(passportDetail ? [passportDetail.document] : []), ...matched.cards]);
+    const retainedSources = passportDetail ? [passportDetail.document.source] : [];
+    const matchedCards = filterResearchCardsByRelevance(retrievalGoal, matched.cards, { alwaysIncludeSources: retainedSources });
+    let cards = uniqueCards([...(passportDetail ? [passportDetail.document] : []), ...matchedCards]);
     if (!cards.length && knowledgeGaps.length) {
       const broader = await listResearchFeed({ filter: "evidence", collection, q: goal, limit: 12, includeFacets: false });
-      cards = uniqueCards([...(passportDetail ? [passportDetail.document] : []), ...broader.cards]);
+      const broaderCards = filterResearchCardsByRelevance(goal, broader.cards, { alwaysIncludeSources: retainedSources });
+      cards = uniqueCards([...(passportDetail ? [passportDetail.document] : []), ...broaderCards]);
     }
     if (!cards.length) {
       return finalize(NextResponse.json(
@@ -637,7 +641,9 @@ export async function POST(request: NextRequest) {
           : `Frame one candidate gap for your ${outcome.replace(/_/g, " ")} and specify the next evidence, method, and falsification check needed before treating it as established.`,
       ];
       const checkpointQuestions = [
-        `Can you name two Thai research themes in ${goal}, explain how their scope differs, and state what this corpus may not cover?`,
+        cards.length > 1
+          ? `Can you name two Thai research themes in ${goal}, explain how their scope differs, and state what this corpus may not cover?`
+          : `Can you explain the Thai research theme represented by this paper in ${goal}, then state what one-paper coverage cannot establish?`,
         "Can you cite the page-verified method and result, explain why the method fits the data, and identify where bias or missing full text limits the claim?",
         "Can you identify one Thai finding to compare globally, name a suitable metadata-only lead, and state what full-text evidence must be checked before comparison?",
         outcome === "study_plan"

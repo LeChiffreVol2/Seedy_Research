@@ -124,6 +124,14 @@ test("Explore separates ThaiJO discovery metadata from citable evidence", async 
     ),
   ).toBe(true);
 
+  const constrainedGoal = "How should a longitudinal mixed-methods Thai ELT study test AI learning outcomes beyond novelty effects?";
+  const constrainedResponse = await page.request.get(
+    `/api/research-feed?filter=evidence&collection=all&limit=8&q=${encodeURIComponent(constrainedGoal)}`,
+  );
+  expect(constrainedResponse.ok()).toBe(true);
+  const constrained = await constrainedResponse.json() as { cards?: Array<{ source?: string; title?: string }> };
+  expect(constrained.cards?.map((card) => card.source)).toEqual(["thaijo:learn:291631"]);
+
   const ncceResponse = await page.request.get("/api/research-feed?filter=ncce&limit=3");
   expect(ncceResponse.ok()).toBe(true);
   const ncce = await ncceResponse.json() as { cards?: Array<{ title?: string; citable?: boolean }> };
@@ -639,8 +647,9 @@ test("Research Workspace is a separate open-access surface", async ({ page }) =>
   await expect(workspace).toBeVisible();
   await expect(workspace.getByText("Build scientific evidence snapshots with exact-page provenance.")).toBeVisible();
   await expect(workspace.getByText("Verified Review Project")).toBeVisible();
-  await expect(workspace.getByText("Open Access", { exact: true })).toBeVisible();
+  await expect(workspace.getByText("Open review tools", { exact: true })).toBeVisible();
   await expect(workspace.getByText(/Batch research and every model are unlocked/)).toBeVisible();
+  await expect(workspace.getByText(/Research Notebook asks require sign-in/)).toBeVisible();
   await expect(workspace.getByRole("button", { name: /Run selected/ })).toBeVisible();
   await expectNoPageOverflow(page);
 });

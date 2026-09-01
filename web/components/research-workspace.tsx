@@ -881,7 +881,7 @@ export function ResearchWorkspacePanel({
           <div>
             <div className="workspaceTitleLine">
               <span className="workspaceEyebrow">Verified Review Project</span>
-              <span className="workspaceProBadge">Open Access</span>
+              <span className="workspaceProBadge">Open review tools</span>
               {prismaEnabled ? <span className="workspaceStandardBadge">PRISMA-ScR</span> : null}
             </div>
             <input aria-label="Workspace title" value={title} maxLength={160} onChange={(event) => setTitle(event.target.value)} />
@@ -1030,6 +1030,8 @@ export function ResearchWorkspacePanel({
         </div>
         {selectedPrivateSourceCount ? (
           <p className="notebookPrivateBoundary" role="note">Private PDF text is sent only to the selected model for this owner-scoped answer. Private citations are marked non-shareable and never enter the public corpus or Passport.</p>
+        ) : !authenticated ? (
+          <p className="notebookPrivateBoundary" role="note">Discovery, screening, extraction, and export stay open. Research Notebook asks require sign-in so generated answers remain bound to one owner-scoped Workspace.</p>
         ) : null}
         {notebookAnswer ? (
           <article className={`notebookAnswer ${notebookAnswer.insufficient ? "insufficient" : ""}`} aria-live="polite">
@@ -1178,7 +1180,7 @@ export function ResearchWorkspacePanel({
 
       <div className="workspaceProNotice workspaceOpenAccessNotice" role="note">
         <ShieldCheck size={18} aria-hidden />
-        <span><strong>Open Access.</strong> Batch research and every model are unlocked; rate and agent budgets remain for service reliability.</span>
+        <span><strong>Open review tools.</strong> Batch research and every model are unlocked; Notebook answers and private sources require sign-in for owner isolation. Rate and agent budgets remain for service reliability.</span>
       </div>
 
       <div className={`workspaceSurface ${activeCell ? "withInspector" : ""}`}>

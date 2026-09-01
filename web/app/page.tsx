@@ -3738,6 +3738,7 @@ function PaperDetailDrawer({
         : readerAccess
           ? "Open source record"
           : "Open paper reader";
+  const readerIsPrimary = readerAccess?.mode === "native_verified" || readerAccess?.mode === "source_hosted";
   const translatedTitle = paper
     ? translatedPaperText(translation, "paper.title", displayTitle(paper))
     : "Loading paper...";
@@ -3821,7 +3822,18 @@ function PaperDetailDrawer({
         ) : detail && paper ? (
           <div className="detailBody">
             <div className="detailActions">
-              <button type="button" className="cardAction primary" onClick={() => onAsk(paper)}>
+              <a
+                className={`cardAction ${readerIsPrimary ? "primary detailReaderPrimary" : ""}`}
+                href={readerActionHref}
+                target="_blank"
+                rel="noreferrer"
+                data-testid="paper-reader-action"
+                data-reader-mode={readerAccess?.mode ?? "unknown"}
+              >
+                <ExternalLink size={17} strokeWidth={2.2} aria-hidden />
+                <span>{readerActionLabel}</span>
+              </a>
+              <button type="button" className={`cardAction ${readerIsPrimary ? "" : "primary"}`} onClick={() => onAsk(paper)}>
                 <MessageCircle size={17} strokeWidth={2.2} aria-hidden />
                 <span>Ask this paper</span>
               </button>
@@ -3860,17 +3872,6 @@ function PaperDetailDrawer({
                 <GitFork size={17} strokeWidth={2.2} aria-hidden />
                 <span>{citationMap.phase === "loading" ? "Mapping…" : "Citation map"}</span>
               </button>
-              <a
-                className="cardAction"
-                href={readerActionHref}
-                target="_blank"
-                rel="noreferrer"
-                data-testid="paper-reader-action"
-                data-reader-mode={readerAccess?.mode ?? "unknown"}
-              >
-                <ExternalLink size={17} strokeWidth={2.2} aria-hidden />
-                <span>{readerActionLabel}</span>
-              </a>
               {sourceRef ? (
                 <button
                   type="button"
@@ -5371,7 +5372,10 @@ export default function Home() {
   const [isSharedView, setIsSharedView] = useState(false);
   const [openDropdown, setOpenDropdown] = useState<OpenDropdown>(null);
   const [activeFeedFilter, setActiveFeedFilter] = useState<FeedFilter>("hot");
-  const [activeMobileNav, setActiveMobileNav] = useState<MobileNavItem>("settings");
+  // Explore is the stable public shell while the signed guest/account session
+  // hydrates. Requested deep links are applied immediately after hydration;
+  // starting on Settings or Path creates a misleading sign-in/product flash.
+  const [activeMobileNav, setActiveMobileNav] = useState<MobileNavItem>("explore");
   const [pendingFeature, setPendingFeature] = useState<MobileNavItem | null>(null);
   const [currentSessionId, setCurrentSessionId] = useState("");
   const [currentSessionTitle, setCurrentSessionTitle] = useState("Untitled chat");

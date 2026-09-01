@@ -4001,7 +4001,7 @@ button,textarea,input,select { font:inherit; }
 .mcpStatus small { font-size:.68rem; }
 
 .mainRail { padding:34px clamp(24px,4vw,56px) 56px; }
-.searchStage,.feedToolbar,.feedStack,.workspacePanel,.statusLine { width:min(100%,980px); }
+.searchStage,.feedToolbar,.feedStack,.workspacePanel,.statusLine { width:min(100%,1120px); }
 .searchStage { margin-bottom:18px; }
 .searchStage h1 {
   margin-bottom:8px; color:#111318; font-size:clamp(1.9rem,3vw,2.45rem); font-weight:680;
@@ -4127,6 +4127,7 @@ button,textarea,input,select { font:inherit; }
 }
 .cardAction.primary { border-color:#17191e; background:#17191e; color:#fff; box-shadow:none; }
 .cardAction.primary:hover { border-color:#32353d; background:#32353d; color:#fff; }
+.detailReaderPrimary { padding-inline:16px; }
 .accountDangerZone {
   display:grid; grid-template-columns:minmax(0,1fr) minmax(180px,.6fr) auto; align-items:end; gap:10px;
   margin-top:8px; padding-top:18px; border-top:1px solid var(--line);

@@ -456,6 +456,7 @@ test("registers non-trivial WebMCP tools and keeps agent actions visible to the 
   await expect(page.getByRole("dialog", { name: "Paper detail" })).toBeVisible();
   await expect(page.getByText("The study groups crash factors into human, vehicle, and road-environment categories.")).toBeVisible();
   await expect(page.getByTestId("paper-reader-action")).toHaveText(/Read verified full paper/);
+  await expect(page.getByTestId("paper-reader-action")).toHaveClass(/primary/);
   await expect(page.getByTestId("paper-reader-action")).toHaveAttribute(
     "href",
     "/papers/NCCE29_TRL42.md#asset-webmcp-native-page-2067",

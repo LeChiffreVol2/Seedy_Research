@@ -6,6 +6,7 @@ import { createClient } from "@supabase/supabase-js";
 
 import { PAPER_SUMMARY_OVERRIDES } from "./paper-summary-overrides";
 import { PAPER_TITLE_OVERRIDES } from "./paper-title-overrides";
+import { filterResearchCardsByRelevance } from "./research-relevance.mjs";
 import {
   findRightsReviewedReaderPaper,
   listRightsReviewedReaderPapers,
@@ -221,9 +222,12 @@ const CHUNK_SELECT = "id, document_id, section_id, source, collection, paper_cod
 const CATALOG_SELECT = "id, provider, provider_record_id, collection, source_type, title_local, title_en, authors, keywords, doi, canonical_url, journal_title, publisher, published_at, language, discipline, rights_status, access_level, evidence_status, document_id, source_updated_at, updated_at";
 const MAX_QUERY_MATCHES = 500;
 const QUERY_STOP_WORDS = new Set([
-  "a", "an", "and", "are", "as", "at", "be", "by", "for", "from", "how", "in", "into", "is", "of", "on", "or", "the", "to", "what", "with",
-  "การ", "ของ", "จาก", "ด้วย", "ที่", "และ", "ใน", "เป็น", "เพื่อ", "อย่างไร",
+  "a", "an", "and", "are", "as", "at", "be", "beyond", "by", "can", "current", "do", "does", "for", "from", "how", "in", "into", "is", "it", "of", "on", "or", "paper", "papers", "research", "should", "studies", "study", "test", "testing", "the", "this", "to", "use", "using", "what", "with",
+  "การ", "ของ", "จาก", "ด้วย", "ที่", "และ", "ใน", "เป็น", "เพื่อ", "ศึกษา", "การศึกษา", "งานวิจัย", "วิจัย", "อย่างไร",
 ]);
+const SEARCH_THAI_FRAGMENTS = [
+  "ปัญญาประดิษฐ์", "ภาษาอังกฤษ", "การเรียนรู้", "การสอน", "อุบัติเหตุ", "ความปลอดภัย", "ถนน", "จราจร", "ขนส่ง", "น้ำท่วม", "ระบายน้ำ", "ชลศาสตร์", "ก่อสร้าง", "คอนกรีต", "ซีเมนต์", "วัสดุ", "สะพาน", "แผ่นดินไหว", "สิ่งแวดล้อม", "การแพทย์", "สาธารณสุข", "เกษตร", "พลังงาน",
+];
 
 let supabaseAdminSingleton: ReturnType<typeof createClient> | null = null;
 
@@ -928,22 +932,10 @@ function cardFromRightsReviewedReaderPaper(paper: RightsReviewedReaderPaper): Re
 
 function rightsReviewedReaderCards(filter: FeedFilter, collection: CollectionFilter, q: string): ResearchFeedCard[] {
   if (collection || filter === "ncce" || filter === "ce_project") return [];
-  const terms = q
-    .toLocaleLowerCase("en")
-    .split(/\s+/)
-    .map((term) => term.trim())
-    .filter((term) => term.length >= 2 && !QUERY_STOP_WORDS.has(term));
-  return listRightsReviewedReaderPapers()
+  const cards = listRightsReviewedReaderPapers()
     .map(cardFromRightsReviewedReaderPaper)
-    .filter((card) => card.filters.includes(filter))
-    .filter((card) => {
-      if (!terms.length) return true;
-      const haystack = [card.title, card.source, card.paperCode, card.journalTitle, ...(card.authors ?? []), ...card.tags]
-        .filter(Boolean)
-        .join(" ")
-        .toLocaleLowerCase("en");
-      return terms.every((term) => haystack.includes(term));
-    })
+    .filter((card) => card.filters.includes(filter));
+  return filterResearchCardsByRelevance(q, cards)
     .sort((left, right) => {
       if (filter === "evidence") return right.evidenceCount - left.evidenceCount;
       return new Date(right.indexedAt ?? right.date).getTime() - new Date(left.indexedAt ?? left.date).getTime();
@@ -1342,9 +1334,11 @@ type SearchContext = {
 
 function searchContext(q: string): SearchContext {
   const phrase = q.toLocaleLowerCase("en").replace(/[^\p{L}\p{N}\s-]/gu, " ").replace(/\s+/g, " ").trim();
-  const baseTerms = [...new Set((phrase.match(/[\p{L}\p{N}]+/gu) ?? [])
-    .filter((term) => term.length >= 2 && !QUERY_STOP_WORDS.has(term)))]
-    .slice(0, 7);
+  const lexicalTerms = (phrase.match(/[\p{L}\p{N}]+/gu) ?? [])
+    .filter((term) => term.length >= 2 && !QUERY_STOP_WORDS.has(term));
+  const thaiFragments = SEARCH_THAI_FRAGMENTS.filter((term) => phrase.includes(term));
+  const baseTerms = [...new Set([...lexicalTerms, ...thaiFragments])]
+    .slice(0, 16);
   const expansions: string[] = [];
   const disciplines: string[] = [];
 
@@ -1365,6 +1359,12 @@ function searchContext(q: string): SearchContext {
   if (/concrete|cement|material|คอนกรีต|ซีเมนต์|วัสดุ/.test(phrase)) {
     addConcept(["concrete", "cement", "material", "คอนกรีต", "ซีเมนต์", "วัสดุ"], "structural");
   }
+  if (/(?:^|\s)ai(?:\s|$)|artificial intelligence|ปัญญาประดิษฐ์/.test(phrase)) {
+    addConcept(["ai", "artificial", "intelligence", "ปัญญาประดิษฐ์"], "ai_engineering");
+  }
+  if (/(?:^|\s)(?:elt|efl)(?:\s|$)|english language teaching|ภาษาอังกฤษ/.test(phrase)) {
+    addConcept(["elt", "efl", "english", "language", "teaching", "ภาษาอังกฤษ"], "education");
+  }
 
   const baseSet = new Set(baseTerms);
   return {
@@ -1379,14 +1379,21 @@ function searchOrFilter(columns: string[], terms: string[]): string {
   return terms.flatMap((term) => columns.map((column) => `${column}.ilike.%${term}%`)).join(",");
 }
 
+function fieldIncludesTerm(value: string, term: string): boolean {
+  if (/^[a-z0-9]+$/u.test(term)) {
+    return new RegExp(`(?:^|[^a-z0-9])${term.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}(?:[^a-z0-9]|$)`, "u").test(value);
+  }
+  return value.includes(term);
+}
+
 function fieldMatchScore(row: SearchMatchRow, context: SearchContext): number {
   const title = (row.section_title ?? "").toLocaleLowerCase("en");
   const identity = `${row.source ?? ""} ${row.source_pdf ?? ""} ${row.paper_code ?? ""}`.toLocaleLowerCase("en");
   const discipline = (row.discipline ?? "").toLocaleLowerCase("en");
   let score = context.phrase && title.includes(context.phrase) ? 12 : 0;
-  score += context.baseTerms.filter((term) => title.includes(term)).length * 4;
-  score += context.expandedTerms.filter((term) => title.includes(term)).length * 1.5;
-  score += context.baseTerms.filter((term) => identity.includes(term)).length * 4;
+  score += context.baseTerms.filter((term) => fieldIncludesTerm(title, term)).length * 4;
+  score += context.expandedTerms.filter((term) => fieldIncludesTerm(title, term)).length * 1.5;
+  score += context.baseTerms.filter((term) => fieldIncludesTerm(identity, term)).length * 4;
   if (context.disciplines.some((candidate) => discipline.includes(candidate))) score += 6;
   return score;
 }
@@ -1452,7 +1459,7 @@ async function matchingDocumentScores(q: string, collection: CollectionFilter): 
 
   return new Map(
     [...aggregates.entries()]
-      .filter(([, match]) => match.baseHits > 0)
+      .filter(([, match]) => match.baseHits > 0 && match.fieldScore >= (context.baseTerms.length >= 4 ? 7 : 4))
       .map(([id, match]) => [
         id,
         match.fieldScore + Math.min(match.baseHits, 10) * 0.9 + Math.min(match.expandedHits, 6) * 0.25,
@@ -1612,12 +1619,19 @@ export async function listResearchFeed(params: ListFeedParams): Promise<Research
     catalogIndex += 1;
   }
 
-  const page = combined.slice(offset, offset + limit);
+  // Natural-language research goals carry several constraints. Scan a bounded
+  // candidate window so the first page is not filled with one-token matches
+  // (for example any civil paper that merely mentions “AI”), then return only
+  // cards that satisfy multiple independent topic signals. Short keyword
+  // searches keep ordinary cursor density.
+  const querySignalCount = searchContext(q).baseTerms.length;
+  const candidateWindowSize = querySignalCount >= 4 ? Math.min(60, limit * 4) : limit;
+  const page = combined.slice(offset, offset + candidateWindowSize);
   const pageDocumentIds = page
     .filter((item): item is { kind: "evidence"; document: DocumentRow } => item.kind === "evidence")
     .map((item) => item.document.id);
   const previews = await fetchDocumentPreviews(pageDocumentIds);
-  const cards = page.map((item) =>
+  const candidateCards = page.map((item) =>
     item.kind === "reader"
       ? item.card
       : item.kind === "catalog"
@@ -1627,7 +1641,8 @@ export async function listResearchFeed(params: ListFeedParams): Promise<Research
         previews.sections.get(item.document.id) ?? [],
         previews.chunks.get(item.document.id) ?? [],
       ));
-  const nextOffset = offset + limit;
+  const cards = filterResearchCardsByRelevance(q, candidateCards).slice(0, limit);
+  const nextOffset = offset + page.length;
 
   return {
     cards,
