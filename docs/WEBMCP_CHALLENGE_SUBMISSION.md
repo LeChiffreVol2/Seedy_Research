@@ -9,23 +9,23 @@
 - Deadline: **September 3, 2026 at 1:00 PM PDT** (**September 4 at 3:00 AM ICT**)
 - Public source repository: <https://github.com/LeChiffreVol2/Seedy_Research>
 - Public YouTube demo under three minutes: **REQUIRED — add the final URL before submission**
-- Verified application candidate commit: [`169c30554168754bb7e82b392a5852c3ed1eb9e3`](https://github.com/LeChiffreVol2/Seedy_Research/commit/169c30554168754bb7e82b392a5852c3ed1eb9e3)
+- Verified application candidate commit: [`81937d8`](https://github.com/LeChiffreVol2/Seedy_Research/commit/81937d8)
   (the following repository commit changes submission metadata only)
-- Candidate production deployment ID: `dpl_4Hdt7BVN6qhFVTxdo7SEx3tW9tYs`
+- Candidate production deployment ID: `dpl_8vYz8CFcgFuBVfTmSrSbTav9sTyH`
 
 Do not submit while any `REQUIRED` field above is unresolved. The Devpost entry, video, repository, and supporting text must be public and in English. The repository must expose the MIT license in its About section and remain frozen during judging except for an organizer-approved correction.
 
 ## Release verification — September 1, 2026 ICT
 
 - Production build: pass (all routes compiled and type-checked; 23 static pages generated).
-- Browser suite: pass, 40/40 serial Chromium scenarios across desktop, mobile, accessibility, research workflows, the real reader-pack route, OpenAlex identity safety, and WebMCP.
+- Browser suite: pass, 41/41 serial Chromium scenarios across desktop, mobile, accessibility, Coverage Ledger/provider filtering, Research Notebook exact-page continuity, research workflows, the real reader-pack route, OpenAlex identity safety, and WebMCP.
 - Focused WebMCP contract: pass, 8/8 scenarios including the production-seed three-call Passport Trust Gate, arbitrary-ID rejection, lawful reader enrichment, non-native fail-closed access, global-provider outage, stale-context cancellation, bounded Thai-to-English rendering, and missing-page rejection. The separate OpenAlex adapter contract passes 7/7 scenarios covering explicit bounded anonymous access, metadata-only discovery, exact-DOI verification, fail-soft optional relationship enrichment, title and fuzzy candidates, and ambiguity fail-closed behavior.
 - Repository invariants: pass.
-- GitHub Actions: CI run `33447038030` and Preview/source-gate run `33447037987` pass for candidate `169c305`; the same clean candidate was deployed and inspected with the linked Vercel project.
-- Security contracts: pass, 21/21.
-- Strict cross-service production smoke: pass against the canonical web and MCP aliases. The 15-question production retrieval/evidence eval passes with 100% citation coverage/correctness, intent accuracy, and collection accuracy; p95 latency is 18.47 seconds. The memory-continuity gate passes on the same candidate after one transient network-timeout rerun.
-- Quality score: 93.6/100 with six passes, no failures, and one local-only warning because the system Python lacks `psycopg`; this release does not change the Supabase schema or indexed corpus.
-- Supabase production data quality: pass on the clean candidate SHA; 1,297 indexed documents, zero missing document pages, zero missing chunk embeddings, and zero unknown disciplines. No schema or embedding migration is required by this release.
+- GitHub Actions: the previously frozen candidate passed CI run `33447038030` and Preview/source-gate run `33447037987`. Candidate `81937d8` passes the expanded local release gate and linked Vercel build; record its post-push CI run before final submission.
+- Security, provider-registry, and rights-reviewed reader units: pass, 31/31.
+- Strict cross-service production baseline: the preceding clean candidate passed against the canonical web and MCP aliases. Its 15-question retrieval/evidence eval recorded 100% citation coverage/correctness, intent accuracy, and collection accuracy with 18.47-second p95 latency, and memory continuity passed after one transient network-timeout rerun. Candidate `81937d8` changes only web orchestration/UI; record the post-alias strict rerun before final submission.
+- Quality baseline: 93.6/100 with six passes, no failures, and one local-only warning because the system Python lacks `psycopg`. Candidate `81937d8` passes current invariants, build, units, and browser gates and does not change the Supabase schema or indexed corpus.
+- Supabase production data quality: the unchanged production corpus has 1,297 indexed documents, zero missing document pages, zero missing chunk embeddings, and zero unknown disciplines. No schema or embedding migration is required by this release.
 - Local corpus integrity: pass; 1,300 markdown paper files, 1,299 index-eligible papers, zero page-boundary violations, and zero unresolved probable duplicates. Production still serves the 1,297-document baseline until the reviewed 152-job embedding refresh and exact duplicate cleanup receive explicit approval.
 - Production dependency audit: zero high or critical advisories. Five transitive low-severity AI SDK advisories remain; the project maintainer owns an isolated post-challenge major-upgrade test rather than forcing a breaking dependency change into the candidate freeze.
 - Rights-reviewed reader slice: live for exactly 3 ThaiJO-hosted
@@ -35,12 +35,14 @@ Do not submit while any `REQUIRED` field above is unresolved. The Devpost entry,
   direct `anon`/`authenticated` table reads. Production build, rights/integrity units, repository
   invariants, and focused reader/WebMCP browser, mobile, and accessibility gates
   pass.
-- Live deployments: web `dpl_4Hdt7BVN6qhFVTxdo7SEx3tW9tYs` and MCP
+- Live deployments: web `dpl_8vYz8CFcgFuBVfTmSrSbTav9sTyH` and MCP
   `dpl_GXE63yQfqtQDfxZMXqpGHEx3SVmE` are READY production releases. The canonical
   aliases are `https://seedresearch.vercel.app` and
   `https://civil-mcp-server.vercel.app`. Vercel reports the web candidate at
-  Git SHA `169c30554168754bb7e82b392a5852c3ed1eb9e3`, target `production`, region
-  `sin1`; the stable web alias resolves to that deployment.
+  target `production`, status READY, with Singapore functions; both
+  `seedresearch.vercel.app` and the compatibility alias
+  `civil-mcp-web.vercel.app` were assigned to the same deployment. This release
+  changes neither the MCP server nor the Supabase schema/corpus.
 
 Judge expansion contract: [Thai Research Full-Text System](THAI_RESEARCH_FULL_TEXT_SYSTEM.md).
 
@@ -270,7 +272,7 @@ The pre-existing product already had a Next.js research UI, a remote MCP server,
 - the selected-source Research Notebook and optional OpenRAG adapter boundary;
 - this challenge-specific public submission and demo package.
 
-Git history separates the pre-existing baseline from the Challenge work: `1179b09` is the August 20 baseline before the competition window, `e9f8ed8` is the August 31 challenge extension, `9523b7c` is the September 1 pre-release candidate, and `e681d0c` is the verified application candidate containing the final SeedyMCP connection trace and structured Research Path. Do not claim pre-existing product work as new Challenge work.
+Git history separates the pre-existing baseline from the Challenge work: `1179b09` is the August 20 baseline before the competition window, `e9f8ed8` is the August 31 challenge extension, `9523b7c` is the September 1 pre-release candidate, `e681d0c` contains the SeedyMCP connection trace and structured Research Path, and `81937d8` adds the dated Coverage Ledger, selected-source Research Notebook, verified-reader receipt, and Passport-to-Path continuity. Do not claim pre-existing product work as new Challenge work.
 
 ## Final freeze checklist
 
