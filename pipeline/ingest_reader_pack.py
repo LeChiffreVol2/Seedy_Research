@@ -92,6 +92,34 @@ def read_pack(pack_dir: Path) -> tuple[dict[str, Any], list[tuple[dict[str, Any]
         resolved.append((paper, pages))
     if len(resolved) < 3:
         raise ValueError("Reader pack must contain at least three reviewed papers.")
+    release_gate = manifest.get("releaseGate")
+    if release_gate is not None:
+        if not isinstance(release_gate, dict):
+            raise ValueError("Reader releaseGate must be an object.")
+        minimum = release_gate.get("minimumNativePapers")
+        expected = release_gate.get("expectedNativePapers")
+        if not isinstance(minimum, int) or minimum < 100:
+            raise ValueError("releaseGate.minimumNativePapers must be an integer of at least 100.")
+        if not isinstance(expected, int) or expected < minimum:
+            raise ValueError("releaseGate.expectedNativePapers must meet minimumNativePapers.")
+        if len(resolved) < minimum:
+            raise ValueError(
+                f"releaseGate.minimumNativePapers={minimum} but the pack contains only {len(resolved)} papers."
+            )
+        if len(resolved) != expected:
+            raise ValueError(
+                f"releaseGate.expectedNativePapers={expected} but the pack contains {len(resolved)} papers."
+            )
+        allowed_types = release_gate.get("allowedArticleTypes")
+        if allowed_types != ["Original Article", "Review Article"]:
+            raise ValueError("releaseGate.allowedArticleTypes must preserve the reviewed denominator.")
+        if release_gate.get("medicalResearchOnly") is not True:
+            raise ValueError("releaseGate.medicalResearchOnly must remain true.")
+        for paper, _pages in resolved:
+            if paper.get("articleType") not in allowed_types:
+                raise ValueError(f"Reader release paper has an unapproved article type: {paper.get('source')}")
+            if paper.get("tciTier") != "group_1":
+                raise ValueError(f"Reader release paper is not TCI Group 1: {paper.get('source')}")
     return manifest, resolved
 
 
@@ -115,7 +143,11 @@ def catalog_rights(asset: dict[str, Any]) -> dict[str, bool]:
 def build_rows(paper: dict[str, Any], pages: list[dict[str, Any]]) -> dict[str, Any]:
     source = paper["source"]
     asset = paper["asset"]
-    work_id = deterministic_uuid("work", f"doi:{paper['doi'].lower()}")
+    raw_doi = str(paper.get("doi") or "").strip()
+    doi = raw_doi.lower() or None
+    canonical_key = f"doi:{doi}" if doi else f"provider:{paper['provider']}:{paper['providerRecordId']}"
+    identity_strategy = "doi" if doi else "provider_identifier"
+    work_id = deterministic_uuid("work", canonical_key)
     asset_id = deterministic_uuid("asset", asset["id"])
     source_catalog_id = catalog_id(paper["provider"], paper["providerRecordId"])
     raw_metadata = {
@@ -124,6 +156,11 @@ def build_rows(paper: dict[str, Any], pages: list[dict[str, Any]]) -> dict[str, 
         "journal_title": paper["journalTitle"],
         "publisher": paper["publisher"],
         "asset_id": asset["id"],
+        "article_type": paper.get("articleType"),
+        "tci_tier": paper.get("tciTier"),
+        "medical_research_only": paper.get("medicalResearchOnly") is True,
+        "issue_id": paper.get("issueId"),
+        "issue_title": paper.get("issueTitle"),
         "reader_pack_version": "civilmcp-rights-reviewed-reader-pack-v1",
     }
     rights_provenance = {
@@ -135,23 +172,26 @@ def build_rows(paper: dict[str, Any], pages: list[dict[str, Any]]) -> dict[str, 
     return {
         "work": {
             "work_id": work_id,
-            "canonical_key": f"doi:{paper['doi'].lower()}",
+            "canonical_key": canonical_key,
             "work_type": "journal_article",
             "title_en": paper["title"],
-            "doi_normalized": paper["doi"].lower(),
+            "doi_normalized": doi,
             "publication_year": int(paper["publishedAt"][:4]),
             "primary_language": asset["language"],
-            "identity_strategy": "doi",
+            "identity_strategy": identity_strategy,
             "identity_evidence": {
                 "source": paper["sourceUrl"],
                 "provider_record_id": paper["providerRecordId"],
-                "doi": paper["doi"],
+                "doi": doi,
             },
             "canonical_metadata": {
                 "authors": paper["authors"],
                 "journal_title": paper["journalTitle"],
                 "publisher": paper["publisher"],
                 "published_at": paper["publishedAt"],
+                "article_type": paper.get("articleType"),
+                "tci_tier": paper.get("tciTier"),
+                "medical_research_only": paper.get("medicalResearchOnly") is True,
             },
             "work_status": "active",
             "updated_at": utc_now(),
@@ -164,14 +204,14 @@ def build_rows(paper: dict[str, Any], pages: list[dict[str, Any]]) -> dict[str, 
             "source_type": "journal_article",
             "title_en": paper["title"],
             "authors": paper["authors"],
-            "doi": paper["doi"],
+            "doi": doi,
             "canonical_url": paper["sourceUrl"],
             "pdf_url": asset["originUrl"],
             "publisher": paper["publisher"],
             "journal_title": paper["journalTitle"],
             "published_at": paper["publishedAt"],
             "language": asset["language"],
-            "discipline": "social_sciences",
+            "discipline": paper.get("discipline") or "social_sciences",
             "license": asset["licenseExpression"],
             "rights_status": asset["rightsStatus"],
             "access_level": "full_text_licensed",
@@ -199,6 +239,7 @@ def build_rows(paper: dict[str, Any], pages: list[dict[str, Any]]) -> dict[str, 
             "mime_type": asset["mimeType"],
             "language": asset["language"],
             "content_sha256": asset["contentSha256"],
+            "byte_size": asset.get("byteSize"),
             "page_count": asset["pageCount"],
             "license_expression": asset["licenseExpression"],
             "rights_status": asset["rightsStatus"],
@@ -207,7 +248,12 @@ def build_rows(paper: dict[str, Any], pages: list[dict[str, Any]]) -> dict[str, 
             "rights_checked_at": asset["rightsCheckedAt"],
             "rights_verified_at": asset["rightsVerifiedAt"],
             "reader_access_mode": "native_verified",
-            "access_notes": "CC BY 4.0 publisher version; page text is a checksum-verified extraction.",
+            "access_notes": (
+                "CC BY 4.0 publisher version; page text is a checksum-verified extraction. "
+                "Biomedical content is provided for research and evidence review, not clinical advice."
+                if paper.get("medicalResearchOnly") is True
+                else "CC BY 4.0 publisher version; page text is a checksum-verified extraction."
+            ),
             "asset_status": "active",
             "last_verified_at": asset["rightsVerifiedAt"],
             "updated_at": utc_now(),

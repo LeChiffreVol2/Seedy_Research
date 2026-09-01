@@ -198,8 +198,13 @@ OpenAI-first Research Path and native-reader release. The checkpoint migration
 adds `checkpoint_answered`, `checkpoint_mastered`, and `path_adapted` while
 preserving the existing event allow-list. Then run
 `.venv310/bin/python pipeline/ingest_reader_pack.py --apply` once per target
-database and verify 3 native assets, 68 checksum-valid pages, RLS on all graph
-tables, and no `anon`/`authenticated` table grants.
+database for the deterministic fixture. For the reviewed 100-paper cohort, run
+`pipeline/build_native_reader_cohort.py` against
+`pipeline/cohorts/bscm_tci1_100.json`, validate its ignored output pack, and
+apply that pack explicitly. Apply `20260902010000_civil_authoritative_research_coverage.sql`,
+then verify 103 native assets, 1,105 checksum-valid pages, zero asset/page-count
+or page-hash mismatches, RLS on all graph tables, and no
+`anon`/`authenticated` table grants.
 
 For public MCP OAuth, set the Supabase OAuth authorization path to
 `/oauth/consent`, enable dynamic client registration, and select

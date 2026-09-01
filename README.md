@@ -4,7 +4,7 @@
 
 [Open the public preview](https://seedresearch.vercel.app/) · [WebMCP Challenge package](docs/WEBMCP_CHALLENGE_SUBMISSION.md) · [Connect an AI agent](https://seedresearch.vercel.app/developers) · [Product thesis](docs/PRODUCT_THESIS.md) · [Full-text and national coverage system](docs/THAI_RESEARCH_FULL_TEXT_SYSTEM.md) · [Launch readiness](docs/LAUNCH_READINESS.md) · [Data sources and rights](DATA_SOURCES.md)
 
-> Research evidence, not professional engineering advice.
+> Research evidence, not professional engineering or clinical advice.
 
 Civil engineering is the proof vertical for a broader Thai-first research,
 learning, and deep-tech translation platform. Expansion happens through
@@ -17,8 +17,8 @@ into the citable evidence index.
 | --- | ---: | --- |
 | Student Transport Projects | 67 | Student transport research projects, 2019–2024 |
 | NCCE | 1,230 | NCCE25, NCCE26, NCCE29, and NCCE31 proceedings |
-| Rights-reviewed ThaiJO reader | 3 | LEARN Journal CC BY 4.0 full papers |
-| **Total** | **1,300** | **11,591 active, page-linked sections/pages** |
+| Rights-reviewed ThaiJO reader | 103 | 3 LEARN + 100 BSCM TCI Group 1 CC BY 4.0 full papers |
+| **Total** | **1,400** | **12,628 active, page-linked sections/pages** |
 
 The page-linked section count is the current public passage-level proof metric.
 The underlying index still has 1,064 active rows without page ranges plus nine
@@ -26,13 +26,15 @@ paged rows beyond document-declared chunk counts, so the product no longer
 presents every active chunk as exact-page evidence. A staged NCCE31 boundary
 repair now produces 1,300 local markdown paper files and 1,299 index-eligible
 papers after one reviewed duplicate exclusion. The database-backed Civil Research
-Pack remains at 1,297 while the three separately rights-reviewed reader papers
-bring the public page-citable total to 1,300; the broader embedding refresh and
+Pack remains at 1,297 while 103 separately rights-reviewed reader papers
+bring the public page-citable total to 1,400; the broader embedding refresh and
 exact duplicate cleanup remain separately gated.
 
-The separate discovery catalog currently adds **2,578 active ThaiJO-hosted
-research metadata records** across 16 contributing OAI set specs in two official
-endpoint families, bringing Explore to **3,878 searchable records**. The
+The ThaiJO catalog currently contains **2,681 active records**: **2,578
+metadata-only discovery records** plus **103 rights-reviewed native papers**.
+Together with 1,297 legacy evidence records, Explore exposes **3,978 searchable
+records** without conflating discovery metadata with evidence. The metadata-only
+slice spans 16 contributing OAI set specs in two official endpoint families. The
 August 31 `sc01` metadata expansion contributed 198 net-new active records after duplicate and
 whole-issue filtering. All 2,578 have a publisher link, 833 have a DOI, and none
 is eligible for AI answers or citations until full-text rights and page
@@ -45,27 +47,30 @@ papers, reopen exact-page evidence targets, and translate bounded Thai evidence
 to English. Production also exposes the rights-verified native full-paper reader
 described below.
 
-Production includes a deliberately bounded native-reader slice for
-exactly **3 ThaiJO-hosted LEARN Journal papers and 68 page-addressable pages**.
-Their version-of-record assets are checksum-pinned and rights-reviewed against
-the journal's recorded CC BY 4.0 statement. The reader provides native page
+Production includes a deliberately bounded native-reader corpus of exactly
+**103 ThaiJO-hosted papers and 1,105 page-addressable pages**: the three LEARN
+fixtures plus a fixed 100-paper Original/Review Article cohort from BSCM, a
+current TCI Group 1 journal. Every BSCM item carries item-level CC BY 4.0
+evidence; every version-of-record asset is checksum-pinned and page-verified.
+The reader provides native page
 reading, outline and in-paper search, stable anchors, highlights, browser-local
 notes, and citation/source export. It fails closed across `native_verified`,
 `source_hosted`, `restricted`, `metadata_only`, and `unavailable`; only the
 rights-verified native mode receives full page text. The canonical graph
 migration and reader pack are applied to Supabase production, and the matching
-web/MCP releases are deployed on Vercel. Production database checks report three
-native assets, 68 pages, zero page-checksum mismatches, RLS on all six graph
+web/MCP releases are deployed on Vercel. Production database checks report 103
+native assets, 1,105 pages, zero page-count or page-checksum mismatches, RLS on all six graph
 tables, and no direct `anon` or `authenticated` table reads. The production
 build, rights/integrity units, focused reader/WebMCP browser suites, and repository
-invariants pass. This three-paper proof is not a claim of ThaiJO, TCI,
+invariants pass. This fixed 103-paper corpus is not a claim of ThaiJO, TCI,
 TNRR, TDC, conference, or national completeness.
 
 The rights-aware reader and provider-completeness contract is defined in
 [Thai Research Full-Text System](docs/THAI_RESEARCH_FULL_TEXT_SYSTEM.md). General
 source PDFs and the existing extracted corpus remain local-only and are not
-redistributed through Git. The small reader pack keeps only the explicitly
-licensed, checksum-bound page text and rights manifest, not PDF binaries; see
+redistributed through Git. Git retains the three-paper deterministic fixture and
+the reviewed 100-paper cohort plan; production page text is ingested DB-first
+from an ignored, reproducible local pack and PDF binaries are not committed; see
 [DATA_SOURCES.md](DATA_SOURCES.md).
 
 ## WebMCP: research with a shared human-agent view
@@ -140,7 +145,7 @@ Every cited answer also includes a deterministic Evidence Audit: it shows the in
 
 The brief is stored in the existing chat history/share transcript and exports as portable Markdown. `Guided Learning` emphasizes checkpoints; `Quick Answer` preserves the streaming answer path. Agent activity is inspectable, but private reasoning and raw tool payloads are never exposed. See [docs/AGENTIC_EVIDENCE_MISSIONS.md](docs/AGENTIC_EVIDENCE_MISSIONS.md).
 
-Explore remains the feed-first discovery surface: search, filter, inspect a paper, open its evidence, and continue into chat. Its dated Coverage Ledger separates searchable metadata, page-citable evidence, rights-reviewed native pages, source-hosted links, and providers that are not yet connected; a provider filter never turns catalog presence into evidence. It learns a lightweight `For you` ranking from saved papers and syncs a personal library with notes, labels/folders, BibTeX, RIS/Zotero export, and related Thai evidence. Users can explicitly expand a query to bounded OpenAlex metadata, inspect a citation neighborhood, and save the query as a Living Review that reports what changed on the next check. OpenAlex records never become CivilMCP evidence implicitly. By default, indexable `/papers/{source}` pages expose rights-safe metadata, page ranges, and outlines without publishing raw full text. The production three-paper reader slice is the narrow exception because those assets have an explicit reviewed native-display decision.
+Explore remains the feed-first discovery surface: search, filter, inspect a paper, open its evidence, and continue into chat. Its dated Coverage Ledger separates searchable metadata, page-citable evidence, rights-reviewed native pages, source-hosted links, and providers that are not yet connected; a provider filter never turns catalog presence into evidence. It learns a lightweight `For you` ranking from saved papers and syncs a personal library with notes, labels/folders, BibTeX, RIS/Zotero export, and related Thai evidence. Users can explicitly expand a query to bounded OpenAlex metadata, inspect a citation neighborhood, and save the query as a Living Review that reports what changed on the next check. OpenAlex records never become CivilMCP evidence implicitly. By default, indexable `/papers/{source}` pages expose rights-safe metadata, page ranges, and outlines without publishing raw full text. The 103 production reader papers are the bounded exception because each asset has an explicit reviewed native-display decision.
 
 `Research Workspace` is a separate Verified Review Project rather than a chat mode. Papers are rows and bounded AI instructions are columns. Its Research Notebook can answer against only the explicitly selected saved sources, returns allow-listed exact-page locators, keeps private-source answers non-shareable, and can promote a public finding into a review-gated Passport or continue it into a Research Path. Notebook answers are intentionally not persisted in the workspace record. OpenRAG is only an optional, disabled adapter behind this boundary; it cannot become the identity, rights, or evidence authority until its Thai retrieval, page fidelity, isolation, latency, and cost pass the documented release gates. Open Access unlocks batch extraction and every model without answer credits or a plan gate; authentication is required so every run has a durable owner. A project accepts up to 50 CivilMCP or account-private sources and processes six papers per server request, saving account-scoped progress after every completed batch. The Scientific Evidence Snapshot template extracts study design, context, method, results, limitations, and Thai applicability with allow-listed page evidence and human-review state. The PRISMA-ScR guided template captures protocol, search strategy, screening decisions, exclusion reasons, extraction matrix, provenance, and review state in a reproducible Markdown pack. PDF uploads stay account-private; DOI and BibTeX/RIS (including Zotero exports) remain metadata-only until page text is available. The current browser orchestrator supports stop-after-batch and durable saved progress, but is not an unattended background job.
 

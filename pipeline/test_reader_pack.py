@@ -1,6 +1,9 @@
 import hashlib
 import json
+import shutil
+import tempfile
 import unittest
+from copy import deepcopy
 from pathlib import Path
 from urllib.parse import urlparse
 
@@ -83,6 +86,39 @@ class ReaderPackTest(unittest.TestCase):
                 self.assertFalse(row["catalog"]["rights_manifest"]["model_training"])
                 self.assertTrue(all(page["asset_id"] == row["asset"]["asset_id"] for page in row["pages"]))
                 self.assertTrue(all(page["extraction_provenance"]["source_asset_sha256"] == row["asset"]["content_sha256"] for page in row["pages"]))
+
+    def test_release_pack_cannot_claim_a_hundred_paper_floor_with_fewer_papers(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            pack = Path(directory)
+            for paper in self.manifest["papers"]:
+                shutil.copy(PACK / paper["pagesFile"], pack / paper["pagesFile"])
+            manifest = {
+                **self.manifest,
+                "releaseGate": {
+                    "minimumNativePapers": 100,
+                    "expectedNativePapers": 100,
+                    "allowedArticleTypes": ["Original Article", "Review Article"],
+                    "medicalResearchOnly": True,
+                },
+            }
+            (pack / "manifest.json").write_text(json.dumps(manifest), encoding="utf-8")
+            with self.assertRaisesRegex(ValueError, "minimumNativePapers"):
+                read_pack(pack)
+
+    def test_ingest_identity_falls_back_to_provider_identifier_when_doi_is_absent(self) -> None:
+        paper = deepcopy(self.manifest["papers"][0])
+        paper["doi"] = None
+        paper["discipline"] = "medical_and_health_sciences"
+        paper["articleType"] = "Original Article"
+        paper["medicalResearchOnly"] = True
+        payload = json.loads((PACK / paper["pagesFile"]).read_text(encoding="utf-8"))
+        row = build_rows(paper, payload["pages"])
+        self.assertEqual(row["work"]["canonical_key"], f"provider:tci_thaijo:{paper['providerRecordId']}")
+        self.assertEqual(row["work"]["identity_strategy"], "provider_identifier")
+        self.assertIsNone(row["work"]["doi_normalized"])
+        self.assertEqual(row["catalog"]["doi"], None)
+        self.assertEqual(row["catalog"]["discipline"], "medical_and_health_sciences")
+        self.assertTrue(row["catalog"]["raw_metadata"]["medical_research_only"])
 
 
 if __name__ == "__main__":

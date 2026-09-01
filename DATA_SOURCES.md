@@ -1,4 +1,4 @@
-# CivilMCP Data Sources and Rights
+# Seedy Research Data Sources and Rights
 
 ## Indexed corpus
 
@@ -71,6 +71,17 @@ provider-supplied license strings are retained as provenance but do not
 automatically authorize embedding, summarization, translation, redistribution,
 commercial use, or model training.
 
+As of 2 September 2026, the separately promoted native-reader corpus contains
+103 ThaiJO papers and 1,105 pages. The first scale cohort is a fixed set of 100
+Original/Review Articles from ten BSCM issues. The current TCI portal identifies
+BSCM as Group 1, but that ranking does not grant content rights: every included
+article independently exposes the exact CC BY 4.0 license, an official publisher
+PDF, and a passing checksum/page/extraction gate. The three LEARN papers remain
+the deterministic Git fixture. The generated BSCM pack and all PDF binaries are
+ignored local artifacts; only the cohort plan, validator, and production rows
+are retained as the reproducible release contract. Biomedical content is
+research evidence, not clinical advice.
+
 These are ThaiJO-hosted records, not a complete TCI corpus and not a claim that every work is Thai-language,
 Thai-authored, or affiliated with a Thai institution. Endpoint-family labels
 are broad routing provenance until journal-level classification is reviewed.
@@ -99,8 +110,9 @@ without silently changing provenance.
 The public repository also contains page-mapped extracted text for exactly
 three LEARN Journal papers whose version-of-record assets and journal-level
 CC BY 4.0 statement are recorded in the reader manifest. It contains no paper
-PDF binaries. All other paper text, generated previews, and embeddings remain
-excluded; software MIT licensing does not replace the recorded paper licence.
+PDF binaries. The 100-paper BSCM page pack is database-first and is not committed.
+All other paper text, generated previews, and embeddings remain excluded;
+software MIT licensing does not replace the recorded paper licence.
 
 ## Takedown or correction
 

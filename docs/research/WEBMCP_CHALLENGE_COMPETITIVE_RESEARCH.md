@@ -6,6 +6,12 @@ rules/resources. The AlphaXiv comparison uses AlphaXiv's own public pages and
 documentation. Product-state claims come from this repository and are labelled
 separately from external facts.
 
+> **Product-state update — 2 September 2026:** the three-paper/68-page gap
+> documented in this research snapshot has been closed for the first scale
+> cohort. Production now has 103 native-verified ThaiJO papers and 1,105 pages;
+> 100 are Original/Review Articles from a fixed BSCM TCI Group 1 cohort. The
+> historical analysis below is retained to show why that release gate was chosen.
+
 ## Executive verdict
 
 Seedy Research should **not** enter as “AlphaXiv for Thailand” or as a promise to

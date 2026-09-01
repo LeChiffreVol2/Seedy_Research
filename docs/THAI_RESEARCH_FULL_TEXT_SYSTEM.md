@@ -26,13 +26,14 @@ coverage statement must name a provider, denominator, access layer, and date.
 
 ## Live baseline and the missing link
 
-As of 1 September 2026, production exposes **3,878 searchable records**:
+As of 2 September 2026, production exposes **3,978 searchable records**:
 
-- **1,300 page-citable evidence records**, including the three rights-reviewed
+- **1,400 page-citable evidence records**, including the 103 rights-reviewed
   reader papers below;
 - **2,578 metadata-only discovery records**; and
-- **2 of 36 official ThaiJO OAI endpoint families active** in the bounded live
-  harvest.
+- **4 observed ThaiJO source families** across metadata and native-reader
+  ingestion. The public ledger no longer hardcodes an unverified national
+  endpoint denominator.
 
 These are real production counts, not national completeness. The deployed product
 can discover, inspect page-linked evidence, build a Research Path, compare papers
@@ -43,12 +44,14 @@ evidence boundary.
 
 ### Production native-reader slice
 
-Production contains a deliberately small proof of that layer:
-exactly **3 ThaiJO-hosted LEARN Journal papers and 68 page-addressable pages**.
-Each version-of-record PDF is pinned by checksum and page count, and the journal's
-official license statement is recorded as the CC BY 4.0 rights evidence. The
-repository pack contains the reviewed manifest and checksum-bound page text, not
-the source PDF binaries.
+Production contains a bounded proof of that layer: exactly **103 ThaiJO-hosted
+papers and 1,105 page-addressable pages**. Three LEARN Journal papers remain the
+deterministic Git fixture. A DB-first cohort adds 100 Original/Review Articles
+from BSCM, a current TCI Group 1 journal; every item has an exact article-level
+CC BY 4.0 marker, official publisher PDF, content checksum, matching page count,
+non-empty page extraction, per-page checksum, and no explicit third-party
+permission-language signal. Source PDF binaries and the generated 100-paper
+page pack remain outside Git.
 
 The reader supports native page reading, outline navigation, in-paper
 search, stable page anchors, highlights, browser-local notes, and citation/source
@@ -58,11 +61,11 @@ mode receives full page text; every other mode exposes the appropriate official
 link or access explanation without proxying the asset.
 
 This is a production slice, not a national coverage claim. Migration
-`20260831120000`, the three assets, and all 68 pages are applied to Supabase;
+`20260831120000`, `20260902010000`, all 103 assets, and all 1,105 pages are applied to Supabase;
 the matching MCP and web releases are live on Vercel. Post-apply checks report
 zero page-checksum mismatches, RLS on every graph table, and no direct
-`anon`/`authenticated` table reads. Three papers prove a lawful end-to-end slice; they do
-not materially change the 2-of-36 ThaiJO harvest denominator or establish
+`anon`/`authenticated` table reads. The 103-paper cohort proves a lawful,
+database-backed end-to-end slice; it does not establish
 coverage of TCI, TNRR, TDC, Thai conferences, or Thai research nationally.
 
 OpenAlex and Scopus are not empty of Thai research. Some Thai journals,

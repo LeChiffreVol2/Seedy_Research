@@ -6,6 +6,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 MIGRATION = ROOT / "supabase" / "migrations" / "20260831120000_civil_research_graph_assets.sql"
+COVERAGE_MIGRATION = ROOT / "supabase" / "migrations" / "20260902010000_civil_authoritative_research_coverage.sql"
 
 
 class ResearchGraphMigrationTests(unittest.TestCase):
@@ -71,6 +72,31 @@ class ResearchGraphMigrationTests(unittest.TestCase):
         self.assertNotIn("jsonb_object_length", self.lower)
         self.assertIn("capability_manifest - array[", self.lower)
         self.assertIn("rights_actions - array[", self.lower)
+
+
+class AuthoritativeCoverageMigrationTests(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls) -> None:
+        cls.lower = COVERAGE_MIGRATION.read_text(encoding="utf-8").lower()
+
+    def test_coverage_is_derived_from_rights_and_exact_page_cardinality(self) -> None:
+        for marker in (
+            "civil_research_coverage_v1",
+            "p.stored_pages = a.page_count",
+            "reader_access_mode = 'native_verified'",
+            "native_fulltext_display",
+            "content_sha256",
+            "rights_verified_at >= a.rights_checked_at",
+        ):
+            self.assertIn(marker, self.lower)
+        self.assertNotIn("endpoint_known", self.lower)
+
+    def test_coverage_rpc_is_server_only_and_facets_count_extracted_evidence(self) -> None:
+        self.assertIn("security definer", self.lower)
+        self.assertIn("revoke all on function public.civil_research_coverage_v1()", self.lower)
+        self.assertIn("grant execute on function public.civil_research_coverage_v1()\nto service_role", self.lower)
+        self.assertNotIn("grant execute on function public.civil_research_coverage_v1()\nto anon", self.lower)
+        self.assertIn("evidence_status in ('extracted', 'indexed')", self.lower)
 
 
 if __name__ == "__main__":

@@ -53,6 +53,9 @@ function loadResearchFeedModule() {
     }
     if (specifier === "./paper-summary-overrides") return { PAPER_SUMMARY_OVERRIDES: {} };
     if (specifier === "./paper-title-overrides") return { PAPER_TITLE_OVERRIDES: {} };
+    if (specifier === "./paper-reader") {
+      return { getPaperReader: async () => { throw new Error("database reader is forbidden in committed fixture tests"); } };
+    }
     if (specifier === "./rights-reviewed-reader-papers") {
       return {
         findRightsReviewedReaderPaper: findFixturePaper,
@@ -67,6 +70,13 @@ function loadResearchFeedModule() {
 }
 
 const feed = loadResearchFeedModule();
+
+test("catalog titles retain legitimate Thailand wording", () => {
+  assert.equal(
+    feed.cleanCatalogTitle("AI Literacy, Integration, and Challenges in EFL Education: Perspectives of Higher Education Teachers in Thailand"),
+    "AI Literacy, Integration, and Challenges in EFL Education: Perspectives of Higher Education Teachers in Thailand",
+  );
+});
 
 test("reader-pack detail resolves DOI aliases without Supabase and preserves source page labels", async () => {
   const paper = fixturePapers.find((candidate) => candidate.source === "thaijo:learn:291543");
@@ -111,4 +121,36 @@ test("sitemap keeps canonical reader-pack records when Supabase is unavailable",
     if (previousKey === undefined) delete process.env.SUPABASE_SERVICE_KEY;
     else process.env.SUPABASE_SERVICE_KEY = previousKey;
   }
+});
+
+test("coverage ledger uses authoritative database counts instead of the three-paper fixture", () => {
+  const base = {
+    total: 1300,
+    totalSections: 100,
+    totalChunks: 100,
+    catalogTotal: 2681,
+    citableTotal: 1300,
+    metadataOnlyTotal: 2578,
+    providers: [{ provider: "tci_thaijo", records: 2681, citable: 103, metadataOnly: 2578 }],
+    collections: [],
+    filters: { hot: 1300, recent: 0, evidence: 0, thai: 2578, tci: 2578, ncce: 1200, ce_project: 100 },
+  };
+  const coverage = feed.buildCoverageLedger(base, [{
+    provider: "tci_thaijo",
+    records: 2681,
+    metadataOnly: 2578,
+    pageCitable: 103,
+    nativeFullPaper: 103,
+    sourceHostedFullPaper: 0,
+    endpointObserved: 3,
+    freshness: "2026-09-02",
+  }]);
+  const thaiJo = coverage.find((row) => row.provider === "tci_thaijo");
+  assert.equal(thaiJo.records, 2681);
+  assert.equal(thaiJo.metadataOnly, 2578);
+  assert.equal(thaiJo.pageCitable, 103);
+  assert.equal(thaiJo.nativeFullPaper, 103);
+  assert.equal(thaiJo.endpointObserved, 3);
+  assert.equal(thaiJo.endpointKnown, null);
+  assert.equal(thaiJo.freshness, "2026-09-02");
 });

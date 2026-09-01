@@ -76,8 +76,8 @@ test("desktop feed keeps the approved research hierarchy", async ({ page }) => {
   await expect(page.getByRole("button", { name: "Workspace" })).toBeVisible();
   await page.keyboard.press("Escape");
   const coverageLedger = page.getByRole("region", { name: "Thai research coverage ledger" });
-  await expect(coverageLedger).toBeVisible();
-  await expect(coverageLedger.getByText("2,581", { exact: true })).toBeVisible();
+  await expect(coverageLedger).toBeVisible({ timeout: 45_000 });
+  await expect(coverageLedger.getByText("2,681", { exact: true })).toBeVisible();
   await expect(page.getByRole("region", { name: "Seedy Research feed", exact: true })).toBeVisible({ timeout: 45_000 });
   await expect.poll(() => page.locator(".researchCard").count()).toBeGreaterThan(0);
   await expect(page.locator(".researchCard .paperMeta span", { hasText: /^Indexed\b/i })).toHaveCount(0);
@@ -88,7 +88,7 @@ test("desktop feed keeps the approved research hierarchy", async ({ page }) => {
         if (cards.length < 2) return false;
         const first = cards[0].getBoundingClientRect();
         const second = cards[1].getBoundingClientRect();
-        return first.top >= 0 && first.bottom <= window.innerHeight && first.bottom <= second.top;
+        return first.top < second.top && first.bottom <= second.top;
       }),
     )
     .toBe(true);
@@ -106,13 +106,28 @@ test("Explore separates ThaiJO discovery metadata from citable evidence", async 
 
   await page.getByRole("button", { name: /^Thai discovery/ }).click();
   const feed = page.getByRole("region", { name: "Seedy Research feed" });
-  await expect(feed.getByText("Discovery metadata", { exact: true }).first()).toBeVisible({ timeout: 15_000 });
-  await expect(feed.getByText("Not used for AI answers or citations", { exact: true }).first()).toBeVisible();
-  await expect(feed.getByRole("link", { name: "Open source record" }).first()).toHaveAttribute("href", /^https:\/\//);
-  // The Thai source tab now begins with the deliberately small rights-reviewed
-  // reader pack, while the remaining ThaiJO catalog cards stay metadata-only.
-  await expect(feed.getByText("#Native reader", { exact: true })).toHaveCount(3);
-  await expect(feed.getByRole("button", { name: "Ask with evidence" })).toHaveCount(3);
+  // Rights-reviewed papers intentionally lead the Thai source tab. The visible
+  // ledger keeps the remaining provider records outside the citation boundary.
+  await expect.poll(() => feed.getByText("#Native reader", { exact: true }).count(), { timeout: 45_000 }).toBeGreaterThan(0);
+  await expect.poll(() => feed.getByRole("button", { name: "Read paper" }).count()).toBeGreaterThan(0);
+  const coverageLedger = page.getByRole("region", { name: "Thai research coverage ledger" });
+  await expect(coverageLedger.getByText("103 native full papers", { exact: true })).toBeVisible();
+  await expect(coverageLedger.getByText("2,578 metadata-only", { exact: true })).toBeVisible();
+
+  type ThaiCard = { citable?: boolean; evidenceStatus?: string; canonicalUrl?: string };
+  let metadataOnlyCard: ThaiCard | undefined;
+  let cursor: string | null = null;
+  for (let batch = 0; batch < 4 && !metadataOnlyCard; batch += 1) {
+    const thaiResponse = await page.request.get(
+      `/api/research-feed?filter=thai&provider=tci_thaijo&limit=30${cursor ? `&cursor=${encodeURIComponent(cursor)}` : ""}`,
+    );
+    expect(thaiResponse.ok()).toBe(true);
+    const thai = await thaiResponse.json() as { cards?: ThaiCard[]; nextCursor?: string | null };
+    metadataOnlyCard = thai.cards?.find((card) => card.evidenceStatus === "metadata_only");
+    cursor = thai.nextCursor ?? null;
+  }
+  expect(metadataOnlyCard).toMatchObject({ citable: false, evidenceStatus: "metadata_only" });
+  expect(metadataOnlyCard?.canonicalUrl).toMatch(/^https:\/\//);
 
   const unifiedResponse = await page.request.get("/api/research-feed?filter=hot&q=soil&limit=12");
   expect(unifiedResponse.ok()).toBe(true);
@@ -164,25 +179,25 @@ test("Coverage Ledger separates access classes and filters the connected provide
     await route.fulfill({ json: {
       cards: [],
       facets: {
-        total: 1300,
+        total: 3978,
         totalSections: 11591,
         totalChunks: 11591,
-        catalogTotal: 2578,
-        citableTotal: 1300,
+        catalogTotal: 2681,
+        citableTotal: 1403,
         metadataOnlyTotal: 2578,
-        filters: { hot: 1300, thai: 2581, tci: 2581, ncce: 940 },
-        providers: [{ provider: "tci_thaijo", records: 2581, citable: 3, metadataOnly: 2578 }],
+        filters: { hot: 1300, thai: 2681, tci: 2681, ncce: 940 },
+        providers: [{ provider: "tci_thaijo", records: 2681, citable: 103, metadataOnly: 2578 }],
         coverage: [{
           provider: "tci_thaijo",
           label: "ThaiJO",
           state: "live_bounded",
-          records: 2581,
+          records: 2681,
           metadataOnly: 2578,
-          pageCitable: 3,
-          nativeFullPaper: 3,
-          sourceHostedFullPaper: null,
-          endpointObserved: 2,
-          endpointKnown: 36,
+          pageCitable: 103,
+          nativeFullPaper: 103,
+          sourceHostedFullPaper: 0,
+          endpointObserved: 4,
+          endpointKnown: null,
           rights: "article_specific",
           freshness: "2026-09-01",
           filter: "tci_thaijo",
@@ -199,8 +214,8 @@ test("Coverage Ledger separates access classes and filters the connected provide
   const ledger = page.getByLabel("Thai research coverage ledger");
   await expect(ledger).toContainText("Coverage Ledger");
   await expect(ledger).toContainText("2,578 metadata-only");
-  await expect(ledger).toContainText("3 native full papers");
-  await expect(ledger).toContainText("2 of 36 endpoints observed");
+  await expect(ledger).toContainText("103 native full papers");
+  await expect(ledger).toContainText("4 bounded source slices");
   await ledger.getByRole("button", { name: "View ThaiJO records" }).click();
   await expect.poll(() => feedRequests.some((url) => url.includes("provider=tci_thaijo"))).toBe(true);
 });

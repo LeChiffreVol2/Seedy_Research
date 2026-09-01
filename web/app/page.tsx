@@ -2765,7 +2765,7 @@ function FilterBar({
                 : activeFilter === "thai" || activeFilter === "tci"
                   ? `${(filterCounts.thai ?? filterCounts.tci ?? 0).toLocaleString("en-US")} discovery records`
                   : totalDocuments
-                    ? `${totalDocuments.toLocaleString("en-US")} cited papers`
+                    ? `${totalDocuments.toLocaleString("en-US")} searchable records`
                     : "Live corpus"}
             </span>
             <small>{activeFilter === "saved" ? syncText : `updated ${syncText}`}</small>
@@ -3342,6 +3342,7 @@ function ResearchCard({
   const translated = Boolean(translation?.showingTranslation);
   const visibleDate = /^Indexed\b/i.test(card.date.trim()) ? "" : card.date.trim();
   const citable = card.citable !== false && card.evidenceStatus !== "metadata_only";
+  const nativeReaderCard = card.pageLabel === "Native full paper";
   const collectionLabel = card.collection === "ncce"
     ? "NCCE"
     : card.collection === "ce_project"
@@ -3381,7 +3382,11 @@ function ResearchCard({
           {visibleDisciplineLabel ? <span>{visibleDisciplineLabel}</span> : null}
           {citable ? <span>{pagesLabel}</span> : null}
           <span className={citable ? "citableMeta" : "discoveryMeta"}>
-            {citable ? `Page-cited evidence · ${card.evidenceCount}` : "Discovery metadata"}
+            {citable
+              ? nativeReaderCard
+                ? "Native full text verified"
+                : `Page-cited evidence · ${card.evidenceCount}`
+              : "Discovery metadata"}
           </span>
           {translated ? <span className="translatedMeta">EN translation</span> : null}
         </div>
@@ -3423,8 +3428,8 @@ function ResearchCard({
               </button>
               <button type="button" className="cardAction" onClick={() => onOpen(card)}>
                 <Layers3 size={17} strokeWidth={2.2} aria-hidden />
-                <span>Evidence</span>
-                <strong>{card.evidenceCount}</strong>
+                <span>{nativeReaderCard ? "Read paper" : "Evidence"}</span>
+                {!nativeReaderCard ? <strong>{card.evidenceCount}</strong> : null}
               </button>
             </>
           ) : card.canonicalUrl ? (

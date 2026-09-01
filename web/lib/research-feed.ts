@@ -6,6 +6,7 @@ import { createClient } from "@supabase/supabase-js";
 
 import { PAPER_SUMMARY_OVERRIDES } from "./paper-summary-overrides";
 import { PAPER_TITLE_OVERRIDES } from "./paper-title-overrides";
+import { getPaperReader } from "./paper-reader";
 import { filterResearchCardsByRelevance } from "./research-relevance.mjs";
 import {
   findRightsReviewedReaderPaper,
@@ -92,6 +93,17 @@ export type ResearchCoverageProvider = {
   rights: "article_specific" | "manifest_reviewed" | "agreement_required" | "not_assessed";
   freshness: string;
   filter: string | null;
+};
+
+export type ResearchCoverageSnapshot = {
+  provider: string;
+  records: number;
+  metadataOnly: number;
+  pageCitable: number;
+  nativeFullPaper: number;
+  sourceHostedFullPaper: number;
+  endpointObserved: number;
+  freshness: string;
 };
 
 export type PaperSection = {
@@ -195,6 +207,7 @@ type CatalogRow = {
   published_at?: string | null;
   language?: string | null;
   discipline?: string | null;
+  license?: string | null;
   rights_status: string;
   access_level: string;
   evidence_status: "metadata_only" | "extracted" | "indexed" | "quarantined" | "removed";
@@ -219,7 +232,7 @@ const SECTION_SELECT = "id, document_id, source, collection, paper_code, page_st
 const CHUNK_SELECT = "id, document_id, section_id, source, collection, paper_code, page_start, page_end, section_index, section_title, chunk_index, content";
 // Public discovery is deliberately metadata-only. Abstracts may be retained for
 // permitted server-side indexing, but are never selected into a public card.
-const CATALOG_SELECT = "id, provider, provider_record_id, collection, source_type, title_local, title_en, authors, keywords, doi, canonical_url, journal_title, publisher, published_at, language, discipline, rights_status, access_level, evidence_status, document_id, source_updated_at, updated_at";
+const CATALOG_SELECT = "id, provider, provider_record_id, collection, source_type, title_local, title_en, authors, keywords, doi, canonical_url, journal_title, publisher, published_at, language, discipline, license, rights_status, access_level, evidence_status, document_id, source_updated_at, updated_at";
 const MAX_QUERY_MATCHES = 500;
 const QUERY_STOP_WORDS = new Set([
   "a", "an", "and", "are", "as", "at", "be", "beyond", "by", "can", "current", "do", "does", "for", "from", "how", "in", "into", "is", "it", "of", "on", "or", "paper", "papers", "research", "should", "studies", "study", "test", "testing", "the", "this", "to", "use", "using", "what", "with",
@@ -421,6 +434,10 @@ function cleanTitleCandidate(value: string | null | undefined, maxChars = 190): 
     .trim();
   const withoutAuthorSuffix = removeAuthorSuffix(cleaned);
   return withoutAuthorSuffix.length > maxChars ? withoutAuthorSuffix.slice(0, maxChars).trim() : withoutAuthorSuffix;
+}
+
+export function cleanCatalogTitle(value: string | null | undefined): string {
+  return cleanTitleCandidate(value, 320) || cleanText(value, 320);
 }
 
 function removeAuthorSuffix(value: string): string {
@@ -812,7 +829,7 @@ function stringArray(value: unknown, limit = 8): string[] {
 }
 
 function cardFromCatalog(row: CatalogRow): ResearchFeedCard {
-  const title = cleanText(row.title_local || row.title_en || row.provider_record_id, 320);
+  const title = cleanCatalogTitle(row.title_local || row.title_en || row.provider_record_id);
   const authors = stringArray(row.authors);
   const journalTitle = cleanText((row.journal_title || "").split(/\s*[;|]\s*/)[0] || row.publisher || "", 120);
   const keywordTags = stringArray(row.keywords, 12)
@@ -820,7 +837,12 @@ function cardFromCatalog(row: CatalogRow): ResearchFeedCard {
     .map((value) => cleanText(value, 42))
     .filter(Boolean)
     .slice(0, 4);
+  const isNativeCitable = row.evidence_status === "extracted"
+    && row.rights_status === "open_license_verified"
+    && row.access_level === "full_text_licensed";
+  const isMedicalResearch = row.discipline === "medical_and_health_sciences";
   const tags = [
+    ...(isNativeCitable ? ["Native reader", "CC BY 4.0"] : []),
     disciplineLabel(row.discipline),
     providerLabel(row.provider),
     ...keywordTags,
@@ -828,7 +850,9 @@ function cardFromCatalog(row: CatalogRow): ResearchFeedCard {
   const summary = [
     journalTitle,
     authors.length ? `By ${authors.slice(0, 3).join(", ")}` : "",
-    "Discovery metadata. Open the source record to verify full-text access and reuse terms.",
+    isNativeCitable
+      ? `Rights-verified full paper. Open the native reader to inspect and cite exact pages.${isMedicalResearch ? " Research evidence only; biomedical content is not clinical advice." : ""}`
+      : "Discovery metadata. Open the source record to verify full-text access and reuse terms.",
   ].filter(Boolean).join(" · ");
   const previewDoc: DocumentRow = {
     id: row.id,
@@ -851,23 +875,25 @@ function cardFromCatalog(row: CatalogRow): ResearchFeedCard {
     sourceLabel: [providerLabel(row.provider), journalTitle, disciplineLabel(row.discipline)].filter(Boolean).join(" · "),
     summary,
     tags,
-    filters: ["thai", "tci"],
-    evidenceCount: 0,
+    filters: isNativeCitable ? ["hot", "evidence", "thai", "tci"] : ["thai", "tci"],
+    evidenceCount: isNativeCitable ? 1 : 0,
     pages: 0,
-    pageLabel: "Metadata only",
+    pageLabel: isNativeCitable ? "Native full paper" : "Metadata only",
     preview: derivePreview(previewDoc, title),
     prompt: "",
     indexedAt: row.updated_at,
     provider: row.provider,
     evidenceStatus: row.evidence_status,
-    citable: false,
+    citable: isNativeCitable,
     canonicalUrl: row.canonical_url,
     journalTitle,
     authors,
     doi: row.doi,
     rightsStatus: row.rights_status,
     accessLevel: row.access_level,
-    discoveryLayer: "thai_discovery",
+    licenseExpression: row.license,
+    licenseUrl: row.license === "CC-BY-4.0" ? "https://creativecommons.org/licenses/by/4.0/" : null,
+    discoveryLayer: isNativeCitable ? "evidence" : "thai_discovery",
   };
 }
 
@@ -942,7 +968,36 @@ function rightsReviewedReaderCards(filter: FeedFilter, collection: CollectionFil
     });
 }
 
-function addReaderPackFacets(facets: ResearchFeedResponse["facets"]): ResearchFeedResponse["facets"] {
+function addReaderPackFacets(
+  facets: ResearchFeedResponse["facets"],
+  snapshots: ResearchCoverageSnapshot[] = [],
+): ResearchFeedResponse["facets"] {
+  if (snapshots.length) {
+    const snapshotMap = new Map(snapshots.map((row) => [row.provider, row]));
+    const providerCounts = new Map(facets.providers.map((item) => [item.provider, { ...item }]));
+    for (const snapshot of snapshots) {
+      const current = providerCounts.get(snapshot.provider);
+      providerCounts.set(snapshot.provider, {
+        provider: snapshot.provider,
+        records: snapshot.records,
+        citable: snapshot.provider === "tci_thaijo" ? snapshot.pageCitable : current?.citable ?? 0,
+        metadataOnly: snapshot.metadataOnly,
+      });
+    }
+    const providers = [...providerCounts.values()];
+    const catalogTotal = providers.reduce((sum, item) => sum + item.records, 0);
+    const catalogCitable = providers.reduce((sum, item) => sum + item.citable, 0);
+    const metadataOnlyTotal = providers.reduce((sum, item) => sum + item.metadataOnly, 0);
+    const authoritative = {
+      ...facets,
+      total: catalogTotal,
+      catalogTotal,
+      citableTotal: catalogCitable,
+      metadataOnlyTotal,
+      providers,
+    };
+    return { ...authoritative, coverage: buildCoverageLedger(authoritative, [...snapshotMap.values()]) };
+  }
   const cards = listRightsReviewedReaderPapers().map(cardFromRightsReviewedReaderPaper);
   const providerCounts = new Map(facets.providers.map((item) => [item.provider, { ...item }]));
   for (const card of cards) {
@@ -969,55 +1024,62 @@ function addReaderPackFacets(facets: ResearchFeedResponse["facets"]): ResearchFe
   };
 }
 
-function buildCoverageLedger(facets: Omit<ResearchFeedResponse["facets"], "coverage"> & { coverage?: ResearchCoverageProvider[] }): ResearchCoverageProvider[] {
+export function buildCoverageLedger(
+  facets: Omit<ResearchFeedResponse["facets"], "coverage"> & { coverage?: ResearchCoverageProvider[] },
+  snapshots: ResearchCoverageSnapshot[] = [],
+): ResearchCoverageProvider[] {
   const providers = new Map(facets.providers.map((item) => [item.provider, item]));
+  const snapshotMap = new Map(snapshots.map((row) => [row.provider, row]));
   const thaiJo = providers.get("tci_thaijo");
-  const thaiJoMetadataOnly = thaiJo?.metadataOnly ?? 0;
-  const thaiJoPageCitable = Math.max(thaiJo?.citable ?? 0, 3);
+  const snapshot = snapshotMap.get("tci_thaijo");
+  const ncceSnapshot = snapshotMap.get("ncce");
+  const studentSnapshot = snapshotMap.get("student_transport_projects");
+  const thaiJoMetadataOnly = snapshot?.metadataOnly ?? thaiJo?.metadataOnly ?? 0;
+  const thaiJoPageCitable = snapshot?.pageCitable ?? thaiJo?.citable ?? 0;
   const rows: ResearchCoverageProvider[] = [
     {
       provider: "tci_thaijo",
       label: "ThaiJO",
       state: "live_bounded",
-      records: thaiJoMetadataOnly + thaiJoPageCitable,
+      records: snapshot?.records ?? thaiJo?.records ?? thaiJoMetadataOnly + thaiJoPageCitable,
       metadataOnly: thaiJoMetadataOnly,
       pageCitable: thaiJoPageCitable,
-      nativeFullPaper: 3,
-      sourceHostedFullPaper: null,
-      endpointObserved: 2,
-      endpointKnown: 36,
+      nativeFullPaper: snapshot?.nativeFullPaper ?? 0,
+      sourceHostedFullPaper: snapshot?.sourceHostedFullPaper ?? null,
+      endpointObserved: snapshot?.endpointObserved ?? null,
+      endpointKnown: null,
       rights: "article_specific",
-      freshness: "2026-09-01",
+      freshness: snapshot?.freshness ?? "",
       filter: "tci_thaijo",
     },
     {
       provider: "ncce",
       label: "NCCE",
       state: "live_bounded",
-      records: facets.filters.ncce,
+      records: ncceSnapshot?.records ?? facets.filters.ncce,
       metadataOnly: 0,
       pageCitable: facets.filters.ncce,
       nativeFullPaper: 0,
-      sourceHostedFullPaper: null,
-      endpointObserved: 4,
+      sourceHostedFullPaper: ncceSnapshot?.sourceHostedFullPaper ?? null,
+      endpointObserved: ncceSnapshot?.endpointObserved ?? null,
       endpointKnown: null,
       rights: "manifest_reviewed",
-      freshness: "2026-09-01",
+      freshness: ncceSnapshot?.freshness ?? "",
       filter: "ncce",
     },
     {
       provider: "student_transport_projects",
       label: "Chula transport collection",
       state: "pilot_internal",
-      records: facets.filters.ce_project,
+      records: studentSnapshot?.records ?? facets.filters.ce_project,
       metadataOnly: 0,
       pageCitable: facets.filters.ce_project,
       nativeFullPaper: 0,
-      sourceHostedFullPaper: null,
-      endpointObserved: 1,
-      endpointKnown: 1,
+      sourceHostedFullPaper: studentSnapshot?.sourceHostedFullPaper ?? null,
+      endpointObserved: studentSnapshot?.endpointObserved ?? null,
+      endpointKnown: null,
       rights: "manifest_reviewed",
-      freshness: "2026-09-01",
+      freshness: studentSnapshot?.freshness ?? "",
       filter: "ce_project",
     },
   ];
@@ -1040,7 +1102,7 @@ function buildCoverageLedger(facets: Omit<ResearchFeedResponse["facets"], "cover
       endpointObserved: 0,
       endpointKnown: provider === "tci_citation" ? null : null,
       rights: provider === "tnrr" || provider === "thailis_tdc" || provider === "tci_citation" ? "agreement_required" : "not_assessed",
-      freshness: "2026-09-01",
+      freshness: "",
       filter: null,
     });
   }
@@ -1145,6 +1207,17 @@ type EvidenceFacetRow = {
   evidence: number | string;
   ncce: number | string;
   ce_project: number | string;
+};
+
+type CoverageSnapshotRow = {
+  provider: string;
+  records: number | string;
+  metadata_only: number | string;
+  page_citable: number | string;
+  native_full_paper: number | string;
+  source_hosted_full_paper: number | string;
+  endpoint_observed: number | string;
+  freshness: string;
 };
 
 async function fetchEvidenceFacets(): Promise<EvidenceFacetRow> {
@@ -1254,6 +1327,23 @@ async function fetchCatalogFacets(): Promise<CatalogFacetRow[]> {
     summary.set(row.provider, current);
   }
   return [...summary.entries()].map(([provider, counts]) => ({ provider, ...counts }));
+}
+
+async function fetchCoverageSnapshots(): Promise<ResearchCoverageSnapshot[]> {
+  const supabase = getSupabaseAdmin() as any;
+  const { data, error } = await supabase.rpc("civil_research_coverage_v1");
+  if (error && rpcUnavailable(error, "civil_research_coverage_v1")) return [];
+  if (error) throw new Error(`Failed to read authoritative research coverage: ${error.message}`);
+  return ((data ?? []) as CoverageSnapshotRow[]).map((row) => ({
+    provider: row.provider,
+    records: Number(row.records ?? 0),
+    metadataOnly: Number(row.metadata_only ?? 0),
+    pageCitable: Number(row.page_citable ?? 0),
+    nativeFullPaper: Number(row.native_full_paper ?? 0),
+    sourceHostedFullPaper: Number(row.source_hosted_full_paper ?? 0),
+    endpointObserved: Number(row.endpoint_observed ?? 0),
+    freshness: row.freshness,
+  }));
 }
 
 async function fetchDocumentPreviews(
@@ -1489,9 +1579,11 @@ function facetsFromCounts(evidence: EvidenceFacetRow, catalogFacets: CatalogFace
     providerCounts.set(row.provider, { records, citable, metadataOnly });
     catalogTotal += records;
     metadataOnlyTotal += metadataOnly;
-    filters.thai += metadataOnly;
-    // Compatibility alias for saved URLs and older clients.
-    if (row.provider === "tci_thaijo") filters.tci += metadataOnly;
+    if (row.provider === "tci_thaijo") {
+      filters.thai += records;
+      // Compatibility alias for saved URLs and older clients.
+      filters.tci += records;
+    }
   }
 
   const base = {
@@ -1537,18 +1629,41 @@ export async function listResearchFeed(params: ListFeedParams): Promise<Research
 
   const facets = params.includeFacets === false
     ? emptyFacets()
-    : await Promise.all([fetchEvidenceFacets(), fetchCatalogFacets()])
-      .then(([evidenceFacets, catalogFacets]) => addReaderPackFacets(facetsFromCounts(evidenceFacets, catalogFacets)));
+    : await Promise.all([fetchEvidenceFacets(), fetchCatalogFacets(), fetchCoverageSnapshots()])
+      .then(([evidenceFacets, catalogFacets, snapshots]) => addReaderPackFacets(
+        facetsFromCounts(evidenceFacets, catalogFacets),
+        snapshots,
+      ));
+  const hasAuthoritativeNative = facets.coverage.some((row) => row.provider === "tci_thaijo" && row.nativeFullPaper > 0);
   const readerCards = rightsReviewedReaderCards(filter, collection, q)
     .filter((card) => !provider || card.provider === provider);
   if (filter === "thai" || filter === "tci") {
+    if (hasAuthoritativeNative) {
+      const window = Math.min(5000, offset + limit);
+      const [nativeCatalog, metadataCatalog] = await Promise.all([
+        searchCatalog({ q, provider, evidenceStatus: "extracted", limit: window, offset: 0 }),
+        searchCatalog({ q, provider, evidenceStatus: "metadata_only", limit: window, offset: 0 }),
+      ]);
+      const combined = [
+        ...nativeCatalog.rows.map(cardFromCatalog),
+        ...metadataCatalog.rows.map(cardFromCatalog),
+      ];
+      const cards = combined.slice(offset, offset + limit);
+      const nextOffset = offset + cards.length;
+      return {
+        cards,
+        facets,
+        nextCursor: nextOffset < nativeCatalog.total + metadataCatalog.total ? encodeCursor(nextOffset) : null,
+        generatedAt: new Date().toISOString(),
+      };
+    }
     const readerSlice = readerCards.slice(offset, offset + limit);
     const catalogOffset = Math.max(0, offset - readerCards.length);
     const remaining = Math.max(0, limit - readerSlice.length);
     const catalogPage = await searchCatalog({
       q,
       provider,
-      evidenceStatus: "metadata_only",
+      evidenceStatus: undefined,
       limit: Math.max(1, remaining),
       offset: catalogOffset,
     });
@@ -1598,8 +1713,14 @@ export async function listResearchFeed(params: ListFeedParams): Promise<Research
   const sorted = [...docs].sort((a, b) =>
     (relevanceScores.get(b.id) ?? 0) - (relevanceScores.get(a.id) ?? 0)
     || (fallbackOrder.get(a.id) ?? 0) - (fallbackOrder.get(b.id) ?? 0));
-  const catalogMatches = !collection && filter === "hot"
-    ? (await searchCatalog({ q, provider, evidenceStatus: "metadata_only", limit: Math.min(30, limit * 2), offset: 0 })).rows
+  const catalogMatches = !collection && (filter === "hot" || filter === "evidence")
+    ? (await searchCatalog({
+      q,
+      provider,
+      evidenceStatus: filter === "evidence" ? "extracted" : undefined,
+      limit: Math.min(30, limit * 2),
+      offset: 0,
+    })).rows
     : [];
   const combined: Array<
     { kind: "reader"; card: ResearchFeedCard }
@@ -1804,7 +1925,88 @@ export async function getPaperDetail(
   const readerPaper = findRightsReviewedReaderPaper(decodedSource);
   if (readerPaper) return paperDetailFromRightsReviewedReaderPaper(readerPaper, includeRelated, evidenceTarget);
   const doc = await findDocumentBySource(decodedSource);
-  if (!doc) return null;
+  if (!doc) {
+    const supabase = getSupabaseAdmin() as any;
+    const attempts: Array<["id" | "provider_record_id" | "canonical_url", string]> = [
+      ["id", decodedSource],
+      ["provider_record_id", decodedSource],
+    ];
+    if (/^https:\/\//i.test(decodedSource)) attempts.push(["canonical_url", decodedSource]);
+    let catalog: CatalogRow | null = null;
+    for (const [field, value] of attempts) {
+      const result = await supabase
+        .from("civil_source_catalog")
+        .select(CATALOG_SELECT)
+        .eq(field, value)
+        .neq("evidence_status", "removed")
+        .limit(1);
+      if (result.error) throw new Error(`Failed to resolve catalog paper detail: ${result.error.message}`);
+      if (result.data?.[0]) {
+        catalog = result.data[0] as CatalogRow;
+        break;
+      }
+    }
+    if (!catalog) return null;
+    const reader = await getPaperReader({
+      source: decodedSource,
+      provider: catalog.provider,
+      page: 1,
+      limit: 10,
+    });
+    const document = cardFromCatalog(catalog);
+    const nativePages = reader?.access.mode === "native_verified" ? reader.pages : [];
+    const totalPages = reader?.pagination.totalPages ?? reader?.asset?.pageCount ?? nativePages.length;
+    if (reader?.access.mode === "native_verified") {
+      document.pages = totalPages ?? nativePages.length;
+      document.evidenceCount = totalPages ?? nativePages.length;
+      document.pageLabel = `${totalPages ?? nativePages.length} verified pages`;
+      document.pageStart = nativePages[0]?.pageNumber ?? 1;
+      document.pageEnd = totalPages ?? nativePages.at(-1)?.pageNumber ?? null;
+    }
+    const pageNumber = (label: string, fallback: number) => {
+      const parsed = Number.parseInt(label, 10);
+      return Number.isSafeInteger(parsed) && parsed >= 0 ? parsed : fallback;
+    };
+    const sections: PaperSection[] = nativePages.map((page) => ({
+      id: `section:${page.id}`,
+      sectionIndex: page.pageNumber - 1,
+      title: page.sectionTitle || `Page ${page.pageLabel}`,
+      pageStart: pageNumber(page.pageLabel, page.pageNumber),
+      pageEnd: pageNumber(page.pageLabel, page.pageNumber),
+      snippet: cleanText(page.text, 280),
+    }));
+    const evidence: PaperEvidence[] = nativePages.map((page) => ({
+      id: page.id,
+      sectionIndex: page.pageNumber - 1,
+      chunkIndex: 0,
+      sectionTitle: page.sectionTitle || `Page ${page.pageLabel}`,
+      pageStart: pageNumber(page.pageLabel, page.pageNumber),
+      pageEnd: pageNumber(page.pageLabel, page.pageNumber),
+      snippet: cleanText(page.text, 360),
+      readerPageNumber: page.pageNumber,
+      readerAnchor: page.anchor,
+    }));
+    const targetIndex = evidence.findIndex((item) =>
+      (evidenceTarget?.id && item.id === evidenceTarget.id)
+      || (evidenceTarget?.pageStart != null && item.pageStart === evidenceTarget.pageStart)
+      || (
+        evidenceTarget?.sectionIndex != null
+        && item.sectionIndex === evidenceTarget.sectionIndex
+        && (evidenceTarget.chunkIndex == null || item.chunkIndex === evidenceTarget.chunkIndex)
+      ));
+    if (targetIndex > 0) evidence.unshift(...evidence.splice(targetIndex, 1));
+    return {
+      document,
+      sections,
+      evidence,
+      counts: {
+        sections: reader?.access.mode === "native_verified" ? totalPages ?? sections.length : 0,
+        chunks: reader?.access.mode === "native_verified" ? totalPages ?? evidence.length : 0,
+      },
+      related: [],
+      generatedAt: new Date().toISOString(),
+    };
+  }
 
   const supabase = getSupabaseAdmin() as any;
   const emptyTarget = Promise.resolve({ data: [], error: null });

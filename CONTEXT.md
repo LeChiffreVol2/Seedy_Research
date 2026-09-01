@@ -72,6 +72,10 @@ _Avoid_: replacing the Seedy Research system of record, treating OpenRAG citatio
 
 ## Evidence boundaries
 
+**TCI-Ranked Thai Journal Corpus**:
+The current TCI Group 1 and Group 2 journal-paper cohort that anchors Seedy Research's Thai-journal discovery scope, with Group 1 available as the default high-assurance filter.
+_Avoid_: Whole Thai Research, all Thai research, a full-text rights grant
+
 **Page-Linked Evidence**:
 Source content tied to a stable page anchor that can support a claim after a person reopens and reviews it.
 _Avoid_: search result, abstract-only match
@@ -103,6 +107,15 @@ _Avoid_: searchable records, metadata coverage
 **Native Full-Paper Coverage**:
 The number and proportion of discovered works whose specific assets are authorized, integrity-checked, page-mapped, and readable inside Seedy Research.
 _Avoid_: publicly reachable PDF count, metadata records with outbound full-text links
+
+**Native Release Cohort**:
+A fixed, denominator-complete set of paper versions promoted together only when every included asset passes rights, integrity, page-mapping, and reader gates.
+_Avoid_: a cherry-picked PDF sample, a raw download count, a national-coverage claim
+
+The current production cohort contains 100 BSCM Original/Review Articles from
+ten fixed issues; together with the three LEARN fixtures, production has 103
+native papers and 1,105 verified pages. This is a release proof, not a national
+coverage denominator.
 
 **Public Native Corpus**:
 The set of rights-cleared full-paper assets that Seedy Research may serve natively to the users authorized by each asset policy and count in public native coverage.

@@ -81,9 +81,10 @@ matrix is `native_verified`, `source_hosted`, `restricted`, `metadata_only`, and
 
 These suites verify the implementation contract; by themselves they are not
 evidence of a database apply, deployment, or national Thai research coverage.
-The August 31 production promotion separately recorded migration
-`20260831120000`, 3 rights-verified assets, 68 checksum-valid pages, service-only
-table grants, and READY Vercel deployments. For later releases, rerun the focused
+The September 2 production promotion records migrations `20260831120000` and
+`20260902010000`, 103 rights-verified assets, 1,105 checksum-valid pages, zero
+page-count/hash mismatches, service-only table grants, and authoritative
+coverage/facet RPCs. For later releases, rerun the focused
 suites against the frozen candidate and manually
 confirm that `inspect_paper_evidence` reports the lawful access state and verified reader anchor without
 including full page text and that the page still registers exactly six WebMCP

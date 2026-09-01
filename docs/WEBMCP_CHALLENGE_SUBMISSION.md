@@ -62,9 +62,10 @@ Judge expansion contract: [Thai Research Full-Text System](THAI_RESEARCH_FULL_TE
 
 The winning product direction includes a rights-aware full-paper reader and a
 measured national provider graph. Current production now provides the native
-reader for an explicitly bounded proof: exactly 3 rights-reviewed ThaiJO-hosted
-LEARN Journal papers, 3 verified assets, and 68 checksum-bound pages under the
-journal's recorded CC BY 4.0 statement. Every other paper continues through the
+reader for an explicitly bounded proof: exactly 103 rights-reviewed ThaiJO-hosted
+papers, 103 verified assets, and 1,105 checksum-bound pages. The corpus combines
+three LEARN fixtures with 100 Original/Review Articles from the TCI Group 1 BSCM
+journal under exact item-level CC BY 4.0 evidence. Every other paper continues through the
 fail-closed access resolver and is never presented as native full text without an
 asset-level rights decision.
 
@@ -76,8 +77,9 @@ The repository and production release now contain:
 - a bounded, fixture-tested TNRR `ResearchOutput` metadata connector that never
   downloads full reports or stores abstracts;
 - the applied additive canonical work/asset/page/rights/annotation migration;
-- a deterministic, rights-reviewed CC BY 4.0 reader pack of exactly 3 ThaiJO
-  papers and 68 pages, with checksum and page-count verification and no committed
+- a deterministic three-paper Git fixture plus a DB-first, reproducible 100-paper
+  BSCM cohort, for 103 ThaiJO papers and 1,105 pages in production, with
+  item-level rights, checksum, page-count, per-page integrity, and no committed
   PDF binaries;
 - a native reader with outline, page search/navigation, stable anchors,
   highlights, browser-local notes, citation/source export, and fail-closed
@@ -149,7 +151,7 @@ Important Thai research is fragmented across conference proceedings, university 
 
 ### What Seedy Research does
 
-Seedy Research is built toward whole Thai research and begins with a production civil-engineering proof vertical plus a three-paper rights-reviewed ThaiJO reader: 1,300 page-citable records and 11,591 page-linked sections/pages. A separate 2,578-record ThaiJO-hosted catalog brings Explore to 3,878 searchable records without silently treating metadata as evidence. The latest bounded metadata expansion added 198 net-new discovery records with zero full-text downloads or evidence links. This is measurable proof of the ingestion and trust architecture, not a claim of national completeness. OpenAlex adds bounded global research metadata while preserving the same boundary and degrading visibly when unavailable.
+Seedy Research is built toward whole Thai research and begins with a production civil-engineering proof vertical plus a 103-paper rights-reviewed ThaiJO reader: 1,400 page-citable records and 12,628 page-linked sections/pages. The 2,578-record metadata-only ThaiJO slice brings Explore to 3,978 searchable records without silently treating metadata as evidence. The 100-paper BSCM cohort is a fixed TCI Group 1 rights-and-integrity proof, not a claim of national completeness. OpenAlex adds bounded global research metadata while preserving the same boundary and degrading visibly when unavailable.
 
 The Challenge hero is the Passport Trust Gate. The agent discovers a rights-reviewed ThaiJO paper, opens one exact page, and drafts a Research Passport from only that visible evidence. The page keeps global OpenAlex results non-citable, labels the validation gap unproven, and blocks export. The person—not the agent—must reopen the selected page and acknowledge review before the real Markdown artifact becomes available. The broader Research Path, verified connection mapping, and Next-Study Protocol remain available after the timed proof; they do not dilute its consequential human checkpoint. Reopening a page verifies access to the claimed provenance; it does not establish scientific correctness, novelty, transferability, or a comprehensive literature gap.
 

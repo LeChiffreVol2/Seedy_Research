@@ -1,0 +1,32 @@
+{
+  "version": "seedy-native-cohort-plan-v1",
+  "cohortId": "bscm-tci1-original-review-100",
+  "provider": "tci_thaijo",
+  "journalSlug": "CMMJ-MedCMJ",
+  "journalTitle": "Biomedical Sciences and Clinical Medicine",
+  "publisher": "Faculty of Medicine, Chiang Mai University",
+  "discipline": "medical_and_health_sciences",
+  "tciTier": "group_1",
+  "tciEvidenceUrl": "https://www.tci-thaijo.org/journals/CMMJ-MedCMJ",
+  "licenseExpression": "CC-BY-4.0",
+  "licenseUrl": "https://creativecommons.org/licenses/by/4.0/",
+  "rightsEvidenceUrl": "https://he01.tci-thaijo.org/index.php/CMMJ-MedCMJ/about",
+  "allowedSections": [
+    "Original Article",
+    "Review Article"
+  ],
+  "expectedEligiblePapers": 100,
+  "medicalResearchOnly": true,
+  "issues": [
+    { "issueId": "18716", "label": "65(3) 2026", "url": "https://he01.tci-thaijo.org/index.php/CMMJ-MedCMJ/issue/view/18716", "expectedEligible": 13 },
+    { "issueId": "18634", "label": "65(2) 2026", "url": "https://he01.tci-thaijo.org/index.php/CMMJ-MedCMJ/issue/view/18634", "expectedEligible": 14 },
+    { "issueId": "18547", "label": "65(1) 2026", "url": "https://he01.tci-thaijo.org/index.php/CMMJ-MedCMJ/issue/view/18547", "expectedEligible": 14 },
+    { "issueId": "18493", "label": "64(4) 2025", "url": "https://he01.tci-thaijo.org/index.php/CMMJ-MedCMJ/issue/view/18493", "expectedEligible": 8 },
+    { "issueId": "18407", "label": "64(3) 2025", "url": "https://he01.tci-thaijo.org/index.php/CMMJ-MedCMJ/issue/view/18407", "expectedEligible": 9 },
+    { "issueId": "18337", "label": "64(2) 2025", "url": "https://he01.tci-thaijo.org/index.php/CMMJ-MedCMJ/issue/view/18337", "expectedEligible": 8 },
+    { "issueId": "18212", "label": "64(1) 2025", "url": "https://he01.tci-thaijo.org/index.php/CMMJ-MedCMJ/issue/view/18212", "expectedEligible": 9 },
+    { "issueId": "18161", "label": "63(4) 2024", "url": "https://he01.tci-thaijo.org/index.php/CMMJ-MedCMJ/issue/view/18161", "expectedEligible": 8 },
+    { "issueId": "18069", "label": "63(3) 2024", "url": "https://he01.tci-thaijo.org/index.php/CMMJ-MedCMJ/issue/view/18069", "expectedEligible": 9 },
+    { "issueId": "17980", "label": "63(2) 2024", "url": "https://he01.tci-thaijo.org/index.php/CMMJ-MedCMJ/issue/view/17980", "expectedEligible": 8 }
+  ]
+}
