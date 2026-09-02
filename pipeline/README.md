@@ -222,14 +222,36 @@ python3.10 pipeline/ingest_reader_pack.py --apply
 ```bash
 .venv310/bin/python pipeline/ingest_reader_pack.py \
   --pack-dir /path/to/rights-reviewed-pack \
-  --batch-size 100 \
-  --page-batch-size 100
+  --start-paper 0 \
+  --max-papers 250 \
+  --batch-size 200 \
+  --page-batch-size 200
 ```
 
-ที่ 1,000 papers / 11,000 pages / 10 providers แผน conservative ใช้ไม่เกิน
-171 PostgREST requests เทียบกับอย่างน้อย 6,002 requests ในเส้นทางทีละ paper
+รัน window เดิมซ้ำได้เพราะ identity และ write เป็น idempotent upsert; ใช้ค่า
+`window.nextStartPaper` เป็น offset ของรอบถัดไป. ที่ 5,000 papers / 53,640
+pages / 10 providers แผน conservative ใช้ไม่เกิน 405 PostgREST requests
+เทียบกับอย่างน้อย 30,002 requests ในเส้นทางทีละ paper
 เดิม. ตัวเลขนี้เป็น ingest request budget ไม่ใช่สิทธิ์ใช้งานหรือหลักฐานว่า
-production มี 1,000 papers แล้ว.
+production มี 5,000 papers แล้ว.
+
+ตรวจ acquisition portfolio และสร้าง cohort ได้ดังนี้:
+
+```bash
+python3.10 pipeline/native_portfolio.py \
+  --portfolio pipeline/cohorts/native_5000_portfolio.json --validate
+
+python3.10 pipeline/build_native_reader_cohort.py \
+  --cohort /path/to/fixed-cohort.json --build \
+  --asset-dir /path/to/publisher-approved-pdfs \
+  --delivery-manifest /path/to/checksum-bound-delivery.json
+```
+
+builder v2 รองรับ official ThaiJO hosts, TCI Group 1/2, สาขาที่ไม่ใช่แพทย์,
+และ section allowlist ของแต่ละวารสาร แต่ไม่ download PDF อัตโนมัติ. ไฟล์ต้อง
+มาจาก signed publisher manifest, institutional deposit หรือ manual approved
+delivery ที่มี evidence ID, takedown contact และ SHA-256 ครบทุก article;
+metadata discovery ใช้ official OAI-PMH route ตาม rate limit.
 
 ตรวจ reader contract และ browser flow จาก repository root:
 

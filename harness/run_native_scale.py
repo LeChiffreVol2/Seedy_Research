@@ -13,6 +13,31 @@ from urllib.parse import quote
 from common import Check, http_json, load_env, make_report, print_report, write_report
 
 
+def choose_cursor_offset(*, target_native_papers: int, catalog_total: int, page_size: int) -> int:
+    """Choose a deep full page, reaching the target paper once data exists."""
+    if target_native_papers < 1 or catalog_total < 0 or page_size < 1:
+        raise ValueError("Scale cursor inputs must be positive, with a non-negative catalog total.")
+    target_offset = max(0, target_native_papers - 10)
+    deepest_full_page = max(0, catalog_total - page_size)
+    return min(target_offset, deepest_full_page)
+
+
+def capacity_projection(
+    *,
+    target_native_papers: int,
+    observed_native_papers: int,
+    observed_pages: int,
+) -> dict[str, int]:
+    if target_native_papers < 1 or observed_native_papers < 1 or observed_pages < 1:
+        raise ValueError("Capacity projection inputs must be positive.")
+    return {
+        "targetNativePapers": target_native_papers,
+        "projectedPagesAtCurrentMean": round(
+            target_native_papers * observed_pages / observed_native_papers
+        ),
+    }
+
+
 def percentile(values: list[float], percentile_value: float) -> float:
     if not values:
         return 0.0
@@ -73,17 +98,20 @@ def exercise_endpoint(
 
 def main() -> None:
     parser = argparse.ArgumentParser(
-        description="Bounded production smoke for a 1,000-paper native-reader catalog."
+        description="Bounded production smoke for a 5,000-paper native-reader catalog."
     )
     parser.add_argument("--web-url", default="", help="Web origin; defaults to WEB_URL or production.")
     parser.add_argument("--requests", type=int, default=24, help="Requests per endpoint (1-100).")
     parser.add_argument("--concurrency", type=int, default=6, help="Concurrent workers (1-12).")
-    parser.add_argument("--cursor-offset", type=int, default=990, help="Deep catalog offset to exercise.")
+    parser.add_argument("--target-native-papers", type=int, default=5_000, help="Native-paper capacity target.")
+    parser.add_argument("--cursor-offset", type=int, help="Override the deepest full catalog page exercised.")
     parser.add_argument("--strict", action="store_true", help="Exit non-zero when a scale check fails.")
     args = parser.parse_args()
     if not 1 <= args.requests <= 100 or not 1 <= args.concurrency <= 12:
         parser.error("--requests must be 1-100 and --concurrency must be 1-12")
-    if not 0 <= args.cursor_offset <= 10_000:
+    if not 1 <= args.target_native_papers <= 10_010:
+        parser.error("--target-native-papers must be 1-10010")
+    if args.cursor_offset is not None and not 0 <= args.cursor_offset <= 10_000:
         parser.error("--cursor-offset must be 0-10000")
 
     env = load_env()
@@ -91,6 +119,21 @@ def main() -> None:
     bootstrap_url = f"{web_url}/api/research-feed?filter=thai&provider=tci_thaijo&limit=30"
     status, bootstrap, bootstrap_latency = load_once(bootstrap_url)
     cards = bootstrap.get("cards", []) if isinstance(bootstrap, dict) else []
+    facets = bootstrap.get("facets", {}) if isinstance(bootstrap, dict) else {}
+    provider_facets = facets.get("providers", []) if isinstance(facets, dict) else []
+    provider_total = next(
+        (
+            int(row.get("records", 0))
+            for row in provider_facets
+            if isinstance(row, dict) and row.get("provider") == "tci_thaijo"
+        ),
+        int(facets.get("catalogTotal", 0)) if isinstance(facets, dict) else 0,
+    )
+    cursor_offset = args.cursor_offset if args.cursor_offset is not None else choose_cursor_offset(
+        target_native_papers=args.target_native_papers,
+        catalog_total=provider_total,
+        page_size=30,
+    )
     native = next(
         (
             card for card in cards
@@ -113,7 +156,7 @@ def main() -> None:
 
     if bootstrap_ok:
         feed_url = (
-            f"{bootstrap_url}&cursor={quote(encoded_cursor(args.cursor_offset), safe='')}"
+            f"{bootstrap_url}&cursor={quote(encoded_cursor(cursor_offset), safe='')}"
         )
         reader_url = (
             f"{web_url}/api/papers/{quote(str(native['source']), safe='')}/reader?page=1&limit=10"
@@ -143,13 +186,22 @@ def main() -> None:
             ),
         ))
 
+    projection = capacity_projection(
+        target_native_papers=args.target_native_papers,
+        observed_native_papers=103,
+        observed_pages=1_105,
+    )
     report = make_report(
         "native_scale",
         checks,
         {
-            "targetNativePapers": 1_000,
-            "projectedPagesAtCurrentMean": 10_728,
-            "cursorOffset": args.cursor_offset,
+            **projection,
+            "observedNativePapers": 103,
+            "observedPages": 1_105,
+            "targetCursorOffset": max(0, args.target_native_papers - 10),
+            "exercisedCursorOffset": cursor_offset,
+            "targetCursorExercised": cursor_offset >= max(0, args.target_native_papers - 10),
+            "catalogRecordsObserved": provider_total,
             "requestsPerEndpoint": args.requests,
             "concurrency": args.concurrency,
         },

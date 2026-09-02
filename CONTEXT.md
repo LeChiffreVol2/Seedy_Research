@@ -117,6 +117,13 @@ ten fixed issues; together with the three LEARN fixtures, production has 103
 native papers and 1,105 verified pages. This is a release proof, not a national
 coverage denominator.
 
+**5,000-Paper Native Capacity Envelope**:
+The tested storage, bounded-read, and resumable-ingest shape for a future 5,000
+rights-verified native-paper corpus. It projects about 53,641 page rows and
+requires approved publisher/institution delivery for every asset cohort.
+_Avoid_: 5,000 live papers, 5,000 simultaneous users, or a claim that screening
+records and OAI metadata are native full text.
+
 **Public Native Corpus**:
 The set of rights-cleared full-paper assets that Seedy Research may serve natively to the users authorized by each asset policy and count in public native coverage.
 _Avoid_: private uploads, source-hosted links

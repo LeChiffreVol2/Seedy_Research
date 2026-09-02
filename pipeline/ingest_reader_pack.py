@@ -92,16 +92,16 @@ def read_pack(pack_dir: Path) -> tuple[dict[str, Any], list[tuple[dict[str, Any]
             if not page_text.strip() or digest != page.get("textSha256"):
                 raise ValueError(f"Reader page integrity failed: {source} page {position}")
         resolved.append((paper, pages))
-    if len(resolved) < 3:
-        raise ValueError("Reader pack must contain at least three reviewed papers.")
+    if not resolved:
+        raise ValueError("Reader pack must contain at least one reviewed paper.")
     release_gate = manifest.get("releaseGate")
     if release_gate is not None:
         if not isinstance(release_gate, dict):
             raise ValueError("Reader releaseGate must be an object.")
         minimum = release_gate.get("minimumNativePapers")
         expected = release_gate.get("expectedNativePapers")
-        if not isinstance(minimum, int) or minimum < 100:
-            raise ValueError("releaseGate.minimumNativePapers must be an integer of at least 100.")
+        if not isinstance(minimum, int) or minimum < 1:
+            raise ValueError("releaseGate.minimumNativePapers must be a positive integer.")
         if not isinstance(expected, int) or expected < minimum:
             raise ValueError("releaseGate.expectedNativePapers must meet minimumNativePapers.")
         if len(resolved) < minimum:
@@ -113,15 +113,32 @@ def read_pack(pack_dir: Path) -> tuple[dict[str, Any], list[tuple[dict[str, Any]
                 f"releaseGate.expectedNativePapers={expected} but the pack contains {len(resolved)} papers."
             )
         allowed_types = release_gate.get("allowedArticleTypes")
-        if allowed_types != ["Original Article", "Review Article"]:
-            raise ValueError("releaseGate.allowedArticleTypes must preserve the reviewed denominator.")
-        if release_gate.get("medicalResearchOnly") is not True:
-            raise ValueError("releaseGate.medicalResearchOnly must remain true.")
+        if (
+            not isinstance(allowed_types, list)
+            or not allowed_types
+            or any(not isinstance(item, str) or not item.strip() for item in allowed_types)
+            or len(allowed_types) != len(set(allowed_types))
+        ):
+            raise ValueError("releaseGate.allowedArticleTypes must be a non-empty exact section allowlist.")
+        allowed_tiers = release_gate.get("allowedTciTiers", ["group_1"])
+        if (
+            not isinstance(allowed_tiers, list)
+            or not allowed_tiers
+            or any(tier not in ("group_1", "group_2") for tier in allowed_tiers)
+        ):
+            raise ValueError("releaseGate.allowedTciTiers must contain group_1 and/or group_2.")
+        medical_only = release_gate.get("medicalResearchOnly")
+        if not isinstance(medical_only, bool):
+            raise ValueError("releaseGate.medicalResearchOnly must be an explicit boolean.")
+        if release_gate.get("assetDeliveryMode") == "automated_pdf_crawl":
+            raise ValueError("releaseGate.assetDeliveryMode cannot use automated PDF crawling.")
         for paper, _pages in resolved:
             if paper.get("articleType") not in allowed_types:
                 raise ValueError(f"Reader release paper has an unapproved article type: {paper.get('source')}")
-            if paper.get("tciTier") != "group_1":
-                raise ValueError(f"Reader release paper is not TCI Group 1: {paper.get('source')}")
+            if paper.get("tciTier") not in allowed_tiers:
+                raise ValueError(f"Reader release paper is outside the approved TCI tiers: {paper.get('source')}")
+            if paper.get("medicalResearchOnly") is not medical_only:
+                raise ValueError(f"Reader release paper crosses the approved medical scope: {paper.get('source')}")
     return manifest, resolved
 
 
@@ -292,13 +309,13 @@ def plan_apply_batches(
     paper_count: int,
     page_count: int,
     provider_count: int,
-    batch_size: int = 100,
-    page_batch_size: int = 100,
+    batch_size: int = 200,
+    page_batch_size: int = 200,
 ) -> dict[str, int]:
     """Return a conservative PostgREST request budget for a bulk apply.
 
     The estimate is part of the operator-facing dry-run contract: it makes a
-    1,000-paper release reviewable before any database or embedding write.
+    5,000-paper release reviewable before any database or embedding write.
     """
     if paper_count < 0 or page_count < 0 or provider_count < 0:
         raise ValueError("Apply-plan counts cannot be negative.")
@@ -333,6 +350,36 @@ def plan_apply_batches(
         "pageBatchSize": page_batch_size,
         "estimatedApiRequests": estimated,
         "legacyEstimatedApiRequests": legacy,
+    }
+
+
+def select_pack_window(
+    papers: list[Any],
+    *,
+    start: int = 0,
+    maximum: int | None = None,
+) -> tuple[list[Any], dict[str, int | None]]:
+    """Select a stable zero-based promotion window from a validated pack.
+
+    Operators can promote 100-250 papers at a time and safely retry the same
+    window because every downstream write is an idempotent upsert.
+    """
+    if start < 0:
+        raise ValueError("start must be non-negative.")
+    if maximum is not None and maximum < 1:
+        raise ValueError("maximum must be positive when provided.")
+    total = len(papers)
+    if start > total:
+        raise ValueError(f"start={start} is beyond pack size {total}.")
+    stop = total if maximum is None else min(total, start + maximum)
+    selected = papers[start:stop]
+    next_start = stop if stop < total else None
+    return selected, {
+        "totalPapers": total,
+        "startPaper": start,
+        "selectedPapers": len(selected),
+        "nextStartPaper": next_start,
+        "remainingPapers": total - stop,
     }
 
 
@@ -386,8 +433,8 @@ def _prepare_existing_identities(client: Any, rows: list[dict[str, Any]], batch_
 def apply_rows(
     rows: list[dict[str, Any]],
     *,
-    batch_size: int = 100,
-    page_batch_size: int = 100,
+    batch_size: int = 200,
+    page_batch_size: int = 200,
 ) -> None:
     from supabase import create_client
 
@@ -471,11 +518,20 @@ def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--pack-dir", type=Path, default=DEFAULT_PACK)
     parser.add_argument("--apply", action="store_true", help="Mutate the configured Supabase project.")
-    parser.add_argument("--batch-size", type=int, default=100, help="Works/catalog/assets per PostgREST upsert (1-200).")
-    parser.add_argument("--page-batch-size", type=int, default=100, help="Full-text pages per PostgREST upsert (1-200).")
+    parser.add_argument("--start-paper", type=int, default=0, help="Zero-based paper offset for a resumable promotion window.")
+    parser.add_argument("--max-papers", type=int, help="Maximum papers to validate/apply in this promotion window.")
+    parser.add_argument("--batch-size", type=int, default=200, help="Works/catalog/assets per PostgREST upsert (1-200).")
+    parser.add_argument("--page-batch-size", type=int, default=200, help="Full-text pages per PostgREST upsert (1-200).")
     args = parser.parse_args()
     load_dotenv(ROOT / ".env")
-    _, papers = read_pack(args.pack_dir.resolve())
+    _, all_papers = read_pack(args.pack_dir.resolve())
+    papers, window = select_pack_window(
+        all_papers,
+        start=args.start_paper,
+        maximum=args.max_papers,
+    )
+    if not papers:
+        parser.error("The selected promotion window contains no papers.")
     rows = [build_rows(paper, pages) for paper, pages in papers]
     summary = {
         "status": "ready_to_apply" if not args.apply else "applied",
@@ -484,6 +540,7 @@ def main() -> None:
         "pages": sum(len(row["pages"]) for row in rows),
         "full_text_downloads": 0,
         "sources": [row["catalog"]["provider_record_id"] for row in rows],
+        "window": window,
         "applyPlan": plan_apply_batches(
             paper_count=len(rows),
             page_count=sum(len(row["pages"]) for row in rows),

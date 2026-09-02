@@ -69,30 +69,50 @@ zero page-checksum mismatches, RLS on every graph table, and no direct
 database-backed end-to-end slice; it does not establish
 coverage of TCI, TNRR, TDC, Thai conferences, or Thai research nationally.
 
-### 1,000-paper capacity envelope
+### 5,000-paper capacity envelope
 
-The native reader is now engineered for a **1,000-paper rights-cleared cohort**,
-but production still contains 103 papers. At the observed mean of 10.73 pages
-per paper, 1,000 papers project to roughly 10,728 page rows. The current 1,105
-page rows occupy about 4.2 MB in PostgreSQL, so page text is not the immediate
-capacity bottleneck. Source PDF metadata totals about 78 MB for 103 papers; if
-binaries were later stored rather than left at the official host, the same mean
-projects to roughly 0.76 GB before replicas, backups, and storage overhead.
+The native reader and promotion path are now engineered for a **5,000-paper
+rights-cleared cohort**, while production still contains 103 papers. At the
+observed mean of 10.73 pages per paper, 5,000 papers project to approximately
+53,641 page rows. Applying the current page-text footprint linearly gives about
+204 MB before indexes, replicas, backups, and database overhead. Source PDF
+metadata totals about 78 MB for 103 papers; if binaries were stored by Seedy
+under an approved delivery rather than retained by the source, the same mean is
+about 3.8 GB before object-storage replication and backups.
 
-Migration `20260902020000_civil_native_reader_scale_1000.sql` adds a bounded,
+Migration `20260902020000_civil_native_reader_scale_1000.sql` originally added a bounded,
 service-only native-first catalog RPC and supporting feed/page indexes. A deep
 Explore cursor now reads at most 30 catalog rows instead of accumulating every
 preceding native and metadata record in one Vercel invocation. The reader still
-returns at most 10 pages. Bulk ingest batches identity resolution and writes;
-the conservative 1,000-paper/11,000-page/10-provider plan is at most 171
-PostgREST requests, versus at least 6,002 on the former per-paper path.
+returns at most 10 pages. Its 10,000-row bounded offset covers 5,000 native
+records plus the current 2,578 ThaiJO discovery records, so no schema mutation
+is needed merely to raise this capacity contract. The synthetic page-167 test
+exercises offset 4,990 with exactly one catalog RPC. Bulk ingest uses 200-row
+identity/write batches and stable 100-250-paper promotion windows; the
+conservative 5,000-paper/53,640-page/10-provider plan is at most 405 PostgREST
+requests, versus at least 30,002 on the former per-paper path.
 
-This is a storage and request-shape readiness claim, not proof of 1,000-paper
-rights coverage or 1,000 simultaneous users. Before each cohort expansion, run
+This is a storage and request-shape readiness claim, not proof of 5,000-paper
+rights coverage or 5,000 simultaneous users. The live scale smoke uses the
+deepest complete production page until the target corpus exists and records
+whether offset 4,990 was actually exercised. Before each cohort expansion, run
 the rights gate, dry-run apply plan, preview migration, production-like scale
 smoke, and post-apply integrity queries. If the same cohort is promoted into
 semantic RAG, benchmark recall and latency separately: the current database is
 already dominated by about 71,000 vector chunks, not by reader page rows.
+
+The committed [5,000-paper source portfolio](../pipeline/cohorts/native_5000_portfolio.json)
+keeps acquisition counts honest. The first 1,000-paper wave has 1,685 dated
+screening records across BSCM, Veterinary Integrative Sciences, Area Based
+Development Research Journal, and Engineering and Technology Horizons. It needs
+897 net-new verified papers, a 53.2% screening pass rate. The broader 5,000 goal
+is agreement-backed: all currently identified public-policy sources provide
+4,030 gross net-new screening records, still 867 short of the 4,897 required
+even at an impossible 100% pass rate. ThaiJO OAI is used for a metadata census at its published
+rate limit, while PDF files enter only through an approved publisher or
+institutional delivery. The builder rejects automated PDF download paths and
+the ingest CLI can safely retry a fixed promotion window. See the dated
+[source research and rights plan](research/NATIVE_FULL_TEXT_1000_TO_5000_SOURCE_PLAN.md).
 
 OpenAlex and Scopus are not empty of Thai research. Some Thai journals,
 Thai-affiliated international publications, DOI records, and repository copies
@@ -334,9 +354,10 @@ maps to one asset; every asset has a rights state and source provenance.
   translation/explanation within allowed actions, and citation copy.
 - Preserve the exact-page review gate used by Research Passport.
 
-**Production status:** the 3-paper/68-page CC BY 4.0 ThaiJO pack implements native
-reading, outline/search, stable anchors, highlights, browser-local notes, and
-citation/source export. Supabase apply and Vercel deployment are complete;
+**Production status:** the three-paper/68-page committed LEARN fixture plus the
+DB-first 100-paper BSCM cohort provide 103 papers and 1,105 CC BY 4.0 pages with
+native reading, outline/search, stable anchors, highlights, browser-local notes,
+and citation/source export. Supabase apply and Vercel deployment are complete;
 workspace-scoped annotation sync and the manual Passport-to-reader host demo
 remain later release gates.
 

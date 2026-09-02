@@ -1,0 +1,138 @@
+{
+  "version": "seedy-native-source-portfolio-v1",
+  "asOf": "2026-09-02",
+  "targetNativePapers": 5000,
+  "currentNativePapers": 103,
+  "agreementRequiredFor5000": true,
+  "acquisitionPolicy": {
+    "metadataProtocol": "ThaiJO OAI-PMH",
+    "metadataRateLimitRequestsPerMinute": 10,
+    "automatedPdfCrawl": false,
+    "nativePromotionRequiresApprovedDelivery": true,
+    "acceptedAutomaticLicenses": [
+      "CC0-1.0",
+      "CC-BY-4.0"
+    ],
+    "sourceHostedWhen": [
+      "CC-BY-NC",
+      "CC-BY-ND",
+      "unknown",
+      "conflicting_rights",
+      "unapproved_delivery"
+    ]
+  },
+  "firstMilestone": {
+    "targetNativePapers": 1000,
+    "screeningCandidates": 1685
+  },
+  "sources": [
+    {
+      "id": "bscm",
+      "label": "Biomedical Sciences and Clinical Medicine",
+      "officialUrl": "https://www.tci-thaijo.org/en/journals/CMMJ-MedCMJ",
+      "officialScreeningCeiling": 435,
+      "screeningCandidates": 335,
+      "currentNativePapers": 100,
+      "firstMilestoneWave": true,
+      "rightsState": "partially_verified",
+      "automatedPdfDownload": false,
+      "approvedDeliveryRequired": true
+    },
+    {
+      "id": "vis",
+      "label": "Veterinary Integrative Sciences",
+      "officialUrl": "https://www.tci-thaijo.org/en/journals/vis",
+      "officialScreeningCeiling": 557,
+      "screeningCandidates": 557,
+      "currentNativePapers": 0,
+      "firstMilestoneWave": true,
+      "rightsState": "item_preflight_required",
+      "automatedPdfDownload": false,
+      "approvedDeliveryRequired": true
+    },
+    {
+      "id": "area_based_development",
+      "label": "Area Based Development Research Journal",
+      "officialUrl": "https://www.tci-thaijo.org/en/journals/abcjournal",
+      "officialScreeningCeiling": 356,
+      "screeningCandidates": 356,
+      "currentNativePapers": 0,
+      "firstMilestoneWave": true,
+      "rightsState": "item_preflight_required",
+      "automatedPdfDownload": false,
+      "approvedDeliveryRequired": true
+    },
+    {
+      "id": "engineering_technology_horizons",
+      "label": "Engineering and Technology Horizons",
+      "officialUrl": "https://ph01.tci-thaijo.org/index.php/lej/about",
+      "officialScreeningCeiling": 437,
+      "screeningCandidates": 437,
+      "currentNativePapers": 0,
+      "firstMilestoneWave": true,
+      "rightsState": "item_preflight_required",
+      "automatedPdfDownload": false,
+      "approvedDeliveryRequired": true
+    },
+    {
+      "id": "learn",
+      "label": "LEARN Journal",
+      "officialUrl": "https://www.tci-thaijo.org/en/journals/LEARN",
+      "officialScreeningCeiling": 654,
+      "screeningCandidates": 651,
+      "currentNativePapers": 3,
+      "firstMilestoneWave": false,
+      "rightsState": "partially_verified",
+      "automatedPdfDownload": false,
+      "approvedDeliveryRequired": true
+    },
+    {
+      "id": "journal_health_research",
+      "label": "Journal of Health Research",
+      "officialUrl": "https://www.tci-thaijo.org/en/journals/jhealthres",
+      "officialScreeningCeiling": 1038,
+      "screeningCandidates": 1038,
+      "currentNativePapers": 0,
+      "firstMilestoneWave": false,
+      "rightsState": "item_preflight_required",
+      "automatedPdfDownload": false,
+      "approvedDeliveryRequired": true
+    },
+    {
+      "id": "arts_thai_studies",
+      "label": "Journal of Arts and Thai Studies",
+      "officialUrl": "https://www.tci-thaijo.org/en/journals/artssu",
+      "officialScreeningCeiling": 261,
+      "screeningCandidates": 261,
+      "currentNativePapers": 0,
+      "firstMilestoneWave": false,
+      "rightsState": "item_preflight_required",
+      "automatedPdfDownload": false,
+      "approvedDeliveryRequired": true
+    },
+    {
+      "id": "emerging_innovations_praxis",
+      "label": "Science and Technology for Emerging Innovations in Praxis",
+      "officialUrl": "https://www.tci-thaijo.org/en/journals/vrurdistjournal",
+      "officialScreeningCeiling": 395,
+      "screeningCandidates": 395,
+      "currentNativePapers": 0,
+      "firstMilestoneWave": false,
+      "rightsState": "item_preflight_required",
+      "automatedPdfDownload": false,
+      "approvedDeliveryRequired": true
+    },
+    {
+      "id": "mahidol_ir",
+      "label": "Mahidol University Institutional Repository",
+      "officialUrl": "https://repository.li.mahidol.ac.th/",
+      "officialScreeningLowerBound": 50000,
+      "screeningCandidates": 0,
+      "currentNativePapers": 0,
+      "firstMilestoneWave": false,
+      "rightsState": "agreement_required",
+      "automatedPdfDownload": false,
+      "approvedDeliveryRequired": true
+    }
+  ]
+}

@@ -21,12 +21,14 @@ from pathlib import Path
 from typing import Any
 from urllib.parse import urlparse
 
-PLAN_VERSION = "seedy-native-cohort-plan-v1"
+PLAN_VERSION_V1 = "seedy-native-cohort-plan-v1"
+PLAN_VERSION_V2 = "seedy-native-cohort-plan-v2"
 ARTICLE_ID_PATTERN = re.compile(r"/article/view/(\d+)(?:/|$)")
 PDF_PATH_PATTERN = re.compile(r"/article/(?:download|view)/(\d+)(?:/|$)")
 USER_AGENT = "SeedyResearchBot/0.1 (+https://seedresearch.vercel.app; rights-reviewed research indexing)"
 PACK_VERSION = "civilmcp-rights-reviewed-reader-pack-v1"
 PAGE_VERSION = "civilmcp-reader-pages-v1"
+DELIVERY_VERSION = "seedy-approved-asset-delivery-v1"
 THIRD_PARTY_CREDIT_PATTERNS = (
     re.compile(r"\breproduced\s+with\s+permission\b", re.IGNORECASE),
     re.compile(r"\badapted\s+with\s+permission\b", re.IGNORECASE),
@@ -71,10 +73,63 @@ HEADING_PATTERNS = (
 )
 
 
+def publisher_path_allowed(path: str) -> bool:
+    """Keep automated publisher-page reads inside the published robots boundary."""
+    normalized = "/" + path.lstrip("/")
+    if re.search(r"/index\.php/[^/]+/(?:article|issue)/download/", normalized, re.IGNORECASE):
+        return False
+    if re.search(
+        r"/index\.php/[^/]+/(?:article|issue)/view/[^/]+/[^/]+",
+        normalized,
+        re.IGNORECASE,
+    ):
+        return False
+    return True
+
+
+def load_delivery_manifest(
+    path: Path,
+    *,
+    plan: dict[str, Any],
+    expected_article_ids: list[str],
+) -> dict[str, dict[str, str]]:
+    """Bind an approved delivery to the exact harvested article denominator."""
+    payload = json.loads(path.read_text(encoding="utf-8"))
+    if payload.get("version") != DELIVERY_VERSION:
+        raise ValueError(f"Unsupported asset delivery version: {payload.get('version')!r}")
+    expected_evidence = str((plan.get("assetDelivery") or {}).get("evidenceId", "")).strip()
+    if payload.get("evidenceId") != expected_evidence:
+        raise ValueError("Delivery manifest evidenceId does not match the cohort approval.")
+    if payload.get("provider") != plan.get("provider") or payload.get("journalSlug") != plan.get("journalSlug"):
+        raise ValueError("Delivery manifest provider or journal does not match the cohort.")
+    assets = payload.get("assets")
+    if not isinstance(assets, list):
+        raise ValueError("Delivery manifest assets must be a list.")
+    by_id: dict[str, dict[str, str]] = {}
+    for asset in assets:
+        article_id = str(asset.get("articleId", "")).strip()
+        if not article_id or article_id in by_id:
+            raise ValueError(f"Delivery manifest has a missing or duplicate articleId: {article_id!r}")
+        by_id[article_id] = asset
+    if set(by_id) != set(expected_article_ids) or len(by_id) != len(expected_article_ids):
+        raise ValueError("Delivery manifest article denominator does not match the harvested cohort.")
+    for article_id, asset in by_id.items():
+        filename = str(asset.get("filename", "")).strip()
+        checksum = str(asset.get("sha256", "")).strip().lower()
+        if Path(filename).name != filename or not filename.lower().endswith(".pdf"):
+            raise ValueError(f"Delivery manifest article {article_id} has an unsafe PDF filename.")
+        if not re.fullmatch(r"[0-9a-f]{64}", checksum):
+            raise ValueError(f"Delivery manifest article {article_id} has an invalid SHA-256 checksum.")
+        asset["sha256"] = checksum
+    return by_id
+
+
 def load_plan(path: Path) -> dict[str, Any]:
     plan = json.loads(path.read_text(encoding="utf-8"))
-    if plan.get("version") != PLAN_VERSION:
+    version = plan.get("version")
+    if version not in (PLAN_VERSION_V1, PLAN_VERSION_V2):
         raise ValueError(f"Unsupported cohort plan version: {plan.get('version')!r}")
+    plan = dict(plan)
     required_text = (
         "cohortId",
         "provider",
@@ -92,16 +147,70 @@ def load_plan(path: Path) -> dict[str, Any]:
         if not str(plan.get(field, "")).strip():
             raise ValueError(f"Cohort plan field {field} is required.")
     if plan["provider"] != "tci_thaijo":
-        raise ValueError("The first native cohort must use the reviewed tci_thaijo provider contract.")
-    if plan["tciTier"] != "group_1":
-        raise ValueError("The first native cohort must remain TCI Group 1.")
+        raise ValueError("Native ThaiJO cohorts must use the reviewed tci_thaijo provider contract.")
     if plan["licenseExpression"] != "CC-BY-4.0":
-        raise ValueError("The first native cohort requires item-level CC-BY-4.0.")
-    if plan.get("medicalResearchOnly") is not True:
-        raise ValueError("medicalResearchOnly must be true for the biomedical cohort.")
+        raise ValueError("Automated native promotion requires item-level CC-BY-4.0.")
     allowed = plan.get("allowedSections")
-    if allowed != ["Original Article", "Review Article"]:
-        raise ValueError("allowedSections must be exactly Original Article and Review Article.")
+    if not isinstance(allowed, list) or not allowed or any(not str(item).strip() for item in allowed):
+        raise ValueError("allowedSections must be a non-empty list of exact publisher section names.")
+    if len(allowed) != len(set(allowed)):
+        raise ValueError("allowedSections must not contain duplicates.")
+
+    if version == PLAN_VERSION_V1:
+        if plan["tciTier"] != "group_1":
+            raise ValueError("The v1 BSCM cohort must remain TCI Group 1.")
+        if plan.get("medicalResearchOnly") is not True:
+            raise ValueError("medicalResearchOnly must be true for the v1 biomedical cohort.")
+        if allowed != ["Original Article", "Review Article"]:
+            raise ValueError("The v1 allowedSections must remain Original Article and Review Article.")
+        plan.setdefault("sourceHost", "he01.tci-thaijo.org")
+        plan.setdefault("sourcePrefix", "bscm")
+        plan.setdefault("minimumNativePapers", 100)
+        plan.setdefault("assetDelivery", {
+            "mode": "manual_article_delivery",
+            "evidenceId": plan["cohortId"],
+            "takedownContact": "BSCM editorial office",
+        })
+    else:
+        source_host = str(plan.get("sourceHost", "")).strip().lower()
+        registry_path = Path(__file__).resolve().parent / "tci_official_endpoint_registry.json"
+        registry = json.loads(registry_path.read_text(encoding="utf-8"))
+        official_hosts = {
+            urlparse(str(item.get("endpoint", ""))).netloc.lower()
+            for item in registry.get("endpoints", [])
+        }
+        if source_host not in official_hosts:
+            raise ValueError(f"sourceHost is not in the official ThaiJO endpoint registry: {source_host!r}")
+        source_prefix = str(plan.get("sourcePrefix", "")).strip().lower()
+        if not re.fullmatch(r"[a-z0-9][a-z0-9_-]{1,39}", source_prefix):
+            raise ValueError("sourcePrefix must be a stable lowercase source key.")
+        if plan.get("tciTier") not in ("group_1", "group_2"):
+            raise ValueError("tciTier must be group_1 or group_2 for a v2 ThaiJO cohort.")
+        if not isinstance(plan.get("medicalResearchOnly"), bool):
+            raise ValueError("medicalResearchOnly must be an explicit boolean.")
+        minimum = plan.get("minimumNativePapers")
+        if not isinstance(minimum, int) or minimum < 1:
+            raise ValueError("minimumNativePapers must be a positive integer.")
+        delivery = plan.get("assetDelivery")
+        if not isinstance(delivery, dict):
+            raise ValueError("assetDelivery is required for a v2 cohort.")
+        if delivery.get("mode") not in (
+            "publisher_manifest",
+            "institutional_deposit",
+            "manual_article_delivery",
+        ):
+            raise ValueError("assetDelivery.mode must be an approved non-crawl delivery mode.")
+        evidence_id = str(delivery.get("evidenceId", "")).strip()
+        takedown_contact = str(delivery.get("takedownContact", "")).strip()
+        if not evidence_id or not takedown_contact:
+            raise ValueError("assetDelivery requires evidenceId and takedownContact.")
+        if evidence_id.lower() in {"none", "pending", "todo", "tbd"}:
+            raise ValueError("assetDelivery.evidenceId must identify an approved delivery, not a placeholder.")
+
+    for field in ("tciEvidenceUrl", "licenseUrl", "rightsEvidenceUrl"):
+        parsed_evidence = urlparse(str(plan[field]))
+        if parsed_evidence.scheme != "https" or not parsed_evidence.netloc:
+            raise ValueError(f"{field} must be an HTTPS evidence URL.")
     issues = plan.get("issues")
     if not isinstance(issues, list) or not issues:
         raise ValueError("Cohort plan must contain at least one issue.")
@@ -112,7 +221,13 @@ def load_plan(path: Path) -> dict[str, Any]:
         if not issue_id or issue_id in seen:
             raise ValueError(f"Missing or duplicate issueId: {issue_id!r}")
         seen.add(issue_id)
-        if not str(issue.get("url", "")).startswith("https://he01.tci-thaijo.org/"):
+        parsed_issue = urlparse(str(issue.get("url", "")))
+        expected_issue_path = f"/index.php/{plan['journalSlug']}/issue/view/"
+        if (
+            parsed_issue.scheme != "https"
+            or parsed_issue.netloc.lower() != plan["sourceHost"]
+            or expected_issue_path.lower() not in parsed_issue.path.lower()
+        ):
             raise ValueError(f"Issue {issue_id} is not on the reviewed official host.")
         expected = issue.get("expectedEligible")
         if not isinstance(expected, int) or expected < 1:
@@ -123,8 +238,8 @@ def load_plan(path: Path) -> dict[str, Any]:
         raise ValueError(
             f"expectedEligiblePapers={expected_total!r} does not match fixed issue denominator {denominator}."
         )
-    if expected_total < 100:
-        raise ValueError("expectedEligiblePapers must be at least 100 for the release gate.")
+    if expected_total < plan["minimumNativePapers"]:
+        raise ValueError("expectedEligiblePapers must meet minimumNativePapers for the release gate.")
     return plan
 
 
@@ -137,6 +252,8 @@ def plan_summary(plan: dict[str, Any]) -> dict[str, Any]:
         "tciTier": plan["tciTier"],
         "licenseExpression": plan["licenseExpression"],
         "medicalResearchOnly": plan["medicalResearchOnly"],
+        "sourceHost": plan["sourceHost"],
+        "assetDeliveryMode": (plan.get("assetDelivery") or {}).get("mode", "legacy_manual_delivery"),
     }
 
 
@@ -145,6 +262,7 @@ def parse_issue_html(
     *,
     issue_id: str,
     allowed_sections: list[str],
+    expected_host: str = "he01.tci-thaijo.org",
 ) -> list[dict[str, str]]:
     """Return the fixed-denominator article identities from an OJS issue."""
     from bs4 import BeautifulSoup
@@ -164,7 +282,7 @@ def parse_issue_html(
             article_url = str(link.get("href", "")).strip()
             parsed_url = urlparse(article_url)
             match = ARTICLE_ID_PATTERN.search(parsed_url.path)
-            if parsed_url.scheme != "https" or parsed_url.netloc != "he01.tci-thaijo.org" or not match:
+            if parsed_url.scheme != "https" or parsed_url.netloc != expected_host or not match:
                 raise ValueError(f"Issue {issue_id} contains a non-reviewed article URL: {article_url!r}")
             article_id = match.group(1)
             if article_id in seen:
@@ -206,6 +324,7 @@ def parse_article_html(
     expected_article_id: str,
     expected_section: str,
     license_url: str,
+    expected_host: str = "he01.tci-thaijo.org",
 ) -> dict[str, Any]:
     """Extract article metadata only after item-level license verification."""
     from bs4 import BeautifulSoup
@@ -237,7 +356,7 @@ def parse_article_html(
     pdf_match = PDF_PATH_PATTERN.search(parsed_pdf.path)
     if (
         parsed_pdf.scheme != "https"
-        or parsed_pdf.netloc != "he01.tci-thaijo.org"
+        or parsed_pdf.netloc != expected_host
         or not pdf_match
         or pdf_match.group(1) != expected_article_id
     ):
@@ -329,27 +448,29 @@ def _third_party_credit_signals(pages: list[str]) -> list[str]:
 
 
 class PublisherClient:
-    def __init__(self, cache_dir: Path, request_delay_seconds: float, max_retries: int) -> None:
+    def __init__(self, cache_dir: Path, request_delay_seconds: float, max_retries: int, allowed_hosts: set[str]) -> None:
         import requests
 
+        if request_delay_seconds < 5.0:
+            raise ValueError("Publisher page requests require a delay of at least 5 seconds.")
         self.cache_dir = cache_dir
         self.cache_dir.mkdir(parents=True, exist_ok=True)
-        self.delay = max(0.0, request_delay_seconds)
+        self.delay = request_delay_seconds
         self.max_retries = max(1, max_retries)
         self.last_request_at = 0.0
         self.session = requests.Session()
+        self.allowed_hosts = allowed_hosts
         self.session.headers.update({"User-Agent": USER_AGENT, "Accept": "text/html,application/pdf;q=0.9,*/*;q=0.5"})
 
-    def fetch(self, url: str, cache_name: str, *, expect_pdf: bool = False) -> bytes:
+    def fetch(self, url: str, cache_name: str) -> bytes:
+        parsed = urlparse(url)
+        if parsed.scheme != "https" or parsed.netloc not in self.allowed_hosts:
+            raise ValueError(f"Publisher fetch left the reviewed official host: {url}")
+        if not publisher_path_allowed(parsed.path):
+            raise ValueError(f"Publisher fetch is excluded by the ThaiJO robots boundary: {url}")
         cache_path = self.cache_dir / cache_name
         if cache_path.is_file():
-            data = cache_path.read_bytes()
-            if expect_pdf and not data.startswith(b"%PDF-"):
-                raise ValueError(f"Cached publisher asset is not a PDF: {cache_path}")
-            return data
-        parsed = urlparse(url)
-        if parsed.scheme != "https" or parsed.netloc != "he01.tci-thaijo.org":
-            raise ValueError(f"Publisher fetch left the reviewed official host: {url}")
+            return cache_path.read_bytes()
         failure: Exception | None = None
         for attempt in range(1, self.max_retries + 1):
             remaining = self.delay - (time.monotonic() - self.last_request_at)
@@ -365,13 +486,11 @@ class PublisherClient:
                     continue
                 response.raise_for_status()
                 final = urlparse(response.url)
-                if final.scheme != "https" or final.netloc != "he01.tci-thaijo.org":
+                if final.scheme != "https" or final.netloc not in self.allowed_hosts:
                     raise ValueError(f"Publisher redirect left the reviewed official host: {response.url}")
+                if not publisher_path_allowed(final.path):
+                    raise ValueError(f"Publisher redirect entered a ThaiJO robots-excluded path: {response.url}")
                 data = response.content
-                if expect_pdf and not data.startswith(b"%PDF-"):
-                    raise ValueError(
-                        f"Publisher asset for {url} is not a PDF (content-type={response.headers.get('content-type')!r})."
-                    )
                 temporary = cache_path.with_suffix(cache_path.suffix + ".partial")
                 temporary.write_bytes(data)
                 temporary.replace(cache_path)
@@ -393,6 +512,7 @@ def harvest_catalog(plan: dict[str, Any], client: PublisherClient) -> list[dict[
             html,
             issue_id=issue_id,
             allowed_sections=plan["allowedSections"],
+            expected_host=plan["sourceHost"],
         )
         if len(issue_candidates) != issue["expectedEligible"]:
             raise ValueError(
@@ -420,6 +540,7 @@ def harvest_catalog(plan: dict[str, Any], client: PublisherClient) -> list[dict[
             expected_article_id=article_id,
             expected_section=candidate["section"],
             license_url=plan["licenseUrl"],
+            expected_host=plan["sourceHost"],
         )
         if re.sub(r"\s+", " ", record["title"]).strip() != re.sub(r"\s+", " ", candidate["title"]).strip():
             raise ValueError(f"Article {article_id} title differs between issue and item pages.")
@@ -430,8 +551,9 @@ def harvest_catalog(plan: dict[str, Any], client: PublisherClient) -> list[dict[
 def build_pack(
     plan: dict[str, Any],
     records: list[dict[str, Any]],
-    client: PublisherClient,
     output_dir: Path,
+    asset_dir: Path,
+    delivery_assets: dict[str, dict[str, str]],
 ) -> dict[str, Any]:
     for command in ("pdfinfo", "pdftotext"):
         if not shutil.which(command):
@@ -445,8 +567,15 @@ def build_pack(
     for position, record in enumerate(records, 1):
         article_id = record["articleId"]
         print(f"[reader] paper {position}/{len(records)} id={article_id}", file=sys.stderr, flush=True)
-        pdf_data = client.fetch(record["pdfUrl"], f"article-{article_id}.pdf", expect_pdf=True)
-        pdf_path = client.cache_dir / f"article-{article_id}.pdf"
+        delivery_asset = delivery_assets[article_id]
+        pdf_path = asset_dir / delivery_asset["filename"]
+        if not pdf_path.is_file():
+            raise ValueError(f"Approved delivery is missing article {article_id} PDF in {asset_dir}.")
+        pdf_data = pdf_path.read_bytes()
+        if not pdf_data.startswith(b"%PDF-"):
+            raise ValueError(f"Approved delivery asset is not a PDF: {pdf_path}")
+        if _sha256(pdf_data) != delivery_asset["sha256"]:
+            raise ValueError(f"Approved delivery checksum mismatch for article {article_id}.")
         page_count = _pdf_page_count(pdf_path)
         extracted = _extract_pdf_pages(pdf_path, page_count)
         credit_signals = _third_party_credit_signals(extracted)
@@ -469,7 +598,7 @@ def build_pack(
             previous_section = current_section
             pages.append(
                 {
-                    "id": f"thaijo-bscm-{article_id}-page-{page_number}",
+                    "id": f"thaijo-{plan['sourcePrefix']}-{article_id}-page-{page_number}",
                     "pageNumber": page_number,
                     "pageLabel": page_label,
                     "anchor": f"page-{page_label}",
@@ -481,7 +610,7 @@ def build_pack(
         pages_filename = f"{article_id}.pages.json"
         (output_dir / pages_filename).write_text(
             json.dumps(
-                {"version": PAGE_VERSION, "source": f"thaijo:bscm:{article_id}", "pages": pages},
+                {"version": PAGE_VERSION, "source": f"thaijo:{plan['sourcePrefix']}:{article_id}", "pages": pages},
                 ensure_ascii=False,
                 indent=2,
             ) + "\n",
@@ -490,7 +619,7 @@ def build_pack(
         total_pages += page_count
         doi = record.get("doi")
         aliases = [
-            f"oai:he01.tci-thaijo.org:article/{article_id}",
+            f"oai:{plan['sourceHost']}:article/{article_id}",
             record["articleUrl"],
             record["pdfUrl"],
         ]
@@ -498,10 +627,10 @@ def build_pack(
             aliases.append(f"doi:{str(doi).lower()}")
         papers.append(
             {
-                "source": f"thaijo:bscm:{article_id}",
+                "source": f"thaijo:{plan['sourcePrefix']}:{article_id}",
                 "aliases": aliases,
                 "provider": plan["provider"],
-                "providerRecordId": f"oai:he01.tci-thaijo.org:article/{article_id}",
+                "providerRecordId": f"oai:{plan['sourceHost']}:article/{article_id}",
                 "articleType": record["section"],
                 "tciTier": plan["tciTier"],
                 "title": record["title"],
@@ -513,10 +642,10 @@ def build_pack(
                 "discipline": plan["discipline"],
                 "issueId": record["issueId"],
                 "issueTitle": record["issueTitle"],
-                "medicalResearchOnly": True,
+                "medicalResearchOnly": plan["medicalResearchOnly"],
                 "sourceUrl": record["articleUrl"],
                 "asset": {
-                    "id": f"thaijo-bscm-{article_id}-pdf",
+                    "id": f"thaijo-{plan['sourcePrefix']}-{article_id}-pdf",
                     "kind": "fulltext_pdf",
                     "version": "version_of_record",
                     "mimeType": "application/pdf",
@@ -530,7 +659,7 @@ def build_pack(
                     "rightsStatus": "open_license_verified",
                     "rightsActions": RIGHTS_ACTIONS,
                     "rightsProvenance": {
-                        "basis": "item_level_license_and_official_publisher_pdf",
+                        "basis": "item_level_license_and_approved_asset_delivery",
                         "source": record["articleUrl"],
                         "journalPolicy": plan["rightsEvidenceUrl"],
                         "tciEvidence": plan["tciEvidenceUrl"],
@@ -538,6 +667,11 @@ def build_pack(
                         "attribution": f"{record['title']}, {', '.join(record['authors'])}, {plan['journalTitle']}",
                         "transformationNotice": "Publisher PDF converted to page-addressable plain text; substantive content unchanged.",
                         "thirdPartyCreditScan": "passed_no_explicit_permission_language",
+                        "assetDelivery": plan.get("assetDelivery") or {
+                            "mode": "legacy_manual_delivery",
+                            "evidenceId": plan["cohortId"],
+                        },
+                        "approvedAssetSha256": delivery_asset["sha256"],
                     },
                     "rightsCheckedAt": reviewed_at,
                     "rightsVerifiedAt": reviewed_at,
@@ -550,14 +684,19 @@ def build_pack(
         "version": PACK_VERSION,
         "generatedAt": reviewed_at,
         "reviewedBy": "Seedy Research item-level rights and integrity gate",
-        "scope": "Fixed BSCM TCI Group 1 issue cohort: Original and Review Articles with item-level CC BY 4.0.",
+        "scope": (
+            f"Fixed {plan['journalTitle']} cohort: {', '.join(plan['allowedSections'])} "
+            "with item-level CC BY 4.0 and approved asset delivery."
+        ),
         "cohortId": plan["cohortId"],
         "licenseEvidenceUrl": plan["rightsEvidenceUrl"],
         "releaseGate": {
-            "minimumNativePapers": 100,
+            "minimumNativePapers": plan["minimumNativePapers"],
             "expectedNativePapers": plan["expectedEligiblePapers"],
             "allowedArticleTypes": plan["allowedSections"],
-            "medicalResearchOnly": True,
+            "medicalResearchOnly": plan["medicalResearchOnly"],
+            "allowedTciTiers": [plan["tciTier"]],
+            "assetDeliveryMode": (plan.get("assetDelivery") or {}).get("mode", "legacy_manual_delivery"),
             "rightsMode": "item_level_fail_closed",
             "integrity": ["application_pdf", "sha256", "page_count", "nonempty_page_text", "page_text_sha256"],
         },
@@ -575,10 +714,12 @@ def main() -> None:
     parser.add_argument("--cohort", type=Path, required=True)
     parser.add_argument("--validate-plan", action="store_true")
     parser.add_argument("--harvest", action="store_true", help="Fetch and validate issue and article pages.")
-    parser.add_argument("--build", action="store_true", help="Also download, verify, and extract publisher PDFs.")
+    parser.add_argument("--build", action="store_true", help="Also verify and extract approved local publisher PDFs.")
     parser.add_argument("--output-dir", type=Path)
     parser.add_argument("--cache-dir", type=Path)
-    parser.add_argument("--request-delay-seconds", type=float, default=2.0)
+    parser.add_argument("--asset-dir", type=Path, help="Approved local PDF delivery; automated PDF crawling is not supported.")
+    parser.add_argument("--delivery-manifest", type=Path, help="Checksum manifest binding the approved delivery to this cohort.")
+    parser.add_argument("--request-delay-seconds", type=float, default=5.2)
     parser.add_argument("--max-retries", type=int, default=6)
     args = parser.parse_args()
     try:
@@ -588,10 +729,21 @@ def main() -> None:
             return
         if not args.harvest and not args.build:
             parser.error("Choose --validate-plan, --harvest, or --build.")
+        if args.request_delay_seconds < 5.0:
+            parser.error("--request-delay-seconds must be at least 5 seconds for ThaiJO page requests.")
+        if args.build and args.asset_dir is None:
+            parser.error("--build requires --asset-dir from an approved publisher or institutional delivery.")
+        if args.build and args.delivery_manifest is None:
+            parser.error("--build requires --delivery-manifest with one checksum-bound asset per article.")
         root = Path(__file__).resolve().parents[1]
         output_dir = (args.output_dir or root / "pipeline" / "data" / "reader-packs" / plan["cohortId"]).resolve()
         cache_dir = (args.cache_dir or output_dir / ".cache").resolve()
-        client = PublisherClient(cache_dir, args.request_delay_seconds, args.max_retries)
+        client = PublisherClient(
+            cache_dir,
+            args.request_delay_seconds,
+            args.max_retries,
+            {plan["sourceHost"]},
+        )
         records = harvest_catalog(plan, client)
         catalog_path = output_dir / "catalog.json"
         output_dir.mkdir(parents=True, exist_ok=True)
@@ -600,7 +752,18 @@ def main() -> None:
             encoding="utf-8",
         )
         if args.build:
-            result = build_pack(plan, records, client, output_dir)
+            delivery_assets = load_delivery_manifest(
+                args.delivery_manifest.resolve(),
+                plan=plan,
+                expected_article_ids=[record["articleId"] for record in records],
+            )
+            result = build_pack(
+                plan,
+                records,
+                output_dir,
+                args.asset_dir.resolve(),
+                delivery_assets,
+            )
             status = "pack_built"
         else:
             result = {"papers": len(records), "pages": None}

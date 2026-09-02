@@ -65,6 +65,17 @@ build, rights/integrity units, focused reader/WebMCP browser suites, and reposit
 invariants pass. This fixed 103-paper corpus is not a claim of ThaiJO, TCI,
 TNRR, TDC, conference, or national completeness.
 
+The read path and promotion tooling have a separate **5,000-native-paper
+capacity contract**: a synthetic deep page at offset 4,990 remains one bounded
+catalog RPC, reader responses remain capped at 10 pages, and a projected
+5,000-paper/53,640-page ingest stays within 405 batched PostgREST requests. This
+does not change the live count of 103. The first lawful expansion wave has 1,685
+screening records and needs item-level rights plus publisher/institution-approved
+asset delivery. The identified public-policy queue totals 4,030 gross net-new
+screening records—867 short even before failures—so the 5,000 target is
+agreement-backed rather than a PDF-crawling
+claim. See [the source plan](docs/research/NATIVE_FULL_TEXT_1000_TO_5000_SOURCE_PLAN.md).
+
 The rights-aware reader and provider-completeness contract is defined in
 [Thai Research Full-Text System](docs/THAI_RESEARCH_FULL_TEXT_SYSTEM.md). General
 source PDFs and the existing extracted corpus remain local-only and are not

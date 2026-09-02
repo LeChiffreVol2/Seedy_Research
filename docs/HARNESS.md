@@ -17,6 +17,7 @@ python3.10 harness/run_memory_eval.py
 python3.10 harness/run_eval.py --mode smoke
 python3.10 harness/score_quality.py
 python3.10 -m unittest pipeline.test_reader_pack
+python3.10 -m unittest pipeline.test_native_portfolio harness.test_native_scale
 python3.10 -m unittest pipeline.test_source_registry harness.test_ga_security
 (cd web && npm run harness:web-smoke)
 (cd web && node --test lib/paper-reader.test.mjs)
@@ -92,13 +93,16 @@ confirm that `inspect_paper_evidence` reports the lawful access state and verifi
 including full page text and that the page still registers exactly six WebMCP
 site tools.
 
-`harness/run_native_scale.py` is the bounded 1,000-paper capacity smoke. It
-loads a ThaiJO catalog cursor at offset 990 and a rights-verified reader page in
-parallel, rejects unbounded response shapes or non-200 responses, and records
-median/p95 latency. Defaults are intentionally modest (24 requests per endpoint,
-concurrency 6); this verifies the deployed request path without pretending to be
-a 1,000-concurrent-user load test. Increase traffic only in a dedicated preview
-environment with agreed Supabase and Vercel limits.
+`harness/run_native_scale.py` is the bounded 5,000-paper capacity smoke. Its
+target cursor is 4,990; before production contains that many rows it automatically
+uses the deepest complete live catalog page and reports
+`targetCursorExercised=false`. The independent synthetic web contract exercises
+offset 4,990 against a 5,000-native/7,578-catalog state and requires exactly one
+catalog RPC. The live smoke loads that bounded catalog page and a rights-verified
+reader page in parallel, rejects unbounded response shapes or non-200 responses,
+and records median/p95 latency. Defaults remain modest (24 requests per endpoint,
+concurrency 6); this is not a 5,000-concurrent-user load claim. Increase traffic
+only in a dedicated preview environment with agreed Supabase and Vercel limits.
 
 ## Report Contract
 Every harness command writes JSON to `harness/reports/` with:

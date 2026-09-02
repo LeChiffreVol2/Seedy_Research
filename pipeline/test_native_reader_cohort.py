@@ -4,7 +4,14 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from pipeline.build_native_reader_cohort import parse_article_html, parse_issue_html
+from pipeline.build_native_reader_cohort import (
+    PublisherClient,
+    load_delivery_manifest,
+    load_plan,
+    parse_article_html,
+    parse_issue_html,
+    publisher_path_allowed,
+)
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -65,6 +72,204 @@ class NativeReaderCohortCliTest(unittest.TestCase):
         )
         self.assertEqual([record["articleId"] for record in records], ["100", "101"])
         self.assertEqual([record["section"] for record in records], ["Original Article", "Review Article"])
+
+    def test_v2_plan_supports_a_non_medical_official_thaijo_cohort(self) -> None:
+        plan = {
+            "version": "seedy-native-cohort-plan-v2",
+            "cohortId": "area-based-approved-batch-001",
+            "provider": "tci_thaijo",
+            "sourceHost": "so01.tci-thaijo.org",
+            "sourcePrefix": "abcjournal",
+            "journalSlug": "abcjournal",
+            "journalTitle": "Area Based Development Research Journal",
+            "publisher": "Thailand Science Research and Innovation",
+            "discipline": "social_sciences",
+            "tciTier": "group_1",
+            "tciEvidenceUrl": "https://www.tci-thaijo.org/en/journals/abcjournal",
+            "licenseExpression": "CC-BY-4.0",
+            "licenseUrl": "https://creativecommons.org/licenses/by/4.0/",
+            "rightsEvidenceUrl": "https://so01.tci-thaijo.org/index.php/abcjournal/about",
+            "medicalResearchOnly": False,
+            "allowedSections": ["Research Article"],
+            "expectedEligiblePapers": 1,
+            "minimumNativePapers": 1,
+            "assetDelivery": {
+                "mode": "publisher_manifest",
+                "evidenceId": "publisher-manifest-2026-001",
+                "takedownContact": "journal@example.ac.th"
+            },
+            "issues": [{
+                "issueId": "12345",
+                "label": "Approved batch issue",
+                "url": "https://so01.tci-thaijo.org/index.php/abcjournal/issue/view/12345",
+                "expectedEligible": 1
+            }]
+        }
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "plan.json"
+            path.write_text(json.dumps(plan), encoding="utf-8")
+            loaded = load_plan(path)
+        self.assertEqual(loaded["sourceHost"], "so01.tci-thaijo.org")
+        self.assertFalse(loaded["medicalResearchOnly"])
+        self.assertEqual(loaded["assetDelivery"]["mode"], "publisher_manifest")
+
+    def test_v2_plan_rejects_automated_pdf_crawl_delivery(self) -> None:
+        plan = json.loads(PLAN.read_text(encoding="utf-8"))
+        plan.update({
+            "version": "seedy-native-cohort-plan-v2",
+            "sourceHost": "he01.tci-thaijo.org",
+            "sourcePrefix": "bscm",
+            "minimumNativePapers": 100,
+            "assetDelivery": {
+                "mode": "automated_pdf_crawl",
+                "evidenceId": "none",
+                "takedownContact": "journal@example.ac.th"
+            }
+        })
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "unsafe.json"
+            path.write_text(json.dumps(plan), encoding="utf-8")
+            with self.assertRaisesRegex(ValueError, "assetDelivery.mode"):
+                load_plan(path)
+
+    def test_v2_plan_rejects_placeholder_delivery_evidence(self) -> None:
+        plan = json.loads(PLAN.read_text(encoding="utf-8"))
+        plan.update({
+            "version": "seedy-native-cohort-plan-v2",
+            "sourceHost": "he01.tci-thaijo.org",
+            "sourcePrefix": "bscm",
+            "minimumNativePapers": 100,
+            "assetDelivery": {
+                "mode": "publisher_manifest",
+                "evidenceId": "pending",
+                "takedownContact": "journal@example.ac.th",
+            },
+        })
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "unsafe.json"
+            path.write_text(json.dumps(plan), encoding="utf-8")
+            with self.assertRaisesRegex(ValueError, "not a placeholder"):
+                load_plan(path)
+
+    def test_issue_parser_accepts_only_the_configured_official_host(self) -> None:
+        html = """
+        <div class="sections"><div class="section"><h2>Research Article</h2>
+          <div class="obj_article_summary"><h3 class="title">
+            <a href="https://so01.tci-thaijo.org/index.php/abcjournal/article/view/200">Accepted</a>
+          </h3></div>
+        </div></div>
+        """
+        records = parse_issue_html(
+            html,
+            issue_id="fixture",
+            allowed_sections=["Research Article"],
+            expected_host="so01.tci-thaijo.org",
+        )
+        self.assertEqual([record["articleId"] for record in records], ["200"])
+        with self.assertRaisesRegex(ValueError, "non-reviewed article URL"):
+            parse_issue_html(
+                html,
+                issue_id="fixture",
+                allowed_sections=["Research Article"],
+                expected_host="he01.tci-thaijo.org",
+            )
+
+    def test_build_requires_an_approved_local_asset_delivery(self) -> None:
+        result = subprocess.run(
+            ["python3", str(CLI), "--cohort", str(PLAN), "--build"],
+            cwd=ROOT,
+            capture_output=True,
+            text=True,
+        )
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("--asset-dir", result.stderr)
+
+    def test_build_requires_a_checksum_bound_delivery_manifest(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            result = subprocess.run(
+                [
+                    "python3",
+                    str(CLI),
+                    "--cohort",
+                    str(PLAN),
+                    "--build",
+                    "--asset-dir",
+                    directory,
+                ],
+                cwd=ROOT,
+                capture_output=True,
+                text=True,
+            )
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("--delivery-manifest", result.stderr)
+
+    def test_publisher_fetch_boundary_matches_thaijo_robots_policy(self) -> None:
+        self.assertTrue(publisher_path_allowed("/index.php/abcjournal/issue/view/12345"))
+        self.assertTrue(publisher_path_allowed("/index.php/abcjournal/article/view/200"))
+        self.assertFalse(publisher_path_allowed("/index.php/abcjournal/article/download/200/300"))
+        self.assertFalse(publisher_path_allowed("/index.php/abcjournal/issue/download/12345/full"))
+        self.assertFalse(publisher_path_allowed("/index.php/abcjournal/article/view/200/300"))
+
+    def test_cached_publisher_fetch_cannot_bypass_the_robots_boundary(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            cache = Path(directory)
+            (cache / "unsafe.html").write_bytes(b"cached")
+            client = PublisherClient(cache, 5.0, 1, {"so01.tci-thaijo.org"})
+            with self.assertRaisesRegex(ValueError, "robots boundary"):
+                client.fetch(
+                    "https://so01.tci-thaijo.org/index.php/abcjournal/article/download/200/300",
+                    "unsafe.html",
+                )
+
+    def test_cli_rejects_an_unsafe_publisher_request_rate(self) -> None:
+        result = subprocess.run(
+            [
+                "python3",
+                str(CLI),
+                "--cohort",
+                str(PLAN),
+                "--harvest",
+                "--request-delay-seconds",
+                "0",
+            ],
+            cwd=ROOT,
+            capture_output=True,
+            text=True,
+        )
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("at least 5 seconds", result.stderr)
+
+    def test_delivery_manifest_binds_every_article_to_one_checksum(self) -> None:
+        plan = {
+            "provider": "tci_thaijo",
+            "journalSlug": "abcjournal",
+            "assetDelivery": {"evidenceId": "publisher-manifest-2026-001"},
+        }
+        manifest = {
+            "version": "seedy-approved-asset-delivery-v1",
+            "evidenceId": "publisher-manifest-2026-001",
+            "provider": "tci_thaijo",
+            "journalSlug": "abcjournal",
+            "assets": [{
+                "articleId": "200",
+                "filename": "article-200.pdf",
+                "sha256": "a" * 64,
+            }],
+        }
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "delivery.json"
+            path.write_text(json.dumps(manifest), encoding="utf-8")
+            loaded = load_delivery_manifest(path, plan=plan, expected_article_ids=["200"])
+            manifest["assets"].append({
+                "articleId": "201",
+                "filename": "../outside.pdf",
+                "sha256": "b" * 64,
+            })
+            unsafe = Path(directory) / "unsafe.json"
+            unsafe.write_text(json.dumps(manifest), encoding="utf-8")
+            with self.assertRaisesRegex(ValueError, "article denominator"):
+                load_delivery_manifest(unsafe, plan=plan, expected_article_ids=["200"])
+        self.assertEqual(loaded["200"]["sha256"], "a" * 64)
 
     def test_article_parser_requires_item_level_cc_by_and_pdf_metadata(self) -> None:
         html = """

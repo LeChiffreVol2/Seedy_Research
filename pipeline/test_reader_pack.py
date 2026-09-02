@@ -11,7 +11,13 @@ from pathlib import Path
 from urllib.parse import urlparse
 from unittest.mock import patch
 
-from pipeline.ingest_reader_pack import apply_rows, build_rows, plan_apply_batches, read_pack
+from pipeline.ingest_reader_pack import (
+    apply_rows,
+    build_rows,
+    plan_apply_batches,
+    read_pack,
+    select_pack_window,
+)
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -109,6 +115,31 @@ class ReaderPackTest(unittest.TestCase):
             with self.assertRaisesRegex(ValueError, "minimumNativePapers"):
                 read_pack(pack)
 
+    def test_approved_non_medical_cohort_keeps_its_own_section_and_tci_gate(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            pack = Path(directory)
+            paper = deepcopy(self.manifest["papers"][0])
+            shutil.copy(PACK / paper["pagesFile"], pack / paper["pagesFile"])
+            paper["articleType"] = "Research Article"
+            paper["tciTier"] = "group_1"
+            paper["medicalResearchOnly"] = False
+            manifest = {
+                **self.manifest,
+                "papers": [paper],
+                "releaseGate": {
+                    "minimumNativePapers": 1,
+                    "expectedNativePapers": 1,
+                    "allowedArticleTypes": ["Research Article"],
+                    "allowedTciTiers": ["group_1"],
+                    "medicalResearchOnly": False,
+                    "assetDeliveryMode": "publisher_manifest",
+                },
+            }
+            (pack / "manifest.json").write_text(json.dumps(manifest), encoding="utf-8")
+            _, papers = read_pack(pack)
+        self.assertEqual(len(papers), 1)
+        self.assertFalse(papers[0][0]["medicalResearchOnly"])
+
     def test_ingest_identity_falls_back_to_provider_identifier_when_doi_is_absent(self) -> None:
         paper = deepcopy(self.manifest["papers"][0])
         paper["doi"] = None
@@ -124,18 +155,32 @@ class ReaderPackTest(unittest.TestCase):
         self.assertEqual(row["catalog"]["discipline"], "medical_and_health_sciences")
         self.assertTrue(row["catalog"]["raw_metadata"]["medical_research_only"])
 
-    def test_thousand_paper_apply_plan_stays_bounded(self) -> None:
+    def test_five_thousand_paper_apply_plan_stays_bounded(self) -> None:
         plan = plan_apply_batches(
-            paper_count=1_000,
-            page_count=11_000,
+            paper_count=5_000,
+            page_count=53_640,
             provider_count=10,
-            batch_size=100,
-            page_batch_size=100,
+            batch_size=200,
+            page_batch_size=200,
         )
-        self.assertEqual(plan["papers"], 1_000)
-        self.assertEqual(plan["pages"], 11_000)
-        self.assertLessEqual(plan["estimatedApiRequests"], 175)
-        self.assertEqual(plan["legacyEstimatedApiRequests"], 6_002)
+        self.assertEqual(plan["papers"], 5_000)
+        self.assertEqual(plan["pages"], 53_640)
+        self.assertLessEqual(plan["estimatedApiRequests"], 410)
+        self.assertEqual(plan["legacyEstimatedApiRequests"], 30_002)
+
+    def test_pack_window_supports_repeatable_two_hundred_fifty_paper_promotions(self) -> None:
+        papers = [(f"paper-{index}", []) for index in range(5_000)]
+        selected, window = select_pack_window(papers, start=4_750, maximum=250)
+        self.assertEqual(len(selected), 250)
+        self.assertEqual(selected[0][0], "paper-4750")
+        self.assertEqual(selected[-1][0], "paper-4999")
+        self.assertEqual(window, {
+            "totalPapers": 5_000,
+            "startPaper": 4_750,
+            "selectedPapers": 250,
+            "nextStartPaper": None,
+            "remainingPapers": 0,
+        })
 
     def test_apply_uses_bulk_identity_reads_and_bounded_upserts(self) -> None:
         class FakeResponse:

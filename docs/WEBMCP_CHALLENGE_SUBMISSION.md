@@ -103,7 +103,7 @@ The repository and production release now contain:
 - an explicit reader and completeness contract in
   [Thai Research Full-Text System](THAI_RESEARCH_FULL_TEXT_SYSTEM.md).
 
-The full-paper reader may be described as **live for this 3-paper proof only**.
+The full-paper reader may be described as **live for this 103-paper proof only**.
 Do not describe the database as **complete Thai research**, and do not promote
 any additional asset to native reading until it passes all of these gates:
 
@@ -118,7 +118,7 @@ any additional asset to native reading until it passes all of these gates:
 
 Demo the live pack after the Passport flow: discover a Thai work, open the lawful
 reader mode, navigate to an exact page, search within the paper, highlight a
-passage, save a local note, and copy its citation. A verified 3-paper proof is
+passage, save a local note, and copy its citation. A verified 103-paper proof is
 stronger than an unverified claim to host hundreds of thousands of PDFs. Do not
 imply that browser-local notes are already workspace-synced or that this small
 proof materially changes national provider coverage.
@@ -279,10 +279,10 @@ trace rather than relying on narration alone.
 
 - Source code is MIT licensed.
 - The MIT license does not grant rights to source papers, extracted text, previews, embeddings, or third-party datasets.
-- The current public branch contains a synthetic redistributable fixture plus page-mapped extracted text for exactly three rights-reviewed LEARN Journal CC BY 4.0 papers; it contains no paper PDF binaries and no generated NCCE previews.
+- The current public branch contains a synthetic redistributable fixture plus page-mapped extracted text for exactly three rights-reviewed LEARN Journal CC BY 4.0 papers and the reproducible plan for the 100-paper DB-first BSCM cohort; it contains no paper PDF binaries, no BSCM page pack, and no generated NCCE previews.
 - Generated preview images existed in an older reachable public commit. They are removed from the frozen branch and from production, but purging them from Git history is a separate destructive operation requiring an explicit maintainer decision before submission.
 - Current production paper pages expose rights-safe metadata, page ranges, and source links without redistributing raw full text.
-- ThaiJO and OpenAlex remain metadata-only by default. The local exception is the explicit 3-paper LEARN Journal pack whose asset actions, license evidence, checksums, and page provenance are recorded; it does not grant rights for any other ThaiJO asset.
+- ThaiJO and OpenAlex remain metadata-only by default. The exceptions are the three committed LEARN papers and the 100 DB-first BSCM papers whose asset actions, licence evidence, checksums, and page provenance are recorded; they do not grant rights for any other ThaiJO asset.
 - Submission copy must say “structured and curated evidence” rather than implying ownership of the underlying papers or official Thai-government endorsement.
 
 ## Meaningful competition-period extension
@@ -297,7 +297,7 @@ The pre-existing product already had a Next.js research UI, a remote MCP server,
 - a visible WebMCP readiness indicator;
 - deterministic browser execution coverage;
 - an official 36-family ThaiJO endpoint registry, duplicate-safe metadata harvesting, whole-issue filtering, and a live `sc01` metadata expansion that adds 198 net-new discovery records without promoting full text;
-- a deployed 3-paper/68-page rights-reviewed reader slice and
+- a deployed 103-paper/1,105-page rights-reviewed reader slice and
   fail-closed access resolver, plus reader-access enrichment inside the
   existing WebMCP contract without returning full page text;
 - guarded OpenAlex seed resolution plus selected-lead carryover into a Research Path that ends in a candidate gap and Next-Study Protocol;

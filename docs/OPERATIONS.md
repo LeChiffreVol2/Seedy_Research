@@ -20,8 +20,8 @@ Run production smoke by overriding URLs:
 make prod-smoke
 ```
 
-Run the bounded 1,000-paper request-path smoke after applying the matching
-migration and deploying web:
+Run the bounded 5,000-paper request-path smoke after deploying web. It uses the
+deepest complete live page until production actually reaches the target:
 
 ```bash
 make native-scale

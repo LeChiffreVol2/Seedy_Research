@@ -42,6 +42,17 @@ pilot. Separately, six `FULL ISSUE` / `ฉบับเต็ม` containers are
 excluded from the paper count. These are discovery coverage metrics, not a claim
 of Thai affiliation, full-text rights, or citation coverage.
 
+For native-reader growth, the dated
+[5,000-paper source plan](research/NATIVE_FULL_TEXT_1000_TO_5000_SOURCE_PLAN.md)
+and machine-checked `pipeline/cohorts/native_5000_portfolio.json` are the control
+plane. The first wave contains 1,685 screening records; it does not contain
+1,685 verified assets. ThaiJO's official OAI-PMH service supplies the metadata
+census at no more than 10 requests per minute. ThaiJO robots rules exclude
+automated article/issue download paths, so the native builder records the
+official asset URL but reads PDF bytes only from an approved local publisher or
+institutional delivery. A visible PDF, journal-wide footer, or repository copy
+never promotes an asset by itself.
+
 ThaiJO and TCI are intentionally separate providers. TNRR, ThaiLIS/TDC,
 conference-series, and institutional-repository coverage are also measured
 independently and reconciled into canonical works rather than added as if every

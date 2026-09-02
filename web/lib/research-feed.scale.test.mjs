@@ -33,7 +33,7 @@ function catalogRow(index) {
     evidence_status: "extracted",
     document_id: null,
     updated_at: "2026-09-02T00:00:00Z",
-    total_count: 3_578,
+    total_count: 7_578,
   };
 }
 
@@ -48,10 +48,10 @@ function loadModule(rpcCalls) {
     rpc: async (name, params = {}) => {
       rpcCalls.push({ name, params });
       if (name === "civil_evidence_feed_facets_v1") return { data: [{ total: 1_297, total_sections: 11_523, total_chunks: 68_614, recent: 0, evidence: 1_297, ncce: 1_230, ce_project: 67 }], error: null };
-      if (name === "civil_source_catalog_facets_v1") return { data: [{ provider: "tci_thaijo", records: 3_578, citable: 1_000, metadata_only: 2_578 }], error: null };
-      if (name === "civil_research_coverage_v1") return { data: [{ provider: "tci_thaijo", records: 3_578, metadata_only: 2_578, page_citable: 1_000, native_full_paper: 1_000, source_hosted_full_paper: 0, endpoint_observed: 10, freshness: "2026-09-02" }], error: null };
+      if (name === "civil_source_catalog_facets_v1") return { data: [{ provider: "tci_thaijo", records: 7_578, citable: 5_000, metadata_only: 2_578 }], error: null };
+      if (name === "civil_research_coverage_v1") return { data: [{ provider: "tci_thaijo", records: 7_578, metadata_only: 2_578, page_citable: 5_000, native_full_paper: 5_000, source_hosted_full_paper: 0, endpoint_observed: 10, freshness: "2026-09-02" }], error: null };
       if (name === "search_civil_source_catalog_public_v2") {
-        return { data: Array.from({ length: 30 }, (_, index) => catalogRow(990 + index)), error: null };
+        return { data: Array.from({ length: 30 }, (_, index) => catalogRow(4_990 + index)), error: null };
       }
       return { data: null, error: { code: "PGRST202", message: `Unexpected RPC ${name}` } };
     },
@@ -70,7 +70,7 @@ function loadModule(rpcCalls) {
   return module.exports;
 }
 
-test("Thai discovery page 34 stays one bounded native-first database page at 1,000 native papers", async () => {
+test("Thai discovery page 167 stays one bounded native-first database page at 5,000 native papers", async () => {
   const previousUrl = process.env.SUPABASE_URL;
   const previousKey = process.env.SUPABASE_SERVICE_KEY;
   process.env.SUPABASE_URL = "https://example.supabase.co";
@@ -78,7 +78,7 @@ test("Thai discovery page 34 stays one bounded native-first database page at 1,0
   try {
     const rpcCalls = [];
     const feed = loadModule(rpcCalls);
-    const cursor = Buffer.from(JSON.stringify({ offset: 990 }), "utf8").toString("base64url");
+    const cursor = Buffer.from(JSON.stringify({ offset: 4_990 }), "utf8").toString("base64url");
     const result = await feed.listResearchFeed({ filter: "thai", provider: "tci_thaijo", limit: 30, cursor });
     assert.equal(result.cards.length, 30);
     assert.ok(result.cards.every((card) => card.evidenceStatus === "extracted"));
@@ -91,7 +91,7 @@ test("Thai discovery page 34 stays one bounded native-first database page at 1,0
       filter_evidence_status: null,
       native_first: true,
       match_count: 30,
-      match_offset: 990,
+      match_offset: 4_990,
     });
     assert.ok(result.nextCursor);
   } finally {
