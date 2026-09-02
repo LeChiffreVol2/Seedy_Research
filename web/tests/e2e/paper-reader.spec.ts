@@ -145,7 +145,10 @@ async function openPublicReader(page: Page) {
   expect(response?.ok()).toBe(true);
   const reader = page.getByTestId("paper-reader");
   await expect(reader).toBeVisible({ timeout: 30_000 });
-  await expect(reader.getByText("Checking verified access and page provenance…")).toHaveCount(0, { timeout: 15_000 });
+  // The first reader render may share a cold dev compiler with other E2E files.
+  // Wait on the semantic ready state instead of racing the transient copy.
+  await expect(reader.getByTestId("reader-access-state")).toBeVisible({ timeout: 45_000 });
+  await expect(reader.getByText("Checking verified access and page provenance…")).toHaveCount(0);
   return reader;
 }
 
@@ -189,15 +192,18 @@ test("native verified reader keeps stable page anchors through search, navigatio
   await search.fill("กำแพงกันดิน");
   const results = reader.getByRole("region", { name: "Paper search results" });
   await expect(results).toContainText("1 matching loaded pages");
-  await results.getByRole("button").focus();
-  await page.keyboard.press("Enter");
+  const searchResult = results.getByRole("button");
+  await expect(searchResult).toBeEnabled();
+  await searchResult.press("Enter");
   await expect(reader.getByRole("combobox", { name: "Page number" })).toHaveValue("2");
 
-  await reader.getByRole("button", { name: "Previous page" }).focus();
-  await page.keyboard.press("Enter");
+  const previousPage = reader.getByRole("button", { name: "Previous page" });
+  await expect(previousPage).toBeEnabled();
+  await previousPage.press("Enter");
   await expect(reader.getByRole("combobox", { name: "Page number" })).toHaveValue("1");
-  await reader.getByRole("button", { name: "Next page" }).focus();
-  await page.keyboard.press("Enter");
+  const nextPage = reader.getByRole("button", { name: "Next page" });
+  await expect(nextPage).toBeEnabled();
+  await nextPage.press("Enter");
   await expect(reader.getByRole("combobox", { name: "Page number" })).toHaveValue("2");
 
   await selectPhrase(page, 2, "กำแพงกันดิน");
