@@ -58,6 +58,20 @@ test("Thai topic fragments match Thai titles without treating generic research w
   assert.deepEqual(result.map((paper) => paper.source), [roadPaper.source]);
 });
 
+test("English road-safety questions can retain a Thai-title evidence record", () => {
+  const thaiEvidence = {
+    source: "NCCE29_TRL42.md",
+    title: "การศึกษาองค์ประกอบของการเกิดอุบัติเหตุทางถนนและปัจจัยที่นำไปสู่การบาดเจ็บสาหัสและการเสียชีวิตในประเทศไทย",
+    summary: "วิเคราะห์ปัจจัยด้านคน ยานพาหนะ ถนน และสิ่งแวดล้อม",
+    discipline: "transport",
+  };
+  const result = filterResearchCardsByRelevance(
+    "Which road and vehicle conditions are associated with severe or fatal crashes in Thailand?",
+    [thaiEvidence],
+  );
+  assert.deepEqual(result.map((paper) => paper.source), [thaiEvidence.source]);
+});
+
 test("an explicitly retained reviewed source survives a sparse or abstract goal", () => {
   const result = filterResearchCardsByRelevance(
     "Validate transfer beyond the current context",
@@ -65,4 +79,18 @@ test("an explicitly retained reviewed source survives a sparse or abstract goal"
     { alwaysIncludeSources: [aiEltPaper.source] },
   );
   assert.equal(result[0]?.source, aiEltPaper.source);
+});
+
+test("Thai-published scope labels cannot make an impossible sparse query look relevant", () => {
+  const unrelated = {
+    source: "thai-conference:ordinary",
+    title: "Coastal sediment transport in southern Thailand",
+    summary: "A conventional field observation study.",
+    tags: ["Published in Thailand", "Thai Conferences"],
+  };
+  const result = filterResearchCardsByRelevance(
+    "Which Thai conference validated zero-gravity railways beneath the Andaman Sea?",
+    [unrelated],
+  );
+  assert.deepEqual(result, []);
 });

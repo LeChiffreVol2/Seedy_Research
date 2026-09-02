@@ -78,6 +78,26 @@ The relevance-first follow-up ensures an exact Thai-local metadata title ranks
 ahead of loosely related native-reader records while native access remains the
 tie-breaker for equally relevant results.
 
+## Research Case and Thai-published facets
+
+Apply `20260902221100_research_cases_and_thai_published_facets.sql` after the
+visibility/relevance migrations and before deploying the eight-tool web client.
+The migration is additive: it adds independent publication/context/language/
+affiliation facets, service-only Research Case and claim-review tables, the
+internal visibility-correction queue, and the bounded catalog search v3 RPC.
+It does not submit or mutate records in OpenAlex.
+
+After migration and staged deployment, verify:
+
+```bash
+python3.10 harness/run_challenge_research_benchmark.py --base-url "$STAGED_WEB_URL"
+```
+
+The benchmark must retain sparse results, never substitute PMC records into the
+Thai-published cohort, and keep request p95 at or below five seconds. Treat a
+missing `civil_research_cases` table or v3 RPC as an incomplete rollout, not an
+application-level success.
+
 ## Rollback
 - Return to the legacy section-then-chunk recipe: `FAST_RETRIEVAL_ENABLED=false`.
 - Restore model-based routing for otherwise-unclassified prompts: `LLM_ROUTER_ENABLED=true`.
@@ -97,6 +117,12 @@ tie-breaker for equally relevant results.
 - Web `/api/visibility` for the latest dated audit summary; missing RPCs must
   degrade to `not_audited`, and provider failures to `audit_unavailable`, never
   to a no-exact-match claim.
+- Web `/api/research-cases` for persistent case state and claim decisions; a
+  schema-cache missing-table response means the latest Supabase migration has
+  not reached that environment.
+- Web `/api/visibility-corrections` for the internal steward queue. Suggestions
+  are review records inside Seedy Research and must never be described as an
+  OpenAlex update.
 - Web `/api/chat` debug mode for context/evidence traces.
 - MCP `/metrics` for `embedding_circuit`, `retrieval_fallbacks_total`,
   `embedding_unavailable_total`, tool error rate, and error codes.

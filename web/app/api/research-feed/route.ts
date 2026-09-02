@@ -9,6 +9,13 @@ export const runtime = "nodejs";
 export const preferredRegion = ["sin1"];
 export const dynamic = "force-dynamic";
 
+function optionalBoolean(value: string | null): boolean | null | "invalid" {
+  if (value == null || value === "") return null;
+  if (value === "true" || value === "1") return true;
+  if (value === "false" || value === "0") return false;
+  return "invalid";
+}
+
 export async function GET(request: NextRequest) {
   let finalize = (response: NextResponse) => response;
 
@@ -41,6 +48,15 @@ export async function GET(request: NextRequest) {
         { status: 422, headers: { "Cache-Control": "no-store" } },
       ));
     }
+    const thailandContext = optionalBoolean(url.searchParams.get("thailandContext"));
+    const thaiLanguage = optionalBoolean(url.searchParams.get("thaiLanguage"));
+    const thaiAffiliated = optionalBoolean(url.searchParams.get("thaiAffiliated"));
+    if ([thailandContext, thaiLanguage, thaiAffiliated].includes("invalid")) {
+      return finalize(NextResponse.json(
+        { error: "Research facet filters must be true or false.", code: "invalid_research_facet" },
+        { status: 422, headers: { "Cache-Control": "no-store" } },
+      ));
+    }
     const payload = await listResearchFeed({
       filter: url.searchParams.get("filter"),
       collection: url.searchParams.get("collection"),
@@ -48,6 +64,9 @@ export async function GET(request: NextRequest) {
       q: url.searchParams.get("q"),
       limit: url.searchParams.get("limit"),
       cursor: url.searchParams.get("cursor"),
+      thailandContext: thailandContext as boolean | null,
+      thaiLanguage: thaiLanguage as boolean | null,
+      thaiAffiliated: thaiAffiliated as boolean | null,
     });
 
     const response = CIVILMCP_OPEN_ACCESS

@@ -106,10 +106,11 @@ from an ignored, reproducible local pack and PDF binaries are not committed; see
 
 ## WebMCP: research with a shared human-agent view
 
-Seedy Research exposes seven browser-native SeedyMCP site tools from the top-level page with `document.modelContext.registerTool(...)`. The tools reuse the same application APIs, signed-in session, validation, evidence boundary, and visible UI that a person uses:
+Seedy Research exposes eight browser-native SeedyMCP site tools from the top-level page with `document.modelContext.registerTool(...)`. The tools reuse the same application APIs, signed-in session, validation, evidence boundary, and visible UI that a person uses:
 
 | Site tool | Shared result |
 | --- | --- |
+| `start_research_case` | Starts or resumes one persistent case from a real question, runs bounded Thai-published discovery, preserves sparse results, and selects the first inspectable source without approving it. |
 | `discover_research` | Searches Thai-local records by default; optional OpenAlex topical metadata appears only as a secondary comparison layer. |
 | `audit_global_visibility` | Returns the latest dated visibility receipt without converting candidates, unavailable checks, or not-yet-audited work into a missing claim. |
 | `inspect_paper_evidence` | Opens the paper drawer and highlights bounded evidence with its original page for human verification. For a rights-verified reader paper it also reports the lawful access mode and a reopenable verified page anchor, but never returns full page text through WebMCP. |
@@ -122,17 +123,17 @@ This is complementary to the remote MCP service: remote MCP works without an ope
 
 ### Challenge hero flow: Thai Visibility → Research Action
 
-The repeatable Challenge flow begins with a rights-reviewed Thai paper, not a
-generated summary. The Site tools menu exposes all seven capabilities, while
+The repeatable Challenge flow begins with a real research question, not a
+generated summary. The Site tools menu exposes all eight capabilities, while
 the proof makes the visibility and evidence boundary observable:
 
-1. `discover_research` finds the rights-reviewed Thai-local paper;
+1. `start_research_case` persists the question and selects a relevant Thai-published source without unrelated filler;
 2. `audit_global_visibility` reads its dated OpenAlex comparison receipt;
 3. `inspect_paper_evidence` opens its exact page and lawful reader state;
 4. `trace_research_connections` may connect an exact-DOI control paper;
 5. `draft_research_passport` carries only inspected pages and verified
    relationship nodes, never generic topical search results; and
-6. the person reopens the pages, acknowledges review, and continues into a
+6. the person reopens the pages, accepts or rejects each evidence claim, and continues into a
    Research Path whose incomplete export is visibly watermarked as a draft.
 
 The recommended demo uses a dated no-exact-match or under-indexed Thai-local
@@ -146,10 +147,10 @@ three deliberately separate layers:
 3. one candidate validation gap labelled as inference, with novelty and
    transferability explicitly not established.
 
-Export stays disabled until the person reopens every selected exact-page anchor
-and acknowledges the page review. That acknowledgment does not validate the
-candidate inference. The exported Markdown preserves the same evidence,
-metadata, and inference boundaries. The Passport audits provenance and frames
+Export stays disabled until the person reopens every selected exact-page anchor,
+accepts or rejects every evidence claim, and accepts at least one. Those decisions do not validate the
+candidate inference. The exported Markdown preserves only accepted evidence plus the same
+metadata and inference boundaries. The Passport audits provenance and frames
 a next verification step; it does not prove scientific correctness, novelty,
 global transferability, or a comprehensive literature gap.
 

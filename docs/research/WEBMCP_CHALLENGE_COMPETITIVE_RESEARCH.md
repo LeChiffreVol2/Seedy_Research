@@ -1,5 +1,11 @@
 # WebMCP Challenge Competitive Research — Seedy Research
 
+> **Current product decision:** The product-only cold-start audit and accepted
+> P0/P1/P2 strategy are maintained in
+> [WEBMCP_PRODUCT_WIN_STRATEGY.md](WEBMCP_PRODUCT_WIN_STRATEGY.md). That document
+> supersedes product recommendations in this historical 1 September research
+> snapshot; submission media is intentionally outside its scope.
+
 **Research date:** 1 September 2026 (ICT)
 **Source policy:** Challenge facts come from OpenAI and the controlling Devpost
 rules/resources. The AlphaXiv comparison uses AlphaXiv's own public pages and

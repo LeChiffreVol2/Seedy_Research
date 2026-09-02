@@ -1,6 +1,6 @@
 const GENERIC_TERMS = new Set([
-  "a", "an", "and", "are", "as", "at", "be", "beyond", "by", "can", "current", "do", "does", "for", "from", "how", "in", "into", "is", "it", "of", "on", "or", "paper", "papers", "research", "should", "study", "studies", "test", "testing", "the", "this", "to", "use", "using", "what", "with",
-  "การ", "ของ", "จาก", "ด้วย", "ที่", "และ", "ใน", "เป็น", "เพื่อ", "ศึกษา", "การศึกษา", "งานวิจัย", "วิจัย", "อย่างไร",
+  "a", "an", "and", "are", "as", "at", "be", "beyond", "by", "can", "conference", "current", "do", "does", "evidence", "for", "from", "how", "in", "into", "is", "it", "journal", "known", "of", "on", "or", "paper", "papers", "published", "report", "reported", "reports", "repository", "research", "should", "show", "shows", "studies", "study", "test", "testing", "thai", "thailand", "the", "this", "to", "use", "using", "what", "which", "with",
+  "การ", "ของ", "จาก", "ด้วย", "ที่", "และ", "ใน", "เป็น", "เพื่อ", "ศึกษา", "การศึกษา", "งานวิจัย", "วิจัย", "ประเทศไทย", "อย่างไร",
 ]);
 
 const THAI_TOPIC_FRAGMENTS = [
@@ -32,6 +32,18 @@ const CONCEPTS = [
     id: "road_safety",
     test: (value) => /road safety|traffic safety|road (?:crash|accident)|อุบัติเหตุทางถนน|ความปลอดภัยทางถนน/u.test(value),
   },
+  {
+    id: "vehicle",
+    test: (value) => /vehicle|motorcycle|car|ยานพาหนะ|รถจักรยานยนต์/u.test(value),
+  },
+  {
+    id: "severe_injury",
+    test: (value) => /severe|fatal|fatality|death|บาดเจ็บสาหัส|เสียชีวิต/u.test(value),
+  },
+  {
+    id: "risk_factor",
+    test: (value) => /condition|factor|component|ปัจจัย|องค์ประกอบ/u.test(value),
+  },
 ];
 
 // Topic anchors carry the user's domain intent. Study-design terms such as
@@ -53,7 +65,9 @@ function normalizeText(value) {
   return String(value ?? "")
     .normalize("NFKC")
     .toLocaleLowerCase("en")
-    .replace(/[^\p{L}\p{N}]+/gu, " ")
+    // Thai vowels and tone marks are Unicode marks, not letters. Preserving
+    // them is required for exact Thai phrase/concept matching.
+    .replace(/[^\p{L}\p{M}\p{N}]+/gu, " ")
     .replace(/\s+/g, " ")
     .trim();
 }
@@ -64,7 +78,7 @@ function unique(values) {
 
 function queryTerms(query) {
   const normalized = normalizeText(query);
-  const lexical = (normalized.match(/[\p{L}\p{N}]+/gu) ?? [])
+  const lexical = (normalized.match(/[\p{L}\p{M}\p{N}]+/gu) ?? [])
     .filter((term) => term.length >= 2 && !GENERIC_TERMS.has(term));
   const thaiFragments = THAI_TOPIC_FRAGMENTS.filter((term) => normalized.includes(term));
   return unique([...lexical, ...thaiFragments]).slice(0, 20);
@@ -146,8 +160,10 @@ export function scoreResearchCardRelevance(query, card) {
   }
 
   const signalCount = terms.length + queryConceptCount;
-  const minimumDistinctMatches = signalCount >= 4 ? 2 : 1;
-  const minimumScore = signalCount >= 4 ? 6 : 4;
+  const minimumDistinctMatches = requiredDomainConcepts.length >= 2
+    ? 2
+    : signalCount >= 5 ? 3 : signalCount >= 4 ? 2 : 1;
+  const minimumScore = signalCount >= 5 ? 8 : signalCount >= 4 ? 6 : 4;
   const domainAnchorsSatisfied = requiredDomainConcepts.every((concept) => matchedDomainConcepts.has(concept));
   return {
     relevant: domainAnchorsSatisfied && matchedSignals.size >= minimumDistinctMatches && score >= minimumScore,

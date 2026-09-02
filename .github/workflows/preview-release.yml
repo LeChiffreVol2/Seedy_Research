@@ -54,6 +54,7 @@ env:
   CIVIL_DATA_RPC_STATE_SQL: >-
     select case when to_regprocedure('public.search_civil_source_catalog_public_v1(text,text,text,integer,integer)') is not null
       and to_regprocedure('public.search_civil_source_catalog_public_v2(text,text,text,text,boolean,integer,integer)') is not null
+      and to_regprocedure('public.search_civil_source_catalog_public_v3(text,text,text,text,boolean,boolean,boolean,boolean,integer,integer)') is not null
       and to_regprocedure('public.civil_delete_account_data(text)') is not null
       and to_regprocedure('public.list_civil_evidence_feed_v1(text,text,integer,integer)') is not null
       and to_regprocedure('public.civil_evidence_feed_facets_v1()') is not null
@@ -62,6 +63,9 @@ env:
       and to_regclass('public.civil_visibility_audit_runs') is not null
       and to_regclass('public.civil_external_index_matches') is not null
       and to_regclass('public.civil_visibility_review_decisions') is not null
+      and to_regclass('public.civil_research_cases') is not null
+      and to_regclass('public.civil_research_case_reviews') is not null
+      and to_regclass('public.civil_visibility_correction_suggestions') is not null
       and to_regprocedure('public.civil_visibility_summary_v1(text,text)') is not null
       and to_regprocedure('public.civil_visibility_receipts_v1(text[],text)') is not null
       and to_regclass('public.civil_private_library_items') is not null
@@ -178,6 +182,7 @@ jobs:
           psql "$SUPABASE_PREVIEW_DB_URL" -v ON_ERROR_STOP=1 -f supabase/migrations/20260902020000_civil_native_reader_scale_1000.sql
           psql "$SUPABASE_PREVIEW_DB_URL" -v ON_ERROR_STOP=1 -f supabase/migrations/20260902123406_civil_global_visibility_audit.sql
           psql "$SUPABASE_PREVIEW_DB_URL" -v ON_ERROR_STOP=1 -f supabase/migrations/20260902173000_civil_catalog_relevance_first.sql
+          psql "$SUPABASE_PREVIEW_DB_URL" -v ON_ERROR_STOP=1 -f supabase/migrations/20260902221100_research_cases_and_thai_published_facets.sql
           test "$(psql "$SUPABASE_PREVIEW_DB_URL" -v ON_ERROR_STOP=1 -Atqc "$CIVIL_DATA_RPC_STATE_SQL")" = "ready"
 
   deploy-mcp-preview:
@@ -358,6 +363,7 @@ jobs:
           psql "$SUPABASE_DB_URL" -v ON_ERROR_STOP=1 -f supabase/migrations/20260902020000_civil_native_reader_scale_1000.sql
           psql "$SUPABASE_DB_URL" -v ON_ERROR_STOP=1 -f supabase/migrations/20260902123406_civil_global_visibility_audit.sql
           psql "$SUPABASE_DB_URL" -v ON_ERROR_STOP=1 -f supabase/migrations/20260902173000_civil_catalog_relevance_first.sql
+          psql "$SUPABASE_DB_URL" -v ON_ERROR_STOP=1 -f supabase/migrations/20260902221100_research_cases_and_thai_published_facets.sql
           test "$(psql "$SUPABASE_DB_URL" -v ON_ERROR_STOP=1 -Atqc "$CIVIL_DATA_RPC_STATE_SQL")" = "ready"
       - name: Stage MCP production deployment
         id: stage_mcp

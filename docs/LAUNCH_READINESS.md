@@ -45,14 +45,16 @@ institutional repositories remain separately measured rollout tracks.
   19-tool first-party compatibility contract. OAuth and revocable owner-scoped
   personal keys share the same permission and distributed-quota boundary.
   Metadata-only records are never returned as citable evidence.
-- WebMCP: seven top-level browser site tools for Thai discovery, dated global
-  visibility audit, exact-page evidence, evidence-bounded Research Passport drafting, Research Path
+- WebMCP: eight top-level browser site tools for persistent Research Case
+  start/resume, Thai discovery, dated global visibility audit, exact-page
+  evidence, evidence-bounded Research Passport drafting, Research Path
   creation/adaptation, and privacy-bounded progress inspection. Tool calls
   must update the same visible page the person is reviewing.
 - Research Passport: one to three visible exact-page Thai anchors, at most four
   OpenAlex metadata-only leads, an optional bounded English rendering that
   never replaces the source excerpt, one candidate validation gap, mandatory
-  exact-page review, and a boundary-preserving Markdown export. It must not claim
+  exact-page claim accept/reject review with at least one accepted claim, and a
+  boundary-preserving Markdown export. It must not claim
   scientific correctness, novelty, transferability, or comprehensive review.
 - Trust and support: public Privacy, Terms, Support/takedown, self-service
   account deletion, and first-party activation events without raw queries.
@@ -82,17 +84,15 @@ All of the following must pass against the same source state:
     initialize/list/call pass authenticated isolation tests;
 12. `npm audit --omit=dev` has no high or critical production advisory, and any
     deferred low advisory has an owner and migration plan.
-13. the focused WebMCP browser test executes all seven tools and verifies visible
+13. the focused WebMCP browser test executes all eight tools and verifies visible
     Explore, evidence-drawer, Research Passport, Research Path, and progress
-    state; Passport page-review acknowledgment remains locked until every selected exact-page anchor is reopened, export remains locked until that acknowledgment, and OpenAlex leads
+    state; Passport claim decisions remain locked until the selected exact-page
+    anchors are reopened, export remains locked until every claim is decided and
+    at least one is accepted, and OpenAlex leads
     remain non-citable. The deployed candidate is also checked manually in
     ChatGPT's built-in browser using a configuration where Site tools are
     visibly available and in Chrome with native WebMCP testing enabled. Record
     the exact host build, account class, selected model, permissions, and calls.
-16. the default Thai feed starts independently of session and history
-    hydration; initial cards do not trigger translation until requested;
-    and the visibility audit distinguishes provider failure from a dated
-    no-exact-match result without exposing a partial-run percentage.
 14. Research Notebook ownership and saved-source membership fail closed;
     citations resolve only to supplied exact-page packets; private answers are
     non-shareable and not persisted; public promotion returns to the Passport
@@ -100,6 +100,15 @@ All of the following must pass against the same source state:
 15. Passport-to-Path continuity rejects stale or off-paper evidence and carries
     the reviewed Passport ID, source, exact evidence locators, gap lens, and
     selected metadata-only global leads into the visible path.
+16. the default Thai feed starts independently of session and history
+    hydration; natural-language Thai-published search joins ThaiJO discovery
+    with bounded local conference/university evidence without admitting the PMC
+    global-comparison cohort; initial cards do not trigger translation until
+    requested; and the visibility audit distinguishes provider failure from a
+    dated no-exact-match result without exposing a partial-run percentage.
+17. the 30-question Research Case benchmark passes across engineering,
+    education, health, and sparse controls, and its feed request p95 is no more
+    than five seconds against the exact staged candidate.
 
 The August 31, 2026 production dependency audit found no high or critical
 advisories and five transitive low-severity advisories in the current AI SDK

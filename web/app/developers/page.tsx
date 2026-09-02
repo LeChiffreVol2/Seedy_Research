@@ -25,7 +25,7 @@ export default function DevelopersPage() {
       <section className={styles.hero}>
         <p className={styles.eyebrow}>SEEDY · Seedy Research</p>
         <h1>Thai research evidence for people and agents.</h1>
-        <p>Collaborate with an agent in the live page through seven browser-native SeedyMCP tools—including a dated Thai–global visibility audit, an evidence-bounded Research Passport, and a fail-closed OpenAlex connection trace—or connect an independent research client to the bounded remote MCP endpoint.</p>
+        <p>Collaborate with an agent in the live page through eight browser-native SeedyMCP tools—including a resumable Research Case, dated Thai–global visibility audit, evidence-bounded Research Passport, and fail-closed OpenAlex connection trace—or connect an independent research client to the bounded remote MCP endpoint.</p>
         <div className={styles.endpoint}><div><span>Streamable HTTP</span><code>{endpoint}</code></div><a href="/?view=settings">Create personal key</a></div>
       </section>
 
@@ -38,7 +38,7 @@ export default function DevelopersPage() {
       <section className={styles.section}>
         <div><p className={styles.eyebrow}>Two agent surfaces</p><h2>Share the page, or work remotely.</h2><p className={styles.sectionLead}>WebMCP and remote MCP reuse the same evidence rules but solve different jobs.</p></div>
         <div className={styles.connectGrid}>
-          <article><Network size={19} aria-hidden /><h3>SeedyMCP · shared browser</h3><p>Open Explore with ChatGPT or Chrome. Six site tools discover research, open exact-page evidence, trace guarded global connections, build a Research Path, draft a review-gated Passport, and inspect progress while the person verifies the same page.</p><a href="/?view=explore">Open the SeedyMCP research surface</a></article>
+          <article><Network size={19} aria-hidden /><h3>SeedyMCP · shared browser</h3><p>Open Explore with ChatGPT or Chrome. Eight site tools start a persistent case, discover research, open exact-page evidence, trace guarded global connections, build a Research Path, draft a claim-review-gated Passport, and inspect progress while the person verifies the same page.</p><a href="/?view=explore">Open the SeedyMCP research surface</a></article>
           <article><Braces size={19} aria-hidden /><h3>Remote MCP · independent client</h3><p>Use the stateless endpoint for agents that need research and library tools without an open Seedy Research page.</p><code>{endpoint}</code></article>
         </div>
       </section>

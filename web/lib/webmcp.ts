@@ -10,6 +10,10 @@ export type DiscoverResearchInput = {
   scope: WebMcpDiscoveryScope;
 };
 
+export type StartResearchCaseInput = DiscoverResearchInput & {
+  outcome: WebMcpPathOutcome;
+};
+
 export type InspectPaperEvidenceInput = {
   source: string;
   evidenceId?: string;
@@ -45,6 +49,7 @@ export type DraftResearchPassportInput = {
 };
 
 export type SeedResearchWebMcpHandlers = {
+  startResearchCase: (input: StartResearchCaseInput, signal: AbortSignal) => Promise<unknown>;
   discoverResearch: (input: DiscoverResearchInput, signal: AbortSignal) => Promise<unknown>;
   auditGlobalVisibility: (input: AuditGlobalVisibilityInput, signal: AbortSignal) => Promise<unknown>;
   inspectPaperEvidence: (input: InspectPaperEvidenceInput, signal: AbortSignal) => Promise<unknown>;
@@ -86,6 +91,7 @@ declare global {
 }
 
 export const SEED_RESEARCH_WEBMCP_TOOL_NAMES = [
+  "start_research_case",
   "discover_research",
   "audit_global_visibility",
   "inspect_paper_evidence",
@@ -151,6 +157,17 @@ function parseDiscoverResearch(input: unknown): DiscoverResearchInput {
     query: requiredText(record, "query", 2, 180),
     collection: enumValue(record, "collection", ["all", "ncce", "ce_project"], "all"),
     scope: enumValue(record, "scope", ["thai", "thai_and_global"], "thai"),
+  };
+}
+
+function parseStartResearchCase(input: unknown): StartResearchCaseInput {
+  const record = inputRecord(input);
+  assertAllowedKeys(record, ["query", "collection", "scope", "outcome"]);
+  return {
+    query: requiredText(record, "query", 8, 280),
+    collection: enumValue(record, "collection", ["all", "ncce", "ce_project"], "all"),
+    scope: enumValue(record, "scope", ["thai", "thai_and_global"], "thai"),
+    outcome: enumValue(record, "outcome", ["literature_review", "study_plan", "decision_brief"], "study_plan"),
   };
 }
 
@@ -262,9 +279,27 @@ export async function registerSeedResearchWebMcpTools(
   const signalFor = (options?: WebMcpExecutionOptions) => options?.signal ?? controller.signal;
   const tools: WebMcpTool[] = [
     {
+      name: "start_research_case",
+      title: "Start a Thai-to-global Research Case",
+      description: "Start or resume one visible, persistent research case from a natural Thai or English question. Runs bounded Thai-published discovery and visibility triage together, then leaves exact-page inspection and claim review as explicit next steps for the person and agent.",
+      inputSchema: {
+        type: "object",
+        properties: {
+          query: { type: "string", minLength: 8, maxLength: 280, description: "Natural research question in Thai or English; do not use an exact paper title unless the user supplied it." },
+          collection: { type: "string", enum: ["all", "ncce", "ce_project"], description: "Optional bounded evidence collection; defaults to all Thai-published sources." },
+          scope: { type: "string", enum: ["thai", "thai_and_global"], description: "Defaults to Thai-published discovery; global topical metadata remains comparison-only." },
+          outcome: { type: "string", enum: ["literature_review", "study_plan", "decision_brief"], description: "Target case outcome; defaults to a testable study plan." },
+        },
+        required: ["query"],
+        additionalProperties: false,
+      },
+      annotations: { readOnlyHint: false, untrustedContentHint: true },
+      execute: async (input, options) => handlers.startResearchCase(parseStartResearchCase(input), signalFor(options)),
+    },
+    {
       name: "discover_research",
       title: "Discover Thai research",
-      description: "Search Seedy Research's Thai-local sources first. Returns bounded page-citable evidence and source-addressable discovery-only Thai records separately, so a later visibility audit can inspect what global indexes may overlook. Optional global topical metadata is a comparison layer only.",
+      description: "Search Seedy Research's Thai-published sources first. Returns bounded page-citable evidence and source-addressable discovery-only records separately, so a later visibility audit can inspect what global indexes may represent incompletely. Optional global topical metadata is a comparison layer only.",
       inputSchema: {
         type: "object",
         properties: {

@@ -345,6 +345,7 @@ class GASecurityContracts(unittest.TestCase):
         e2e = source("web/tests/e2e/webmcp.spec.ts")
 
         for tool in (
+            "start_research_case",
             "discover_research",
             "audit_global_visibility",
             "inspect_paper_evidence",
@@ -395,7 +396,8 @@ class GASecurityContracts(unittest.TestCase):
             self.assertNotIn(private_state, passport_handler)
 
         self.assertIn("artifact.openedEvidenceIds.includes(item.id)", page)
-        self.assertIn("artifact.stale || !allEvidenceOpened", page)
+        self.assertIn('artifact.reviewDecisions[item.id]?.decision === "accepted"', page)
+        self.assertIn("allEvidenceDecided", page)
         self.assertIn("Review the current Research Passport before exporting it.", page)
         self.assertIn('disabled={!reviewed || artifact.stale}', page)
         self.assertIn("global records used as evidence: 0", page)
@@ -403,7 +405,8 @@ class GASecurityContracts(unittest.TestCase):
         self.assertIn("visible in the active paper", e2e)
         self.assertIn("expect(passport.globalLeads?.[0]?.citable).toBe(false)", e2e)
         self.assertIn("expect(exportPassport).toBeDisabled()", e2e)
-        self.assertIn('getByRole("button", { name: "Mark pages reviewed" })', e2e)
+        self.assertIn('getByRole("button", { name: "Accept", exact: true })', e2e)
+        self.assertIn('getByRole("button", { name: "Complete evidence review" })', e2e)
         self.assertIn("expect(exportPassport).toBeEnabled()", e2e)
 
     def test_public_read_errors_are_redacted_and_cacheable(self) -> None:

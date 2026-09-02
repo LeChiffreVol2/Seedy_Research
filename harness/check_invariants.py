@@ -79,6 +79,7 @@ EXPECTED_WRITE_TOOLS = {
     "remove_library_item": "DELETE_ANNOTATIONS",
 }
 EXPECTED_WEBMCP_TOOLS = {
+    "start_research_case",
     "discover_research",
     "audit_global_visibility",
     "inspect_paper_evidence",
@@ -191,7 +192,7 @@ def check_webmcp_contract() -> Check:
         "exact_tool_count": len(declared) == len(EXPECTED_WEBMCP_TOOLS),
         "strict_schemas": bridge.count("additionalProperties: false") >= len(EXPECTED_WEBMCP_TOOLS),
         "read_and_untrusted_hints": "readOnlyHint" in bridge and bridge.count("untrustedContentHint: true") >= len(EXPECTED_WEBMCP_TOOLS),
-        "wired_to_page": "registerSeedResearchWebMcpTools(proxy)" in page and "SeedyMCP active · 7 site tools" in page,
+        "wired_to_page": "registerSeedResearchWebMcpTools(proxy)" in page and "SeedyMCP active · 8 site tools" in page,
         "fail_closed_connection_trace": all(
             marker in page
             for marker in (
@@ -225,7 +226,8 @@ def check_webmcp_contract() -> Check:
             marker in page
             for marker in (
                 "artifact.openedEvidenceIds.includes(item.id)",
-                "artifact.stale || !allEvidenceOpened",
+                "artifact.reviewDecisions[item.id]?.decision === \"accepted\"",
+                "allEvidenceDecided",
                 "Review the current Research Passport before exporting it.",
                 "tracedGlobalWorks(connectionResponse)",
                 'item.tool === "audit_global_visibility"',
@@ -237,7 +239,7 @@ def check_webmcp_contract() -> Check:
                 "citable: false",
                 "global records used as evidence: 0",
             )
-        ) and all(marker in e2e for marker in ("toBeDisabled()", "Mark pages reviewed", "toBeEnabled()", "citable).toBe(false)", "provider unavailable", "bounded English rendering")),
+        ) and all(marker in e2e for marker in ("toBeDisabled()", 'name: "Accept", exact: true', "Complete evidence review", "toBeEnabled()", "citable).toBe(false)", "provider unavailable", "bounded English rendering")),
         "structured_research_path_artifacts": all(
             marker in path_route
             for marker in (
@@ -271,7 +273,7 @@ def check_webmcp_contract() -> Check:
     return Check(
         "webmcp_contract",
         "pass",
-        "Seven bounded WebMCP tools are wired to visible UI state with dated visibility audit, fail-closed connection matching, exact-page Passport evidence, review gating, annotations, cleanup, and browser execution coverage.",
+        "Eight bounded WebMCP tools are wired to a persistent Research Case with dated visibility audit, fail-closed connection matching, exact-page Passport evidence, claim-level review gating, annotations, cleanup, and browser execution coverage.",
     )
 
 
@@ -580,17 +582,18 @@ def check_product_contract() -> Check:
             "when 'gpt-5.6-sol' then 10",
             "p_model in ('deepseek-v4-pro', 'gpt-5.6-terra', 'gpt-5.6-sol')",
         )),
-        "provider_neutral_product_copy": "Powered by GPT" not in page and "Page-linked sources" in page,
+        "provider_neutral_product_copy": "Powered by GPT" not in page and "Thai-published page-citable papers" in page,
         "guest_hour_quota": "CHAT_GUEST_REQUESTS_PER_HOUR, 1, 500, 30" in chat,
         "corpus_facets": all(marker in feed for marker in ("totalSections", "totalChunks")),
         "verified_corpus_fallback": all(
             marker in page
             for marker in (
-                "feedCitableTotal",
+                "feedThaiPublishedDiscoveryTotal",
                 "feedThaiNativeFullPaperTotal",
-                "feedTotalChunks",
-                "feedMetadataOnlyTotal",
-                "Exact-page citations",
+                "feedThaiPublishedPageCitableTotal",
+                "feedGlobalComparisonTotal",
+                "visibility-audited works",
+                "completed Research Cases",
             )
         ),
         "explicit_paper_routing": all(marker in chat for marker in ("explicitPaperSources", "fetch_civil_paper", "exactPaperMatches")),
@@ -727,6 +730,57 @@ def check_no_static_feed() -> Check:
     return Check("dynamic_feed_only", "pass", "No static feed markers found in primary feed surfaces.")
 
 
+def check_research_case_contract() -> Check:
+    benchmark_path = ROOT / "harness" / "challenge_research_benchmark.json"
+    lighthouse_path = ROOT / "harness" / "lighthouse_research_cases.json"
+    migration_path = ROOT / "supabase" / "migrations" / "20260902221100_research_cases_and_thai_published_facets.sql"
+    required_paths = [
+        benchmark_path,
+        lighthouse_path,
+        migration_path,
+        ROOT / "harness" / "run_challenge_research_benchmark.py",
+        ROOT / "web" / "app" / "api" / "research-cases" / "route.ts",
+        ROOT / "web" / "app" / "api" / "visibility-corrections" / "route.ts",
+    ]
+    missing_paths = [str(path.relative_to(ROOT)) for path in required_paths if not path.exists()]
+    if missing_paths:
+        return Check("research_case_contract", "fail", f"missing={missing_paths}", "Restore the persistent Research Case and benchmark artifacts.")
+    benchmark = json.loads(benchmark_path.read_text(encoding="utf-8"))
+    lighthouse = json.loads(lighthouse_path.read_text(encoding="utf-8"))
+    cases = benchmark.get("cases", [])
+    answerable = [case for case in cases if case.get("kind") == "answerable"]
+    sparse = [case for case in cases if case.get("kind") == "sparse"]
+    disciplines = {case.get("discipline") for case in answerable}
+    migration = migration_path.read_text(encoding="utf-8", errors="replace")
+    page = (ROOT / "web" / "app" / "page.tsx").read_text(encoding="utf-8", errors="replace")
+    contract_ok = (
+        len(cases) == 30
+        and len(answerable) == 20
+        and len(sparse) == 10
+        and {"engineering", "education", "health_social_science"}.issubset(disciplines)
+        and len(lighthouse.get("cases", [])) == 3
+        and all(marker in migration for marker in (
+            "civil_research_cases", "civil_research_case_reviews", "civil_visibility_correction_suggestions",
+            "thai_published boolean", "thailand_context boolean", "thai_language boolean", "thai_affiliated boolean",
+            "enable row level security", "to service_role",
+        ))
+        and all(marker in page for marker in (
+            "ResearchCasePanel", "startResearchCase", "reviewDecisions", "Complete evidence review", "Suggest match/correction",
+        ))
+        and all(marker in (ROOT / "web" / "lib" / "research-cases.ts").read_text(encoding="utf-8", errors="replace") for marker in (
+            "getPaperDetail(input.source", "detail?.evidence.find", "verifiedPageAnchor !== input.pageAnchor",
+        ))
+    )
+    if not contract_ok:
+        return Check(
+            "research_case_contract",
+            "fail",
+            f"cases={len(cases)}; answerable={len(answerable)}; sparse={len(sparse)}; disciplines={sorted(d for d in disciplines if d)}",
+            "Restore the 20+10 benchmark, three Lighthouse cases, persistence, facets, and claim-level review boundary.",
+        )
+    return Check("research_case_contract", "pass", "Persistent Research Case, independent Thai facets, claim review, steward queue, 20+10 benchmark, and three Lighthouse cases are present.")
+
+
 def check_reports_ignored() -> Check:
     text = (ROOT / ".gitignore").read_text(encoding="utf-8", errors="replace") if (ROOT / ".gitignore").exists() else ""
     if "harness/reports/" not in text:
@@ -745,6 +799,7 @@ def main() -> None:
         check_backbone_guardrails(),
         check_generated_feed_artifacts(),
         check_product_contract(),
+        check_research_case_contract(),
         check_no_static_feed(),
         check_reports_ignored(),
     ]

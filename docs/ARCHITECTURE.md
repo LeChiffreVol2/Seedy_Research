@@ -18,13 +18,20 @@ only after an explicit language or paper action.
 
 ## System Shape
 Seedy Research has three production surfaces. Existing CivilMCP identifiers remain as compatibility contracts through the Challenge release:
-- `web/`: Next.js 15 app with research feed, chat UI, bounded Agentic Context Engine orchestration in `/api/chat`, adaptive Thai-to-global path assembly in `/api/research-path`, a bounded Verified Review matrix in `/api/research-workspaces`, and seven browser-native SeedyMCP tools registered from the top-level page.
+- `web/`: Next.js 15 app with a persistent Research Case, research feed, chat UI, bounded Agentic Context Engine orchestration in `/api/chat`, adaptive Thai-to-global path assembly in `/api/research-path`, a bounded Verified Review matrix in `/api/research-workspaces`, and eight browser-native SeedyMCP tools registered from the top-level page.
 - `mcp-server/`: Python FastAPI service exposing the public stateless MCP v2 endpoint at `/v2/mcp`, OAuth protected-resource metadata, and the existing `/tools/list`, `/tools/call`, and legacy MCP transport used by first-party consumers.
 - `pipeline/` + `supabase/`: provider registry, metadata harvesting, page-preserving PDF/OCR extraction, markdown/preview generation, v2 section/chunk embedding, and Supabase pgvector readiness checks.
 
 ## Browser-native WebMCP surface
 
-`web/lib/webmcp.ts` registers `discover_research`, `inspect_paper_evidence`, `trace_research_connections`, `draft_research_passport`, `build_research_path`, and `inspect_learning_progress` through the imperative `document.modelContext.registerTool(...)` API after the page session is ready. This SeedyMCP surface is distinct from the remote MCP server: remote MCP can operate independently of an open webpage, while SeedyMCP lets an agent and person share the live page, identity, and UI state.
+`web/lib/webmcp.ts` registers eight tools through the imperative
+`document.modelContext.registerTool(...)` API after the page session is ready:
+`start_research_case`, `discover_research`, `audit_global_visibility`,
+`inspect_paper_evidence`, `trace_research_connections`,
+`draft_research_passport`, `build_research_path`, and
+`inspect_learning_progress`. This SeedyMCP surface is distinct from the remote
+MCP server: remote MCP can operate independently of an open webpage, while
+SeedyMCP lets an agent and person share the live page, identity, and UI state.
 
 The browser tools call only existing same-origin APIs and reuse their authorization, distributed quota, provider timeout, bounded retrieval, and evidence-rights controls. Schemas are narrow and validated again in application code. Paper text and external metadata carry `untrustedContentHint`; discovery/evidence/progress declare `readOnlyHint`; Research Passport drafting and Research Path creation declare state changes. Registration uses `AbortController`, and network handlers honor execution cancellation.
 
@@ -63,9 +70,14 @@ state that the global records are non-citable and that novelty and
 transferability are not established. If OpenAlex is unavailable, the Thai
 evidence remains usable and the artifact carries a public search link.
 
-Passport state is local to the current page. Export remains disabled until the
-person reopens every selected exact-page anchor and acknowledges page review; for Thai excerpts, a bounded translation request runs alongside global discovery and retains the original when translation is unavailable; the candidate inference remains unvalidated, and the resulting Markdown repeats
-the evidence/metadata/inference boundary. This is a provenance and
+The active Passport stays on the current page while its parent Research Case
+persists server-side. Export remains disabled until the person reopens every
+selected exact-page anchor, accepts or rejects every attributed evidence claim,
+and accepts at least one claim. Those review decisions persist on the Research
+Case; they do not validate the candidate inference. For Thai excerpts, a bounded
+translation request retains the original when translation is unavailable. The
+resulting Markdown contains accepted evidence only and repeats the
+evidence/metadata/inference boundary. This is a provenance and
 human-agent-review workflow, not scientific validation, novelty detection, or
 a comprehensive literature review.
 

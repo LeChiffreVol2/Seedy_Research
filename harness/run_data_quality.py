@@ -4,6 +4,8 @@ import argparse
 import difflib
 import json
 import re
+import shutil
+import subprocess
 import sys
 import unicodedata
 from collections import Counter, defaultdict
@@ -422,19 +424,42 @@ def supabase_quality_check() -> Check:
         except Exception as rest_exc:  # noqa: BLE001
             if not env.get("SUPABASE_DB_URL"):
                 raise rest_exc
-            import psycopg
+            try:
+                import psycopg
 
-            with psycopg.connect(env["SUPABASE_DB_URL"], connect_timeout=30) as conn:
-                with conn.cursor() as cur:
-                    cur.execute("select count(*) from civil_documents_v2")
-                    docs = int(cur.fetchone()[0] or 0)
-                    cur.execute("select count(*) from civil_documents_v2 where page_start is null or page_end is null")
-                    missing_doc_pages = int(cur.fetchone()[0] or 0)
-                    cur.execute("select count(*) from civil_chunks_v2 where embedding is null and is_stale = false")
-                    missing_chunk_embeddings = int(cur.fetchone()[0] or 0)
-                    cur.execute("select count(*) from civil_documents_v2 where discipline = 'unknown'")
-                    unknown_disciplines = int(cur.fetchone()[0] or 0)
-            source = "supabase_db_url"
+                with psycopg.connect(env["SUPABASE_DB_URL"], connect_timeout=30) as conn:
+                    with conn.cursor() as cur:
+                        cur.execute("select count(*) from civil_documents_v2")
+                        docs = int(cur.fetchone()[0] or 0)
+                        cur.execute("select count(*) from civil_documents_v2 where page_start is null or page_end is null")
+                        missing_doc_pages = int(cur.fetchone()[0] or 0)
+                        cur.execute("select count(*) from civil_chunks_v2 where embedding is null and is_stale = false")
+                        missing_chunk_embeddings = int(cur.fetchone()[0] or 0)
+                        cur.execute("select count(*) from civil_documents_v2 where discipline = 'unknown'")
+                        unknown_disciplines = int(cur.fetchone()[0] or 0)
+                source = "supabase_db_url_psycopg"
+            except ImportError:
+                psql = shutil.which("psql") or "/opt/homebrew/opt/libpq/bin/psql"
+                if not Path(psql).exists():
+                    raise RuntimeError("Neither psycopg nor psql is available for the DB quality check.")
+                query = """
+                    select count(*) from civil_documents_v2;
+                    select count(*) from civil_documents_v2 where page_start is null or page_end is null;
+                    select count(*) from civil_chunks_v2 where embedding is null and is_stale = false;
+                    select count(*) from civil_documents_v2 where discipline = 'unknown';
+                """
+                completed = subprocess.run(
+                    [psql, env["SUPABASE_DB_URL"], "-X", "-A", "-t", "-v", "ON_ERROR_STOP=1", "-c", query],
+                    check=True,
+                    capture_output=True,
+                    text=True,
+                    timeout=45,
+                )
+                values = [int(value.strip()) for value in completed.stdout.splitlines() if value.strip()]
+                if len(values) != 4:
+                    raise RuntimeError("psql returned an incomplete DB quality result.")
+                docs, missing_doc_pages, missing_chunk_embeddings, unknown_disciplines = values
+                source = "supabase_db_url_psql"
         if docs <= 0 or missing_chunk_embeddings > 0 or unknown_disciplines > 0:
             status = "fail"
         elif missing_doc_pages > 0:

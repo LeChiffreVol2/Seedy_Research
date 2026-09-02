@@ -29,13 +29,13 @@ Use the root `Makefile` for normal release work. The direct harness commands rem
 
 ## WebMCP browser contract
 
-`web/tests/e2e/webmcp.spec.ts` installs a deterministic browser-side `document.modelContext` host before application hydration. It requires the exact seven-tool contract, checks read-only and untrusted-content annotations, then executes Thai discovery, dated visibility audit, exact-page evidence opening, fail-closed OpenAlex connection tracing, Research Passport drafting/review/export, Thai-to-global Research Path creation, and progress inspection. The test must verify the corresponding visible UI state; a source-string assertion alone is not sufficient.
+`web/tests/e2e/webmcp.spec.ts` installs a deterministic browser-side `document.modelContext` host before application hydration. It requires the exact eight-tool contract, checks read-only and untrusted-content annotations, then executes persistent Research Case start/resume, Thai discovery, dated visibility audit, exact-page evidence opening, fail-closed OpenAlex connection tracing, Research Passport drafting/review/export, Thai-to-global Research Path creation, and progress inspection. The test must verify the corresponding visible UI state; a source-string assertion alone is not sufficient.
 
 The same suite has a focused Challenge regression that uses the committed
 `thaijo:learn:291631` rights-reviewed reader route rather than the synthetic
 road-safety fixture. It proves the four-call Visibility-to-Passport Trust Gate:
 Thai-only discovery, dated visibility audit, page-2 inspection, Passport drafting, locked export,
-human page reopening, review acknowledgment, Markdown download, and an exact
+human page reopening, claim-level accept/reject review, Markdown download, and an exact
 four-call run trace. Catalog, visibility-audit, and OpenAlex responses remain boundary mocks;
 paper detail and reader access use the real committed pack.
 
@@ -43,8 +43,9 @@ The Passport assertions are part of the release contract: a metadata-only
 record cannot be opened as evidence; the draft must reject an evidence ID that
 is not visible in the active paper; returned OpenAlex leads remain
 `citable: false`; the UI states that novelty and transferability are not
-established; page-review acknowledgment is disabled until every selected anchor
-has been reopened; export is enabled only after that acknowledgment while the
+established; claim decisions are disabled until their selected anchors have
+been reopened; export is enabled only after every claim is decided and at least
+one is accepted while the
 candidate inference remains unvalidated; bounded Thai-to-English rendering retains both source and translation; and the downloaded Markdown plus visible WebMCP activity trace
 preserve the same boundary.
 
@@ -54,14 +55,14 @@ path while arbitrary or stale context fails closed. The global frontend suite
 also exercises the Coverage Ledger/provider filter and the selected-source
 Research Notebook, including private non-shareability and public promotion.
 `pipeline.test_source_registry` pins the deployed provider, record, reader, and
-seven-tool counts so submission copy cannot drift from the machine-readable
+eight-tool counts so submission copy cannot drift from the machine-readable
 registry. `harness.test_ga_security` pins the Notebook owner/membership,
 non-persistence, citation allow-list, and private-source boundaries.
 
 Before a challenge release, also run one manual pass in ChatGPT's built-in
 browser with Site tools visibly available and one pass in Chrome with native
 WebMCP testing enabled. Record the deployed URL, candidate SHA, exact host
-build/account/model configuration, seven-tool inventory, prompt, calls, timings,
+build/account/model configuration, eight-tool inventory, prompt, calls, timings,
 result, and every confirmation shown. The deterministic E2E proves application
 behavior; the manual pass proves compatibility with the actual challenge host.
 
@@ -92,8 +93,19 @@ Thai-affiliated global OA PMC papers; it is not a national-completeness count.
 For later releases, rerun the focused
 suites against the frozen candidate and manually
 confirm that `inspect_paper_evidence` reports the lawful access state and verified reader anchor without
-including full page text and that the page still registers exactly seven WebMCP
+including full page text and that the page still registers exactly eight WebMCP
 site tools.
+
+## Challenge Research Case contract
+
+`harness/run_challenge_research_benchmark.py` evaluates 30 committed questions:
+20 answerable cases across engineering, education, and health, plus 10 sparse or
+negative controls. It reports top-three source relevance, page-citable evidence,
+honest sparse-result behavior, visibility receipts, and request p95; the release
+target is p95 at or below five seconds. `harness/lighthouse_research_cases.json`
+pins the three cross-discipline cases used to verify that one question can move
+through discovery, visibility, evidence review, candidate-gap framing, and the
+Next-Study Protocol without changing its evidence boundary.
 
 ## Thai–Global Visibility Audit contract
 
