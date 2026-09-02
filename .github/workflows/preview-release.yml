@@ -57,6 +57,7 @@ env:
       and to_regprocedure('public.list_civil_evidence_feed_v1(text,text,integer,integer)') is not null
       and to_regprocedure('public.civil_evidence_feed_facets_v1()') is not null
       and to_regprocedure('public.civil_evidence_feed_previews_v1(text[],integer,integer)') is not null
+      and to_regprocedure('public.civil_research_coverage_v1()') is not null
       and to_regclass('public.civil_private_library_items') is not null
       and to_regclass('public.civil_living_review_watches') is not null
       and to_regclass('public.civil_mcp_access_keys') is not null
@@ -167,6 +168,7 @@ jobs:
           psql "$SUPABASE_PREVIEW_DB_URL" -v ON_ERROR_STOP=1 -f supabase/migrations/20260829072758_default_openai_luna.sql
           psql "$SUPABASE_PREVIEW_DB_URL" -v ON_ERROR_STOP=1 -f supabase/migrations/20260829110000_civil_learning_checkpoint_events.sql
           psql "$SUPABASE_PREVIEW_DB_URL" -v ON_ERROR_STOP=1 -f supabase/migrations/20260831120000_civil_research_graph_assets.sql
+          psql "$SUPABASE_PREVIEW_DB_URL" -v ON_ERROR_STOP=1 -f supabase/migrations/20260902010000_civil_authoritative_research_coverage.sql
           test "$(psql "$SUPABASE_PREVIEW_DB_URL" -v ON_ERROR_STOP=1 -Atqc "$CIVIL_DATA_RPC_STATE_SQL")" = "ready"
 
   deploy-mcp-preview:
@@ -340,6 +342,7 @@ jobs:
           psql "$SUPABASE_DB_URL" -v ON_ERROR_STOP=1 -f supabase/migrations/20260829072758_default_openai_luna.sql
           psql "$SUPABASE_DB_URL" -v ON_ERROR_STOP=1 -f supabase/migrations/20260829110000_civil_learning_checkpoint_events.sql
           psql "$SUPABASE_DB_URL" -v ON_ERROR_STOP=1 -f supabase/migrations/20260831120000_civil_research_graph_assets.sql
+          psql "$SUPABASE_DB_URL" -v ON_ERROR_STOP=1 -f supabase/migrations/20260902010000_civil_authoritative_research_coverage.sql
           test "$(psql "$SUPABASE_DB_URL" -v ON_ERROR_STOP=1 -Atqc "$CIVIL_DATA_RPC_STATE_SQL")" = "ready"
       - name: Stage MCP production deployment
         id: stage_mcp
