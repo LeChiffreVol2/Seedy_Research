@@ -1,0 +1,72 @@
+name: Thai–Global visibility audit
+
+on:
+  workflow_dispatch:
+    inputs:
+      strategy:
+        description: Exact identifiers, or identifiers plus bounded title candidates
+        required: true
+        default: identifiers
+        type: choice
+        options: [identifiers, full]
+      max_records:
+        description: Optional bounded cohort size; 0 audits the full provider cohort
+        required: true
+        default: "0"
+        type: string
+  schedule:
+    - cron: "17 2 * * 1"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: seedy-openalex-visibility-audit
+  cancel-in-progress: false
+
+jobs:
+  audit:
+    if: github.repository_owner == 'LeChiffreVol2'
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    environment: production
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.10"
+      - name: Validate audit contracts
+        run: |
+          python -m py_compile pipeline/audit_openalex_visibility.py
+          python -m unittest pipeline.test_audit_openalex_visibility
+      - name: Install bounded audit dependencies
+        run: python -m pip install 'python-dotenv>=1.0.1,<2' 'supabase>=2.5.0,<3'
+      - name: Run resumable dated audit
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_KEY: ${{ secrets.SUPABASE_SERVICE_KEY }}
+          OPENALEX_API_KEY: ${{ secrets.OPENALEX_API_KEY }}
+          OPENALEX_MAILTO: ${{ vars.OPENALEX_MAILTO }}
+          AUDIT_STRATEGY: ${{ github.event_name == 'workflow_dispatch' && inputs.strategy || 'identifiers' }}
+          AUDIT_MAX_RECORDS: ${{ github.event_name == 'workflow_dispatch' && inputs.max_records || '0' }}
+        run: |
+          test -n "$SUPABASE_URL"
+          test -n "$SUPABASE_SERVICE_KEY"
+          anonymous_flag=""
+          if [[ -z "$OPENALEX_API_KEY" ]]; then
+            if [[ "$AUDIT_STRATEGY" == "full" ]]; then
+              echo "OPENALEX_API_KEY is required for title-search audit scale." >&2
+              exit 1
+            fi
+            anonymous_flag="--allow-anonymous"
+          fi
+          python pipeline/audit_openalex_visibility.py \
+            --apply \
+            --provider tci_thaijo \
+            --strategy "$AUDIT_STRATEGY" \
+            --max-records "$AUDIT_MAX_RECORDS" \
+            --batch-size 100 \
+            --requests-per-second 10 \
+            $anonymous_flag

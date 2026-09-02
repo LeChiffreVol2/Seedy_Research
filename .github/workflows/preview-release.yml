@@ -59,6 +59,11 @@ env:
       and to_regprocedure('public.civil_evidence_feed_facets_v1()') is not null
       and to_regprocedure('public.civil_evidence_feed_previews_v1(text[],integer,integer)') is not null
       and to_regprocedure('public.civil_research_coverage_v1()') is not null
+      and to_regclass('public.civil_visibility_audit_runs') is not null
+      and to_regclass('public.civil_external_index_matches') is not null
+      and to_regclass('public.civil_visibility_review_decisions') is not null
+      and to_regprocedure('public.civil_visibility_summary_v1(text,text)') is not null
+      and to_regprocedure('public.civil_visibility_receipts_v1(text[],text)') is not null
       and to_regclass('public.civil_private_library_items') is not null
       and to_regclass('public.civil_living_review_watches') is not null
       and to_regclass('public.civil_mcp_access_keys') is not null
@@ -171,6 +176,7 @@ jobs:
           psql "$SUPABASE_PREVIEW_DB_URL" -v ON_ERROR_STOP=1 -f supabase/migrations/20260831120000_civil_research_graph_assets.sql
           psql "$SUPABASE_PREVIEW_DB_URL" -v ON_ERROR_STOP=1 -f supabase/migrations/20260902010000_civil_authoritative_research_coverage.sql
           psql "$SUPABASE_PREVIEW_DB_URL" -v ON_ERROR_STOP=1 -f supabase/migrations/20260902020000_civil_native_reader_scale_1000.sql
+          psql "$SUPABASE_PREVIEW_DB_URL" -v ON_ERROR_STOP=1 -f supabase/migrations/20260902123406_civil_global_visibility_audit.sql
           test "$(psql "$SUPABASE_PREVIEW_DB_URL" -v ON_ERROR_STOP=1 -Atqc "$CIVIL_DATA_RPC_STATE_SQL")" = "ready"
 
   deploy-mcp-preview:
@@ -349,6 +355,7 @@ jobs:
           psql "$SUPABASE_DB_URL" -v ON_ERROR_STOP=1 -f supabase/migrations/20260831120000_civil_research_graph_assets.sql
           psql "$SUPABASE_DB_URL" -v ON_ERROR_STOP=1 -f supabase/migrations/20260902010000_civil_authoritative_research_coverage.sql
           psql "$SUPABASE_DB_URL" -v ON_ERROR_STOP=1 -f supabase/migrations/20260902020000_civil_native_reader_scale_1000.sql
+          psql "$SUPABASE_DB_URL" -v ON_ERROR_STOP=1 -f supabase/migrations/20260902123406_civil_global_visibility_audit.sql
           test "$(psql "$SUPABASE_DB_URL" -v ON_ERROR_STOP=1 -Atqc "$CIVIL_DATA_RPC_STATE_SQL")" = "ready"
       - name: Stage MCP production deployment
         id: stage_mcp

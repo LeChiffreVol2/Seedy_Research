@@ -20,6 +20,10 @@ export type TraceResearchConnectionsInput = {
   source: string;
 };
 
+export type AuditGlobalVisibilityInput = {
+  source: string;
+};
+
 export type BuildResearchPathInput = {
   goal: string;
   level: WebMcpPathLevel;
@@ -42,6 +46,7 @@ export type DraftResearchPassportInput = {
 
 export type SeedResearchWebMcpHandlers = {
   discoverResearch: (input: DiscoverResearchInput, signal: AbortSignal) => Promise<unknown>;
+  auditGlobalVisibility: (input: AuditGlobalVisibilityInput, signal: AbortSignal) => Promise<unknown>;
   inspectPaperEvidence: (input: InspectPaperEvidenceInput, signal: AbortSignal) => Promise<unknown>;
   traceResearchConnections: (input: TraceResearchConnectionsInput, signal: AbortSignal) => Promise<unknown>;
   draftResearchPassport: (input: DraftResearchPassportInput, signal: AbortSignal) => Promise<unknown>;
@@ -82,6 +87,7 @@ declare global {
 
 export const SEED_RESEARCH_WEBMCP_TOOL_NAMES = [
   "discover_research",
+  "audit_global_visibility",
   "inspect_paper_evidence",
   "trace_research_connections",
   "draft_research_passport",
@@ -144,7 +150,7 @@ function parseDiscoverResearch(input: unknown): DiscoverResearchInput {
   return {
     query: requiredText(record, "query", 2, 180),
     collection: enumValue(record, "collection", ["all", "ncce", "ce_project"], "all"),
-    scope: enumValue(record, "scope", ["thai", "thai_and_global"], "thai_and_global"),
+    scope: enumValue(record, "scope", ["thai", "thai_and_global"], "thai"),
   };
 }
 
@@ -159,6 +165,12 @@ function parseInspectPaperEvidence(input: unknown): InspectPaperEvidenceInput {
 }
 
 function parseTraceResearchConnections(input: unknown): TraceResearchConnectionsInput {
+  const record = inputRecord(input);
+  assertAllowedKeys(record, ["source"]);
+  return { source: requiredText(record, "source", 1, 320) };
+}
+
+function parseAuditGlobalVisibility(input: unknown): AuditGlobalVisibilityInput {
   const record = inputRecord(input);
   assertAllowedKeys(record, ["source"]);
   return { source: requiredText(record, "source", 1, 320) };
@@ -251,20 +263,35 @@ export async function registerSeedResearchWebMcpTools(
   const tools: WebMcpTool[] = [
     {
       name: "discover_research",
-      title: "Discover Thai and global research",
-      description: "Search Seedy Research for Thai papers and optional global OpenAlex metadata. Use for topic discovery; it updates the shared Explore view and keeps page-citable evidence separate from discovery-only records.",
+      title: "Discover Thai research",
+      description: "Search Seedy Research's Thai-local sources first. Returns bounded page-citable evidence and source-addressable discovery-only Thai records separately, so a later visibility audit can inspect what global indexes may overlook. Optional global topical metadata is a comparison layer only.",
       inputSchema: {
         type: "object",
         properties: {
           query: { type: "string", minLength: 2, maxLength: 180, description: "Research topic or question in Thai or English." },
           collection: { type: "string", enum: ["all", "ncce", "ce_project"], description: "Thai evidence collection; defaults to all." },
-          scope: { type: "string", enum: ["thai", "thai_and_global"], description: "Search Thai sources only or add global metadata." },
+          scope: { type: "string", enum: ["thai", "thai_and_global"], description: "Defaults to Thai-local discovery; add global metadata only for optional topical comparison." },
         },
         required: ["query"],
         additionalProperties: false,
       },
       annotations: { readOnlyHint: true, untrustedContentHint: true },
       execute: async (input, options) => handlers.discoverResearch(parseDiscoverResearch(input), signalFor(options)),
+    },
+    {
+      name: "audit_global_visibility",
+      title: "Read the dated global-visibility receipt",
+      description: "Read Seedy's latest dated OpenAlex comparison receipt for one Thai-local work. Exact identity, under-indexing, review candidates, not-found-in-this-audit, not-yet-audited, and provider-unavailable remain distinct states. This does not submit or repair records in OpenAlex.",
+      inputSchema: {
+        type: "object",
+        properties: {
+          source: { type: "string", minLength: 1, maxLength: 320, description: "Exact Thai-local source identifier returned by discover_research." },
+        },
+        required: ["source"],
+        additionalProperties: false,
+      },
+      annotations: { readOnlyHint: true, untrustedContentHint: true },
+      execute: async (input, options) => handlers.auditGlobalVisibility(parseAuditGlobalVisibility(input), signalFor(options)),
     },
     {
       name: "inspect_paper_evidence",

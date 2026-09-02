@@ -29,14 +29,14 @@ Use the root `Makefile` for normal release work. The direct harness commands rem
 
 ## WebMCP browser contract
 
-`web/tests/e2e/webmcp.spec.ts` installs a deterministic browser-side `document.modelContext` host before application hydration. It requires the exact six-tool contract, checks read-only and untrusted-content annotations, then executes discovery, exact-page evidence opening, fail-closed OpenAlex connection tracing, Research Passport drafting/review/export, Thai-to-global Research Path creation, and progress inspection. The test must verify the corresponding visible UI state; a source-string assertion alone is not sufficient.
+`web/tests/e2e/webmcp.spec.ts` installs a deterministic browser-side `document.modelContext` host before application hydration. It requires the exact seven-tool contract, checks read-only and untrusted-content annotations, then executes Thai discovery, dated visibility audit, exact-page evidence opening, fail-closed OpenAlex connection tracing, Research Passport drafting/review/export, Thai-to-global Research Path creation, and progress inspection. The test must verify the corresponding visible UI state; a source-string assertion alone is not sufficient.
 
 The same suite has a focused Challenge regression that uses the committed
 `thaijo:learn:291631` rights-reviewed reader route rather than the synthetic
-road-safety fixture. It proves the timed three-call Passport Trust Gate:
-Thai-only discovery, page-2 inspection, Passport drafting, locked export,
+road-safety fixture. It proves the four-call Visibility-to-Passport Trust Gate:
+Thai-only discovery, dated visibility audit, page-2 inspection, Passport drafting, locked export,
 human page reopening, review acknowledgment, Markdown download, and an exact
-three-call run trace. Catalog and OpenAlex responses remain boundary mocks;
+four-call run trace. Catalog, visibility-audit, and OpenAlex responses remain boundary mocks;
 paper detail and reader access use the real committed pack.
 
 The Passport assertions are part of the release contract: a metadata-only
@@ -54,14 +54,14 @@ path while arbitrary or stale context fails closed. The global frontend suite
 also exercises the Coverage Ledger/provider filter and the selected-source
 Research Notebook, including private non-shareability and public promotion.
 `pipeline.test_source_registry` pins the deployed provider, record, reader, and
-six-tool counts so submission copy cannot drift from the machine-readable
+seven-tool counts so submission copy cannot drift from the machine-readable
 registry. `harness.test_ga_security` pins the Notebook owner/membership,
 non-persistence, citation allow-list, and private-source boundaries.
 
 Before a challenge release, also run one manual pass in ChatGPT's built-in
 browser with Site tools visibly available and one pass in Chrome with native
 WebMCP testing enabled. Record the deployed URL, candidate SHA, exact host
-build/account/model configuration, six-tool inventory, prompt, calls, timings,
+build/account/model configuration, seven-tool inventory, prompt, calls, timings,
 result, and every confirmation shown. The deterministic E2E proves application
 behavior; the manual pass proves compatibility with the actual challenge host.
 
@@ -92,8 +92,31 @@ Thai-affiliated global OA PMC papers; it is not a national-completeness count.
 For later releases, rerun the focused
 suites against the frozen candidate and manually
 confirm that `inspect_paper_evidence` reports the lawful access state and verified reader anchor without
-including full page text and that the page still registers exactly six WebMCP
+including full page text and that the page still registers exactly seven WebMCP
 site tools.
+
+## Thai–Global Visibility Audit contract
+
+`pipeline/audit_openalex_visibility.py` compares a dated Thai provider cohort
+with OpenAlex without sending or mutating records in OpenAlex. Exact DOI checks
+use singleton entity lookup because the documented DOI OR-filter was observed
+to omit valid Thai DOI records. Runs are resumable, default to dry-run, keep the
+full provider cohort as the denominator, and distinguish exact identity,
+under-indexed metadata, candidate review, dated no-exact-match, not-audited,
+and provider-unavailable states. Only a complete audit may expose a coverage
+percentage; partial runs show counts and denominator separately.
+
+Run the deterministic contracts with:
+
+```bash
+python3.10 -m unittest pipeline.test_audit_openalex_visibility harness.test_research_graph_migration
+(cd web && node --test lib/visibility-audit.test.mjs)
+(cd web && npx playwright test tests/e2e/performance.spec.ts)
+```
+
+The performance contract requires the Thai feed request to begin independently
+of session and history hydration, and prevents automatic translation work before a
+person explicitly asks for it.
 
 `harness/run_native_scale.py` is the bounded 5,000-paper capacity smoke. It
 exercises `pmc_oa` by default and derives the total native count from the dated

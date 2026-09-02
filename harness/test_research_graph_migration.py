@@ -8,6 +8,7 @@ ROOT = Path(__file__).resolve().parents[1]
 MIGRATION = ROOT / "supabase" / "migrations" / "20260831120000_civil_research_graph_assets.sql"
 COVERAGE_MIGRATION = ROOT / "supabase" / "migrations" / "20260902010000_civil_authoritative_research_coverage.sql"
 SCALE_MIGRATION = ROOT / "supabase" / "migrations" / "20260902020000_civil_native_reader_scale_1000.sql"
+VISIBILITY_MIGRATION = ROOT / "supabase" / "migrations" / "20260902123406_civil_global_visibility_audit.sql"
 
 
 class ResearchGraphMigrationTests(unittest.TestCase):
@@ -134,6 +135,45 @@ class NativeReaderScaleMigrationTests(unittest.TestCase):
         self.assertIn(f"revoke all on function {signature}", self.lower)
         self.assertIn(f"grant execute on function {signature}\nto service_role", self.lower)
         self.assertNotIn(f"grant execute on function {signature}\nto anon", self.lower)
+
+
+class VisibilityAuditMigrationTests(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls) -> None:
+        cls.lower = VISIBILITY_MIGRATION.read_text(encoding="utf-8").lower()
+
+    def test_receipts_are_dated_bounded_and_keep_uncertainty_states_distinct(self) -> None:
+        for marker in (
+            "civil_visibility_audit_runs",
+            "civil_external_index_matches",
+            "civil_visibility_review_decisions",
+            "audit_snapshot_date",
+            "'candidate_match'",
+            "'not_found_in_audit'",
+            "'audit_unavailable'",
+        ):
+                self.assertIn(marker, self.lower)
+        self.assertRegex(self.lower, r"denominator\s+bigint not null")
+
+    def test_visibility_tables_and_rpcs_are_service_only(self) -> None:
+        for table in (
+            "civil_visibility_audit_runs",
+            "civil_external_index_matches",
+            "civil_visibility_review_decisions",
+        ):
+            self.assertIn(f"alter table public.{table} enable row level security", self.lower)
+            self.assertIn(f"revoke all on table public.{table} from public, anon, authenticated", self.lower)
+        for signature in (
+            "public.civil_visibility_summary_v1(text, text)",
+            "public.civil_visibility_receipts_v1(text[], text)",
+            "public.civil_visibility_receipt_v1(text, text)",
+        ):
+            self.assertIn(f"revoke all on function {signature} from public, anon, authenticated", self.lower)
+            self.assertIn(f"grant execute on function {signature} to service_role", self.lower)
+
+    def test_security_definer_functions_pin_an_empty_search_path(self) -> None:
+        self.assertEqual(self.lower.count("security definer\nset search_path = ''"), 3)
+        self.assertNotIn("(?:", self.lower)
 
 
 if __name__ == "__main__":

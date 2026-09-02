@@ -274,7 +274,7 @@ test("global discovery is explicit, metadata-only, and recoverable", async ({ pa
   await expect.poll(() => requestCount).toBe(1);
   expect(receivedQuery).toBe("flood resilience");
 
-  const panel = page.getByRole("region", { name: "Global research discovery" });
+  const panel = page.getByRole("region", { name: "Suggested global comparison leads" });
   await expect(panel.getByText("OpenAlex metadata", { exact: true })).toBeVisible();
   await expect(panel.getByRole("link", { name: "Open global metadata: Flood resilience across infrastructure systems" })).toHaveAttribute(
     "href",
@@ -390,10 +390,16 @@ test("personal library saves a paper and enables notes and folders", async ({ pa
 
   await page.goto("/");
   await page.getByRole("button", { name: "Explore" }).click();
-  await page.getByRole("button", { name: "Save paper to library" }).first().click();
+  const selectedCard = page.locator(".researchCard").filter({
+    has: page.getByRole("button", { name: "Save paper to library" }),
+  }).first();
+  const selectedTitle = await selectedCard.getByRole("heading", { level: 2 }).innerText();
+  await selectedCard.getByRole("button", { name: "Save paper to library" }).click();
   await expect(page.getByRole("button", { name: /^Saved 1/ })).toBeVisible();
 
-  await page.locator(".cardTitleButton").first().click();
+  await page.locator(".researchCard").filter({
+    has: page.getByRole("heading", { name: selectedTitle, exact: true }),
+  }).getByRole("button", { name: selectedTitle, exact: true }).click();
   await expect(page.getByLabel("Folders and labels")).toBeEnabled();
   await page.getByLabel("Folders and labels").fill("Thesis, Read next");
   await page.getByLabel("Note").fill("Compare the risk factors with the next paper.");
@@ -640,7 +646,7 @@ test("Research Path turns an explicit goal into a four-stage learning sequence",
   await expect(workspace).toContainText("1 of 4 stages mastered");
   const pathDownload = page.waitForEvent("download");
   await workspace.getByRole("button", { name: "Export" }).click();
-  await expect((await pathDownload).suggestedFilename()).toMatch(/^seed-research-path-\d+\.md$/);
+  await expect((await pathDownload).suggestedFilename()).toMatch(/^seed-research-path-draft-\d+\.md$/);
   await expectNoPageOverflow(page);
   await expectNoInteractiveOverlap(page);
 });
@@ -1142,7 +1148,11 @@ test("paper language mode translates globally, persists, and follows the paper d
     prompt: "Summarize this paper with exact-page evidence.",
     indexedAt: new Date().toISOString(),
   };
-  await page.addInitScript(() => window.localStorage.setItem("civilmcp-paper-language-v1", "en"));
+  await page.addInitScript(() => {
+    if (window.sessionStorage.getItem("paper-language-test-ready") === "1") return;
+    window.localStorage.removeItem("civilmcp-paper-language-v1");
+    window.sessionStorage.setItem("paper-language-test-ready", "1");
+  });
   await page.route("**/api/session", (route) => route.fulfill({ json: { sessionId: "00000000-0000-4000-8000-000000000002" } }));
   await page.route("**/api/history**", (route) => route.fulfill({
     json: {
@@ -1202,12 +1212,8 @@ test("paper language mode translates globally, persists, and follows the paper d
   const englishButton = languageControl.getByRole("button", { name: "Translate papers to English" });
   const thaiButton = languageControl.getByRole("button", { name: "Show Thai original" });
   await expect(languageControl).toBeVisible();
-  await expect(englishButton).toHaveAttribute("aria-pressed", "true");
-  await expect.poll(() => translationRequests, { timeout: 15_000 }).toBeGreaterThan(0);
-  await expect.poll(() => page.locator(".researchCard [lang='en']").filter({ hasText: "[EN]" }).count()).toBeGreaterThan(0);
-
-  await thaiButton.click();
   await expect(thaiButton).toHaveAttribute("aria-pressed", "true");
+  expect(translationRequests).toBe(0);
   await expect(page.locator(".researchCard [lang='en']").filter({ hasText: "[EN]" })).toHaveCount(0);
   await expect.poll(() => page.evaluate(() => window.localStorage.getItem("civilmcp-paper-language-v1"))).toBe("th");
 
@@ -1231,7 +1237,7 @@ test("paper drawer traps focus and returns it to the opener", async ({ page }) =
   await page.setViewportSize({ width: 1440, height: 1000 });
   await page.goto("/");
   await page.getByRole("button", { name: "Explore" }).click();
-  const opener = page.locator(".researchCard").first().getByRole("button", { name: /Evidence/ });
+  const opener = page.locator(".researchCard").first().getByRole("button", { name: /Evidence|Read paper/ });
   await opener.click();
 
   const dialog = page.getByRole("dialog", { name: "Paper detail" });

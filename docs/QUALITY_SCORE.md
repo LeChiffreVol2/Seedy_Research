@@ -9,6 +9,14 @@
 - Memory continuity: `latest_memory_eval.json` must pass.
 - Report provenance: all required reports must be no older than 24 hours and match Git SHA/source fingerprint, schema migration, corpus fingerprint, target, and deployment URLs.
 - Deploy readiness: preview/promote workflow must exist and latest smoke must be a full strict preview or production run.
+- Thai–global visibility: migration and runner contracts must preserve dated
+  audit state, partial denominators, exact-identity matching, and fail-closed
+  provider-unavailable behavior. A partial audit cannot produce a national
+  coverage percentage.
+- Interaction performance: the initial Thai feed must not wait for session or
+  history hydration, and translation must not run until the person explicitly requests
+  it. These browser regressions are release-blocking because they add both
+  latency and unnecessary provider work to the primary judge path.
 - CityMCP reports are excluded; CityMCP has its own readiness score under `citymcp/harness/`.
 
 ## Status Meaning

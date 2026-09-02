@@ -49,7 +49,7 @@
       "unavailable"
     ],
     "webmcp": {
-      "registered_site_tools": 6,
+      "registered_site_tools": 7,
       "inspect_enrichment": "access_mode_capabilities_and_page_counts_only",
       "full_page_text_returned_by_tool": false
     },

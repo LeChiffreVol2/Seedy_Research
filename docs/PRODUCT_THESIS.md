@@ -9,10 +9,10 @@ reviewed domain packs rather than becoming a generic paper search engine.
 
 The product promise is:
 
-> Discover Thai research that global indexes miss, learn from evidence that can
-> be reopened at the source page, read every lawful manifestation available to
-> the user, and turn verified findings into research and deep-tech project
-> decisions.
+> Uncover Thai research that global indexes may overlook, show the dated
+> visibility evidence without overstating absence, reopen lawful evidence at
+> the exact page, connect verified identities to global research, and turn the
+> reviewed trail into a Research Passport and testable next study.
 
 Seedy Research is the user-facing product; SeedyMCP is its shared human-agent
 layer; the Civil Research Pack is the first proof vertical. Existing CivilMCP
@@ -36,7 +36,7 @@ intellectual-property status, or commercial viability without attributed data.
 
 | Layer | User promise | Existing foundation | Next proof |
 | --- | --- | --- | --- |
-| **Explore** | Search Thai and global research without confusing discovery with evidence | `civil_source_catalog`, indexed Civil Research Pack evidence, ThaiJO metadata, OpenAlex bridge | Unified result ranking with visible provider, rights, and citable status |
+| **Explore** | Search Thai-local research first and see what a dated global-index audit could verify | `civil_source_catalog`, indexed Civil Research Pack evidence, ThaiJO metadata, visibility receipts | Broader provider coverage with visible provider, rights, citable, and visibility states |
 | **Read** | Open the best lawful full-text manifestation without hiding access or reuse limits | Exact-page evidence drawer, source links, page provenance, private PDF extraction | Rights-aware native/source-hosted/institution-mediated reader with stable annotations |
 | **Learn** | Build prerequisites and understanding from inspectable evidence | Four-stage Research Path and Tutor Mission | Diagnostic entry point, checkpoints, and a paper-to-project exercise |
 | **Research** | Compare papers and export an auditable research artifact | Evidence Mission, Research Workspace, PRISMA-ScR guided pack | Living review updates, clearer coverage limits, and pilot templates |
@@ -53,19 +53,22 @@ graph assembled from seven connected records:
 
 1. **Source and rights ledger** — provider identity, canonical record, access,
    license or permission, evidence status, hashes, freshness, and takedown state.
-2. **Canonical work and asset graph** — one deduplicated intellectual work linked
+2. **Dated Thai–global visibility ledger** — exact identities, richer-local-metadata
+   gaps, review candidates, bounded not-found results, and provider failures kept
+   separate by provider, method, and snapshot date.
+3. **Canonical work and asset graph** — one deduplicated intellectual work linked
    to every Thai/global provider record and every PDF/HTML/version asset, with a
    separate reader mode and action-level rights decision for each asset.
-3. **Document provenance** — stable document, section, chunk, and original-page
+4. **Document provenance** — stable document, section, chunk, and original-page
    identity across extraction and re-indexing.
-4. **Thai-English domain ontology** — concepts, synonyms, standards, methods,
+5. **Thai-English domain ontology** — concepts, synonyms, standards, methods,
    materials, hazards, and domain relationships reviewed per vertical.
-5. **Research identity graph** — deduplicated authors, institutions, papers, and
+6. **Research identity graph** — deduplicated authors, institutions, papers, and
    citations for provenance and filtering, with uncertainty retained rather than
    silently merged; this is not a social-network product surface.
-6. **Claim-to-evidence graph** — answer or workspace claims linked to allow-listed
+7. **Claim-to-evidence graph** — answer or workspace claims linked to allow-listed
    evidence packets, exact pages, scope, and human-review state.
-7. **Learning and workflow signals** — privacy-bounded saves, evidence opens,
+8. **Learning and workflow signals** — privacy-bounded saves, evidence opens,
    checkpoints, exports, corrections, and evaluation outcomes without storing raw
    research queries in product analytics.
 
@@ -150,6 +153,7 @@ include the [ThaiJO OAI service](https://www.tci-thaijo.org/public/oai.html),
 ## Non-goals for this phase
 
 - replacing TNRR, ThaiJO, university repositories, or global scholarly indexes;
+- submitting, repairing, or synchronizing records into OpenAlex;
 - building researcher/organization profile networks, public following, or social discussion;
 - reproducing paper code, provisioning cloud compute, or operating experiment sandboxes;
 - claiming national or disciplinary completeness before provider denominators,

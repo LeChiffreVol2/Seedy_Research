@@ -6093,6 +6093,40 @@ body {
   font-weight:760;
 }
 
+.visibilityAuditPanel {
+  width:min(100%,980px);
+  display:grid;
+  gap:10px;
+  margin:0 auto 8px;
+  padding:14px;
+  border:1px solid rgba(109,91,255,.16);
+  border-radius:12px;
+  background:linear-gradient(135deg,rgba(247,245,255,.9),rgba(246,252,255,.82));
+  box-shadow:0 8px 22px rgba(31,42,64,.04);
+}
+.visibilityAuditPanel>header { display:flex; justify-content:space-between; gap:18px; align-items:flex-start; }
+.visibilityAuditPanel>header>div { display:grid; gap:3px; }
+.visibilityAuditPanel h2 { margin:0; color:#222730; font-size:.96rem; letter-spacing:-.015em; }
+.visibilityAuditPanel header p,.visibilityAuditFoot,.visibilityAuditEmpty { margin:0; color:#6f7885; font-size:.66rem; line-height:1.45; }
+.visibilityAuditStatus { flex:0 0 auto; border:1px solid #d7d0ff; border-radius:999px; background:#f3f0ff; color:#5e4fb5; padding:4px 8px; font-size:.58rem; font-weight:800; text-transform:uppercase; letter-spacing:.05em; }
+.visibilityAuditStatus.complete { border-color:#bfe5d8; background:#eaf8f2; color:#1f715b; }
+.visibilityAuditMetrics { display:grid; grid-template-columns:repeat(6,minmax(0,1fr)); gap:6px; }
+.visibilityAuditMetrics>div { min-width:0; display:grid; gap:2px; padding:8px; border:1px solid rgba(218,223,230,.86); border-radius:8px; background:rgba(255,255,255,.72); }
+.visibilityAuditMetrics strong { color:#282d35; font-size:.84rem; }
+.visibilityAuditMetrics span { color:#78818e; font-size:.56rem; line-height:1.25; }
+.visibilityReceipt { display:inline-flex; align-items:center; gap:4px; border:1px solid #d9dde5; border-radius:999px; padding:2px 7px; color:#656e7b; background:#f6f7f9; font-size:.58rem; font-weight:760; }
+.visibilityReceipt.globally_indexed { border-color:#bcd8f5; background:#edf6ff; color:#21689b; }
+.visibilityReceipt.under_indexed { border-color:#efd7a9; background:#fff8e8; color:#8a651f; }
+.visibilityReceipt.candidate_match { border-color:#ddd1fa; background:#f6f1ff; color:#684eb0; }
+.visibilityReceipt.not_found_in_audit { border-color:#f0c6c6; background:#fff3f3; color:#a04b4b; }
+.visibilityReceipt.audit_unavailable { border-color:#dddfe4; background:#f3f4f6; color:#6c727c; }
+
+@media (max-width:760px) {
+  .visibilityAuditPanel>header { display:grid; }
+  .visibilityAuditStatus { justify-self:start; }
+  .visibilityAuditMetrics { grid-template-columns:repeat(2,minmax(0,1fr)); }
+}
+
 .coverageLedger {
   width:min(100%,980px);
   display:grid;

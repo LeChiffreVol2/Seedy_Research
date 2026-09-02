@@ -62,6 +62,10 @@ function loadResearchFeedModule() {
         listRightsReviewedReaderPapers: () => fixturePapers,
       };
     }
+    if (specifier === "./visibility-audit") return {
+      getVisibilitySummary: async () => ({ auditRunId: null, provider: "tci_thaijo", externalIndex: "openalex", snapshotDate: null, runStatus: "not_started", strategy: null, denominator: 0, attempted: 0, audited: 0, globallyIndexed: 0, underIndexed: 0, candidateReview: 0, notFoundInAudit: 0, unavailable: 0, methodVersion: null, complete: false }),
+      getVisibilityReceipts: async () => ({}),
+    };
     return nodeRequire(specifier);
   };
   const execute = new Function("require", "module", "exports", "__filename", "__dirname", transpiled);

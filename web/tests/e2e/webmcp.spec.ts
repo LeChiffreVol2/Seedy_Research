@@ -66,6 +66,53 @@ const goldenPassportCard = {
   discoveryLayer: "evidence",
 };
 
+const overlookedThaiCard = {
+  id: "tci_thaijo:bf400fe34055927285ff279590ef9d90",
+  source: "oai:ph01.tci-thaijo.org:article/259406",
+  collection: "",
+  sourceType: "journal_article",
+  paperCode: null,
+  pageStart: null,
+  pageEnd: null,
+  discipline: "engineering_and_technology",
+  language: "en",
+  publishedAt: "2015-01-01",
+  title: "Numerical Analyses of Piled Raft Foundation in Soft Soil Using 3D-FEM",
+  date: "2015",
+  sourceLabel: "ThaiJO",
+  summary: "Thai-local discovery metadata awaiting rights-reviewed full-paper promotion.",
+  tags: ["ThaiJO", "Geotechnical engineering"],
+  filters: ["thai", "tci"],
+  evidenceCount: 0,
+  pages: 0,
+  pageLabel: "Metadata only",
+  preview: "beam",
+  prompt: "",
+  provider: "tci_thaijo",
+  evidenceStatus: "metadata_only",
+  citable: false,
+  canonicalUrl: "https://ph01.tci-thaijo.org/index.php/easr/article/view/259406",
+  doi: "10.14456/seagj.2015.61",
+  rightsStatus: "metadata_only_unverified",
+  accessLevel: "metadata_only",
+  discoveryLayer: "thai_discovery",
+  visibility: {
+    source: "oai:ph01.tci-thaijo.org:article/259406",
+    provider: "tci_thaijo",
+    externalIndex: "openalex",
+    state: "not_found_in_audit",
+    matchBasis: "none",
+    externalWorkId: null,
+    externalUrl: null,
+    confidence: null,
+    requiresHumanReview: false,
+    metadataGaps: [],
+    checkedAt: "2026-09-02T13:23:17.008811Z",
+    snapshotDate: "2026-09-02",
+    methodVersion: "seedy-openalex-visibility-v2-singleton-doi",
+  },
+};
+
 const readerFullPageText = "FULL VERIFIED PAGE TEXT MUST STAY OUT OF THE WEBMCP TOOL RESULT";
 
 test.beforeEach(async ({ page }) => {
@@ -389,6 +436,7 @@ test("registers non-trivial WebMCP tools and keeps agent actions visible to the 
     return [...tools.values()].map((tool) => ({ name: tool.name, annotations: tool.annotations, inputSchema: tool.inputSchema }));
   });
   expect(definitions.map((tool) => tool.name).sort()).toEqual([
+    "audit_global_visibility",
     "build_research_path",
     "discover_research",
     "draft_research_passport",
@@ -400,6 +448,7 @@ test("registers non-trivial WebMCP tools and keeps agent actions visible to the 
   expect(definitions.find((tool) => tool.name === "build_research_path")?.annotations?.readOnlyHint).toBe(false);
   expect(definitions.find((tool) => tool.name === "draft_research_passport")?.annotations?.readOnlyHint).toBe(false);
   expect(definitions.find((tool) => tool.name === "discover_research")?.annotations?.readOnlyHint).toBe(true);
+  expect(definitions.find((tool) => tool.name === "audit_global_visibility")?.annotations?.readOnlyHint).toBe(true);
   expect(definitions.find((tool) => tool.name === "trace_research_connections")?.annotations?.readOnlyHint).toBe(true);
 
   const discovery = await page.evaluate(async () => {
@@ -650,14 +699,14 @@ test("registers non-trivial WebMCP tools and keeps agent actions visible to the 
   await expect(passportPanel.getByText("4 completed calls", { exact: true })).toBeVisible();
 });
 
-test("completes the production-seed Passport trust gate in exactly three site-tool calls", async ({ page }) => {
+test("completes the production-seed visibility-gated Passport in exactly four site-tool calls", async ({ page }) => {
   await page.unroute("**/api/research-feed**");
   await page.route("**/api/research-feed**", async (route) => {
     await route.fulfill({
       status: 200,
       contentType: "application/json",
       body: JSON.stringify({
-        cards: [goldenPassportCard],
+        cards: [overlookedThaiCard, goldenPassportCard],
         facets: {
           total: 1300,
           catalogTotal: 3878,
@@ -697,6 +746,29 @@ test("completes the production-seed Passport trust gate in exactly three site-to
   });
   await page.unroute("**/api/papers/**/reader**");
   await page.unroute("**/api/papers/**");
+  await page.route("**/api/visibility**", async (route) => {
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({
+        receipt: {
+          source: overlookedThaiCard.source,
+          provider: "tci_thaijo",
+          externalIndex: "openalex",
+          state: "not_found_in_audit",
+          matchBasis: "none",
+          externalWorkId: null,
+          externalUrl: null,
+          confidence: null,
+          requiresHumanReview: false,
+          metadataGaps: [],
+          checkedAt: "2026-09-02T00:00:00.000Z",
+          snapshotDate: "2026-09-02",
+          methodVersion: "seedy-openalex-visibility-v2-singleton-doi",
+        },
+      }),
+    });
+  });
 
   const response = await page.goto("/?view=explore");
   expect(response?.headers()["permissions-policy"]).toContain("tools=(self)");
@@ -709,8 +781,22 @@ test("completes the production-seed Passport trust gate in exactly three site-to
       collection: "all",
       scope: "thai",
     });
-  }) as { thaiEvidence?: Array<{ source?: string; nativeReaderVerified?: boolean }> };
+  }) as {
+    thaiEvidence?: Array<{ source?: string; nativeReaderVerified?: boolean }>;
+    thaiDiscoveryRecords?: Array<{ source?: string; visibilityState?: string; citable?: boolean }>;
+  };
   expect(discovered.thaiEvidence?.[0]).toMatchObject({ source: goldenPassportCard.source, nativeReaderVerified: true });
+  expect(discovered.thaiDiscoveryRecords?.[0]).toMatchObject({
+    source: overlookedThaiCard.source,
+    visibilityState: "not_found_in_audit",
+    citable: false,
+  });
+
+  const audited = await page.evaluate(async () => {
+    const tools = (window as unknown as { __seedResearchWebMcpTools: Map<string, { execute: (input: unknown) => Promise<unknown> }> }).__seedResearchWebMcpTools;
+    return tools.get("audit_global_visibility")?.execute({ source: "oai:ph01.tci-thaijo.org:article/259406" });
+  }) as { state?: string; matchBasis?: string; claimBoundary?: string };
+  expect(audited).toMatchObject({ state: "not_found_in_audit", matchBasis: "none" });
 
   const inspected = await page.evaluate(async () => {
     const tools = (window as unknown as { __seedResearchWebMcpTools: Map<string, { execute: (input: unknown) => Promise<unknown> }> }).__seedResearchWebMcpTools;
@@ -733,7 +819,7 @@ test("completes the production-seed Passport trust gate in exactly three site-to
     });
   }) as { translationStatus?: string; globalLeads?: Array<{ citable?: boolean }>; candidateGap?: { status?: string; evidenceRelationValidated?: boolean } };
   expect(drafted.translationStatus).toBe("not_needed");
-  expect(drafted.globalLeads).toEqual([expect.objectContaining({ citable: false })]);
+  expect(drafted.globalLeads).toEqual([]);
   expect(drafted.candidateGap).toMatchObject({ status: "unsupported_candidate", evidenceRelationValidated: false });
 
   const passportPanel = page.getByLabel("Thai-to-global research passport");
@@ -753,8 +839,9 @@ test("completes the production-seed Passport trust gate in exactly three site-to
   expect(download.suggestedFilename()).toMatch(/^seed-research-passport-sr-.*\.md$/);
 
   await passportPanel.getByText("Inspect WebMCP run").click();
-  await expect(passportPanel.getByText("3 completed calls", { exact: true })).toBeVisible();
+  await expect(passportPanel.getByText("4 completed calls", { exact: true })).toBeVisible();
   await expect(passportPanel.getByText("discover_research", { exact: true })).toBeVisible();
+  await expect(passportPanel.getByText("audit_global_visibility", { exact: true })).toBeVisible();
   await expect(passportPanel.getByText("inspect_paper_evidence", { exact: true })).toBeVisible();
   await expect(passportPanel.getByText("draft_research_passport", { exact: true })).toBeVisible();
   await expect(passportPanel.getByText("trace_research_connections", { exact: true })).toHaveCount(0);
@@ -860,6 +947,7 @@ test("keeps source-hosted full text outside the bounded WebMCP evidence result",
   };
 
   expect(result.names).toEqual([
+    "audit_global_visibility",
     "build_research_path",
     "discover_research",
     "draft_research_passport",
@@ -881,8 +969,27 @@ test("keeps source-hosted full text outside the bounded WebMCP evidence result",
 });
 
 test("labels an unavailable global layer without implying a zero-result search", async ({ page }) => {
-  await page.route("**/api/global-discovery", async (route) => {
-    await route.fulfill({ status: 503, contentType: "application/json", body: JSON.stringify({ error: "provider unavailable" }) });
+  await page.unroute("**/api/citation-map");
+  await page.route("**/api/citation-map", async (route) => {
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({
+        status: "unavailable",
+        relationsStatus: "not_requested",
+        searchUrl: "https://openalex.org/works?search=road%20safety",
+        match: {
+          status: "unmatched",
+          basis: "none",
+          requiresHumanReview: false,
+          titleSimilarity: null,
+          yearDelta: null,
+          matchedOpenAlexId: null,
+        },
+        seed: null,
+        nodes: [],
+      }),
+    });
   });
   await page.goto("/?view=explore");
   await expect(page.getByLabel("WebMCP site tools ready")).toBeVisible({ timeout: 15_000 });
@@ -890,6 +997,7 @@ test("labels an unavailable global layer without implying a zero-result search",
   const result = await page.evaluate(async () => {
     const tools = (window as unknown as { __seedResearchWebMcpTools: Map<string, { execute: (input: unknown) => Promise<unknown> }> }).__seedResearchWebMcpTools;
     await tools.get("inspect_paper_evidence")?.execute({ source: "NCCE29_TRL42.md", page: 2067 });
+    await tools.get("trace_research_connections")?.execute({ source: "NCCE29_TRL42.md" });
     return tools.get("draft_research_passport")?.execute({
       source: "NCCE29_TRL42.md",
       focus: "How road-system factors transfer across urban contexts",
@@ -907,22 +1015,47 @@ test("labels an unavailable global layer without implying a zero-result search",
 });
 
 test("cancels a Passport draft when the visible research question changes", async ({ page }) => {
-  let releaseGlobalDiscovery = () => {};
-  let markGlobalDiscoveryStarted = () => {};
-  const globalDiscoveryReleased = new Promise<void>((resolve) => { releaseGlobalDiscovery = resolve; });
-  const globalDiscoveryStarted = new Promise<void>((resolve) => { markGlobalDiscoveryStarted = resolve; });
-  await page.route("**/api/global-discovery", async (route) => {
-    markGlobalDiscoveryStarted();
-    await globalDiscoveryReleased;
+  let releaseTranslation = () => {};
+  let markTranslationStarted = () => {};
+  const translationReleased = new Promise<void>((resolve) => { releaseTranslation = resolve; });
+  const translationStarted = new Promise<void>((resolve) => { markTranslationStarted = resolve; });
+  await page.unroute("**/api/paper-translation");
+  await page.route("**/api/paper-translation", async (route) => {
+    markTranslationStarted();
+    await translationReleased;
+    const body = route.request().postDataJSON() as { segments?: Array<{ id: string; text: string }> };
     await route.fulfill({
       status: 200,
       contentType: "application/json",
       body: JSON.stringify({
-        status: "connected",
-        provider: "openalex",
-        generatedAt: "2026-08-31T00:00:00.000Z",
-        searchUrl: "https://openalex.org/works?search=road%20safety",
-        works: [],
+        sourceLanguage: "th",
+        targetLanguage: "en",
+        translations: (body.segments ?? []).map((segment) => ({ id: segment.id, text: "Bounded English rendering." })),
+        translatedAt: "2026-09-02T00:00:00.000Z",
+      }),
+    });
+  });
+  await page.route(/\/api\/papers\/[^/?]+(?:\?.*)?$/, async (route) => {
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({
+        document: researchCard,
+        sections: [{ id: "section-1", sectionIndex: 0, title: "ผลการศึกษา", pageStart: 2067, pageEnd: 2068, snippet: "ผลการศึกษา" }],
+        evidence: [{
+          id: "evidence-road-1",
+          sectionIndex: 0,
+          chunkIndex: 0,
+          sectionTitle: "ผลการศึกษา",
+          pageStart: 2067,
+          pageEnd: 2067,
+          readerPageNumber: 2067,
+          readerAnchor: "asset:webmcp-native:page:2067",
+          snippet: "การศึกษาจัดกลุ่มปัจจัยการเกิดอุบัติเหตุเป็นด้านคน ยานพาหนะ และถนนกับสิ่งแวดล้อม",
+        }],
+        counts: { sections: 1, chunks: 1 },
+        related: [],
+        generatedAt: "2026-09-02T00:00:00.000Z",
       }),
     });
   });
@@ -947,10 +1080,10 @@ test("cancels a Passport draft when the visible research question changes", asyn
       return error instanceof Error ? error.message : String(error);
     }
   });
-  await globalDiscoveryStarted;
+  await translationStarted;
   await page.getByLabel("Ask or search Thai research papers").fill("a different current research question");
   await expect(page.getByLabel("Thai-to-global research passport").getByText("Research context changed while the Passport was being drafted.", { exact: false })).toBeVisible({ timeout: 3_000 });
-  releaseGlobalDiscovery();
+  releaseTranslation();
   expect(await draftPromise).toContain("research context changed");
 });
 

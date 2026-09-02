@@ -45,8 +45,8 @@ institutional repositories remain separately measured rollout tracks.
   19-tool first-party compatibility contract. OAuth and revocable owner-scoped
   personal keys share the same permission and distributed-quota boundary.
   Metadata-only records are never returned as citable evidence.
-- WebMCP: six top-level browser site tools for discovery, exact-page evidence,
-  Evidence-bounded Research Passport drafting, Research Path
+- WebMCP: seven top-level browser site tools for Thai discovery, dated global
+  visibility audit, exact-page evidence, evidence-bounded Research Passport drafting, Research Path
   creation/adaptation, and privacy-bounded progress inspection. Tool calls
   must update the same visible page the person is reviewing.
 - Research Passport: one to three visible exact-page Thai anchors, at most four
@@ -82,13 +82,17 @@ All of the following must pass against the same source state:
     initialize/list/call pass authenticated isolation tests;
 12. `npm audit --omit=dev` has no high or critical production advisory, and any
     deferred low advisory has an owner and migration plan.
-13. the focused WebMCP browser test executes all six tools and verifies visible
+13. the focused WebMCP browser test executes all seven tools and verifies visible
     Explore, evidence-drawer, Research Passport, Research Path, and progress
     state; Passport page-review acknowledgment remains locked until every selected exact-page anchor is reopened, export remains locked until that acknowledgment, and OpenAlex leads
     remain non-citable. The deployed candidate is also checked manually in
     ChatGPT's built-in browser using a configuration where Site tools are
     visibly available and in Chrome with native WebMCP testing enabled. Record
     the exact host build, account class, selected model, permissions, and calls.
+16. the default Thai feed starts independently of session and history
+    hydration; initial cards do not trigger translation until requested;
+    and the visibility audit distinguishes provider failure from a dated
+    no-exact-match result without exposing a partial-run percentage.
 14. Research Notebook ownership and saved-source membership fail closed;
     citations resolve only to supplied exact-page packets; private answers are
     non-shareable and not persisted; public promotion returns to the Passport

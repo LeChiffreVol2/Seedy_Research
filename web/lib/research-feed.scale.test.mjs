@@ -64,6 +64,19 @@ function loadModule(rpcCalls) {
     if (specifier === "./rights-reviewed-reader-papers") return { findRightsReviewedReaderPaper: () => null, listRightsReviewedReaderPapers: () => [] };
     if (specifier === "./paper-reader") return { getPaperReader: async () => null };
     if (specifier === "./research-relevance.mjs") return { filterResearchCardsByRelevance: (_query, cards) => cards };
+    if (specifier === "./visibility-audit") return {
+      getVisibilitySummary: async () => ({
+        auditRunId: null, provider: "tci_thaijo", externalIndex: "openalex", snapshotDate: null,
+        runStatus: "not_started", strategy: null, denominator: 0, attempted: 0, audited: 0,
+        globallyIndexed: 0, underIndexed: 0, candidateReview: 0, notFoundInAudit: 0,
+        unavailable: 0, methodVersion: null, complete: false,
+      }),
+      getVisibilityReceipts: async (sources) => Object.fromEntries(sources.map((source) => [source, {
+        source, provider: "tci_thaijo", externalIndex: "openalex", state: "not_audited", matchBasis: "none",
+        externalWorkId: null, externalUrl: null, confidence: null, requiresHumanReview: false,
+        metadataGaps: [], checkedAt: null, snapshotDate: null, methodVersion: null,
+      }])),
+    };
     return nodeRequire(specifier);
   };
   new Function("require", "module", "exports", "__filename", "__dirname", transpiled)(requireForTest, module, module.exports, filename, directory);

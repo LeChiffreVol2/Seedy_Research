@@ -50,6 +50,29 @@ Required variables:
 
 `SUPABASE_PREVIEW_DB_URL` must target the same Supabase project configured in the Vercel Preview environments. Keep it separate from production unless an explicitly reviewed additive migration is intentionally shared.
 
+## Thai–Global Visibility Audit
+
+The visibility audit is a comparison layer inside Seedy Research. It does not
+submit, repair, or synchronize records with OpenAlex. Apply migration
+`20260902123406_civil_global_visibility_audit.sql`, then preview a bounded run:
+
+```bash
+python3.10 pipeline/audit_openalex_visibility.py --provider tci_thaijo --strategy identifiers --max-records 25
+```
+
+Use `--apply` only after the dry-run output is reviewed. Production scheduling
+is defined in `.github/workflows/visibility-audit.yml`; set `OPENALEX_API_KEY`
+for higher quotas and full title-candidate auditing. Identifier-only runs may
+use the explicitly bounded anonymous mode. Never report a partial-run ratio as
+provider or national coverage.
+
+The 2 September 2026 production v2 run is partial: 836 exact-DOI records were
+attempted from a 2,681-record active ThaiJO cohort, yielding 27 exact identities,
+805 under-indexed identities, four dated no-exact-match receipts, and zero
+provider-unavailable receipts. Preserve the earlier v1 run as incident history;
+its DOI OR-filter result is known to contain false negatives and must not be
+used in product claims.
+
 ## Rollback
 - Return to the legacy section-then-chunk recipe: `FAST_RETRIEVAL_ENABLED=false`.
 - Restore model-based routing for otherwise-unclassified prompts: `LLM_ROUTER_ENABLED=true`.
@@ -64,6 +87,11 @@ Required variables:
 - MCP `/health/ready` for Supabase, schema, and distributed-quota readiness.
 - MCP `/metrics` for request/tool error counters.
 - Web `/api/research-feed?filter=ncce` for Supabase feed health.
+- Web `/api/research-feed?filter=thai` for the primary Thai-first feed; verify it
+  starts independently of session and history hydration.
+- Web `/api/visibility` for the latest dated audit summary; missing RPCs must
+  degrade to `not_audited`, and provider failures to `audit_unavailable`, never
+  to a no-exact-match claim.
 - Web `/api/chat` debug mode for context/evidence traces.
 - MCP `/metrics` for `embedding_circuit`, `retrieval_fallbacks_total`,
   `embedding_unavailable_total`, tool error rate, and error codes.

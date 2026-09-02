@@ -1,8 +1,24 @@
 # Seedy Research Architecture
 
+## Thai–Global Visibility Audit
+
+The audit plane is asynchronous and additive: a scheduled/manual GitHub job
+reads a bounded `civil_source_catalog` provider cohort, queries OpenAlex under a
+fixed rate and retry budget, and writes dated receipts to
+`civil_visibility_audit_runs` and `civil_external_index_matches`. Browser and
+WebMCP requests are read-only consumers through service-only RPCs; they never
+run a cohort audit on the request path. Candidate identities require a separate
+review decision in `civil_visibility_review_decisions`. Provider failures remain
+`audit_unavailable`, never `not_found_in_audit`.
+
+The initial page load starts Thai discovery after session identity resolves; it
+does not wait for chat-history hydration. Feed facets and visibility summary run
+in parallel with the bounded card query, and Thai-to-English translation begins
+only after an explicit language or paper action.
+
 ## System Shape
 Seedy Research has three production surfaces. Existing CivilMCP identifiers remain as compatibility contracts through the Challenge release:
-- `web/`: Next.js 15 app with research feed, chat UI, bounded Agentic Context Engine orchestration in `/api/chat`, adaptive Thai-to-global path assembly in `/api/research-path`, a bounded Verified Review matrix in `/api/research-workspaces`, and six browser-native SeedyMCP tools registered from the top-level page.
+- `web/`: Next.js 15 app with research feed, chat UI, bounded Agentic Context Engine orchestration in `/api/chat`, adaptive Thai-to-global path assembly in `/api/research-path`, a bounded Verified Review matrix in `/api/research-workspaces`, and seven browser-native SeedyMCP tools registered from the top-level page.
 - `mcp-server/`: Python FastAPI service exposing the public stateless MCP v2 endpoint at `/v2/mcp`, OAuth protected-resource metadata, and the existing `/tools/list`, `/tools/call`, and legacy MCP transport used by first-party consumers.
 - `pipeline/` + `supabase/`: provider registry, metadata harvesting, page-preserving PDF/OCR extraction, markdown/preview generation, v2 section/chunk embedding, and Supabase pgvector readiness checks.
 

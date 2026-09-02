@@ -9,6 +9,12 @@ import { PAPER_TITLE_OVERRIDES } from "./paper-title-overrides";
 import { getPaperReader } from "./paper-reader";
 import { filterResearchCardsByRelevance } from "./research-relevance.mjs";
 import {
+  getVisibilityReceipts,
+  getVisibilitySummary,
+  type VisibilityReceipt,
+  type VisibilitySummary,
+} from "./visibility-audit";
+import {
   findRightsReviewedReaderPaper,
   listRightsReviewedReaderPapers,
   type RightsReviewedReaderPage,
@@ -59,6 +65,7 @@ export type ResearchFeedCard = {
   licenseExpression?: string | null;
   licenseUrl?: string | null;
   discoveryLayer?: "evidence" | "thai_discovery";
+  visibility?: VisibilityReceipt;
 };
 
 export type ResearchFeedResponse = {
@@ -74,9 +81,29 @@ export type ResearchFeedResponse = {
     coverage: ResearchCoverageProvider[];
     collections: Array<{ collection: string; documents: number }>;
     filters: Record<FeedFilter, number>;
+    visibility: VisibilitySummary;
   };
   nextCursor: string | null;
   generatedAt: string;
+};
+
+const EMPTY_VISIBILITY_SUMMARY: VisibilitySummary = {
+  auditRunId: null,
+  provider: "tci_thaijo",
+  externalIndex: "openalex",
+  snapshotDate: null,
+  runStatus: "not_started",
+  strategy: null,
+  denominator: 0,
+  attempted: 0,
+  audited: 0,
+  globallyIndexed: 0,
+  underIndexed: 0,
+  candidateReview: 0,
+  notFoundInAudit: 0,
+  unavailable: 0,
+  methodVersion: null,
+  complete: false,
 };
 
 export type ResearchCoverageProvider = {
@@ -1614,7 +1641,11 @@ async function matchingDocumentScores(q: string, collection: CollectionFilter): 
   );
 }
 
-function facetsFromCounts(evidence: EvidenceFacetRow, catalogFacets: CatalogFacetRow[]): ResearchFeedResponse["facets"] {
+function facetsFromCounts(
+  evidence: EvidenceFacetRow,
+  catalogFacets: CatalogFacetRow[],
+  visibility: VisibilitySummary = EMPTY_VISIBILITY_SUMMARY,
+): ResearchFeedResponse["facets"] {
   const providerCounts = new Map<string, { records: number; citable: number; metadataOnly: number }>();
   const evidenceTotal = Number(evidence.total ?? 0);
   const filters: Record<FeedFilter, number> = {
@@ -1656,6 +1687,7 @@ function facetsFromCounts(evidence: EvidenceFacetRow, catalogFacets: CatalogFace
       { collection: "ce_project", documents: Number(evidence.ce_project ?? 0) },
     ].filter((item) => item.documents > 0),
     filters,
+    visibility,
   };
   return { ...base, coverage: buildCoverageLedger(base) };
 }
@@ -1671,8 +1703,20 @@ function emptyFacets(): ResearchFeedResponse["facets"] {
     providers: [],
     collections: [],
     filters: { hot: 0, recent: 0, evidence: 0, thai: 0, tci: 0, ncce: 0, ce_project: 0 },
+    visibility: EMPTY_VISIBILITY_SUMMARY,
   };
   return { ...base, coverage: buildCoverageLedger(base) };
+}
+
+async function attachVisibilityReceipts(cards: ResearchFeedCard[]): Promise<ResearchFeedCard[]> {
+  const sources = cards
+    .filter((card) => card.provider === "tci_thaijo")
+    .map((card) => card.source);
+  if (!sources.length) return cards;
+  const receipts = await getVisibilityReceipts(sources);
+  return cards.map((card) => card.provider === "tci_thaijo"
+    ? { ...card, visibility: receipts[card.source] }
+    : card);
 }
 
 export async function listResearchFeed(params: ListFeedParams): Promise<ResearchFeedResponse> {
@@ -1684,29 +1728,34 @@ export async function listResearchFeed(params: ListFeedParams): Promise<Research
   const limit = normalizeLimit(params.limit);
   const offset = decodeCursor(params.cursor);
 
-  const facets = params.includeFacets === false
-    ? emptyFacets()
-    : await Promise.all([fetchEvidenceFacets(), fetchCatalogFacets(), fetchCoverageSnapshots()])
-      .then(([evidenceFacets, catalogFacets, snapshots]) => addReaderPackFacets(
-        facetsFromCounts(evidenceFacets, catalogFacets),
+  const facetsPromise = params.includeFacets === false
+    ? Promise.resolve(emptyFacets())
+    : Promise.all([fetchEvidenceFacets(), fetchCatalogFacets(), fetchCoverageSnapshots(), getVisibilitySummary()])
+      .then(([evidenceFacets, catalogFacets, snapshots, visibility]) => addReaderPackFacets(
+        facetsFromCounts(evidenceFacets, catalogFacets, visibility),
         snapshots,
       ));
-  const hasAuthoritativeNative = facets.coverage.some((row) => row.nativeFullPaper > 0);
   const readerCards = rightsReviewedReaderCards(filter, collection, q)
     .filter((card) => !provider || card.provider === provider);
   if (filter === "thai" || filter === "tci") {
+    const catalogProvider = provider || "tci_thaijo";
+    const catalogPagePromise = searchCatalog({ q, provider: catalogProvider, nativeFirst: true, limit, offset });
+    // Start per-card receipts as soon as the bounded catalog page resolves.
+    // This keeps the trust layer without adding a serial database round trip
+    // after the slower aggregate facets have completed.
+    const visibleCatalogCardsPromise = catalogPagePromise.then((page) =>
+      attachVisibilityReceipts(page.rows.map(cardFromCatalog)),
+    );
+    const [facets, catalogPage, visibleCatalogCards] = await Promise.all([
+      facetsPromise,
+      catalogPagePromise,
+      visibleCatalogCardsPromise,
+    ]);
+    const hasAuthoritativeNative = facets.coverage.some((row) => row.nativeFullPaper > 0);
     if (hasAuthoritativeNative) {
-      const catalogPage = await searchCatalog({
-        q,
-        provider,
-        nativeFirst: true,
-        limit,
-        offset,
-      });
-      const cards = catalogPage.rows.map(cardFromCatalog);
-      const nextOffset = offset + cards.length;
+      const nextOffset = offset + visibleCatalogCards.length;
       return {
-        cards,
+        cards: visibleCatalogCards,
         facets,
         nextCursor: nextOffset < catalogPage.total ? encodeCursor(nextOffset) : null,
         generatedAt: new Date().toISOString(),
@@ -1715,22 +1764,18 @@ export async function listResearchFeed(params: ListFeedParams): Promise<Research
     const readerSlice = readerCards.slice(offset, offset + limit);
     const catalogOffset = Math.max(0, offset - readerCards.length);
     const remaining = Math.max(0, limit - readerSlice.length);
-    const catalogPage = await searchCatalog({
-      q,
-      provider,
-      evidenceStatus: undefined,
-      limit: Math.max(1, remaining),
-      offset: catalogOffset,
-    });
+    const fallbackCatalogPage = catalogOffset === offset && remaining === limit
+      ? catalogPage
+      : await searchCatalog({ q, provider: catalogProvider, evidenceStatus: undefined, limit: Math.max(1, remaining), offset: catalogOffset });
     const cards = [
       ...readerSlice,
-      ...catalogPage.rows.slice(0, remaining).map(cardFromCatalog),
+      ...fallbackCatalogPage.rows.slice(0, remaining).map(cardFromCatalog),
     ];
     const nextOffset = offset + limit;
     return {
-      cards,
+      cards: await attachVisibilityReceipts(cards),
       facets,
-      nextCursor: nextOffset < readerCards.length + catalogPage.total ? encodeCursor(nextOffset) : null,
+      nextCursor: nextOffset < readerCards.length + fallbackCatalogPage.total ? encodeCursor(nextOffset) : null,
       generatedAt: new Date().toISOString(),
     };
   }
@@ -1739,7 +1784,10 @@ export async function listResearchFeed(params: ListFeedParams): Promise<Research
     const readerSlice = readerCards.slice(offset, offset + limit);
     const documentOffset = Math.max(0, offset - readerCards.length);
     const remaining = Math.max(0, limit - readerSlice.length);
-    const page = await fetchDocumentPage(collection, filter, documentOffset, Math.max(1, remaining));
+    const [facets, page] = await Promise.all([
+      facetsPromise,
+      fetchDocumentPage(collection, filter, documentOffset, Math.max(1, remaining)),
+    ]);
     const previews = await fetchDocumentPreviews(page.rows.map((doc) => doc.id));
     const cards = [
       ...readerSlice,
@@ -1751,14 +1799,14 @@ export async function listResearchFeed(params: ListFeedParams): Promise<Research
     ];
     const nextOffset = offset + limit;
     return {
-      cards,
+      cards: await attachVisibilityReceipts(cards),
       facets,
       nextCursor: nextOffset < readerCards.length + page.total ? encodeCursor(nextOffset) : null,
       generatedAt: new Date().toISOString(),
     };
   }
 
-  const relevanceScores = await matchingDocumentScores(q, collection);
+  const [facets, relevanceScores] = await Promise.all([facetsPromise, matchingDocumentScores(q, collection)]);
   const candidateIds = [...relevanceScores.entries()]
     .sort((left, right) => right[1] - left[1])
     .slice(0, MAX_QUERY_MATCHES)
@@ -1821,7 +1869,7 @@ export async function listResearchFeed(params: ListFeedParams): Promise<Research
   const nextOffset = offset + page.length;
 
   return {
-    cards,
+    cards: await attachVisibilityReceipts(cards),
     facets,
     nextCursor: nextOffset < combined.length ? encodeCursor(nextOffset) : null,
     generatedAt: new Date().toISOString(),

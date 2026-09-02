@@ -1,5 +1,15 @@
 # Seedy Research Data Expansion
 
+## Visibility audit before volume claims
+
+Every connected Thai-local provider receives a bounded, dated external-index
+audit before Seedy publishes any visibility percentage. Store the cohort
+denominator, method version, snapshot date, exact matches, under-indexed matches,
+human-review candidates, no-exact-match results, and unavailable attempts. Do
+not infer national absence from a partial run, and do not treat OpenAlex as the
+destination for Seedy records. The institution-facing derivative is a Repository
+Visibility Observatory: a reviewable measurement and action queue inside Seedy.
+
 ## Product boundary
 
 Seedy Research is a Thai research evidence network, not a folder of PDFs. Every source

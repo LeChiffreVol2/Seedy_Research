@@ -25,7 +25,7 @@ export default function DevelopersPage() {
       <section className={styles.hero}>
         <p className={styles.eyebrow}>SEEDY · Seedy Research</p>
         <h1>Thai research evidence for people and agents.</h1>
-        <p>Collaborate with an agent in the live page through six browser-native SeedyMCP tools—including an evidence-bounded Thai → Global Research Passport and a fail-closed OpenAlex connection trace—or connect an independent research client to the bounded remote MCP endpoint.</p>
+        <p>Collaborate with an agent in the live page through seven browser-native SeedyMCP tools—including a dated Thai–global visibility audit, an evidence-bounded Research Passport, and a fail-closed OpenAlex connection trace—or connect an independent research client to the bounded remote MCP endpoint.</p>
         <div className={styles.endpoint}><div><span>Streamable HTTP</span><code>{endpoint}</code></div><a href="/?view=settings">Create personal key</a></div>
       </section>
 

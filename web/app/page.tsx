@@ -303,6 +303,44 @@ type ResearchCardData = {
   licenseExpression?: string | null;
   licenseUrl?: string | null;
   discoveryLayer?: "evidence" | "thai_discovery";
+  visibility?: VisibilityReceipt;
+};
+
+type GlobalVisibilityState = "globally_indexed" | "under_indexed" | "candidate_match" | "not_found_in_audit" | "not_audited" | "audit_unavailable";
+
+type VisibilityReceipt = {
+  source: string;
+  provider: string | null;
+  externalIndex: "openalex";
+  state: GlobalVisibilityState;
+  matchBasis: string;
+  externalWorkId: string | null;
+  externalUrl: string | null;
+  confidence: number | null;
+  requiresHumanReview: boolean;
+  metadataGaps: string[];
+  checkedAt: string | null;
+  snapshotDate: string | null;
+  methodVersion: string | null;
+};
+
+type VisibilitySummary = {
+  auditRunId: string | null;
+  provider: string;
+  externalIndex: "openalex";
+  snapshotDate: string | null;
+  runStatus: "not_started" | "running" | "partial" | "complete" | "failed";
+  strategy: "identifiers" | "full" | null;
+  denominator: number;
+  attempted: number;
+  audited: number;
+  globallyIndexed: number;
+  underIndexed: number;
+  candidateReview: number;
+  notFoundInAudit: number;
+  unavailable: number;
+  methodVersion: string | null;
+  complete: boolean;
 };
 
 type PaperAnchor = {
@@ -324,6 +362,7 @@ type ResearchFeedResponse = {
     coverage?: ResearchCoverageProvider[];
     collections?: Array<{ collection: string; documents: number }>;
     filters?: Partial<Record<FeedFilter, number>>;
+    visibility?: VisibilitySummary;
   };
   nextCursor?: string | null;
   generatedAt?: string;
@@ -429,6 +468,20 @@ type CitationMapState = {
 
 function isTraceableOpenAlexMatch(match: CitationMapResponse["match"] | null | undefined): boolean {
   return match?.status === "verified" && match.basis === "doi" && match.requiresHumanReview === false;
+}
+
+function tracedGlobalWorks(map: CitationMapResponse | null | undefined): GlobalDiscoveryWork[] {
+  if (!map || map.status !== "connected" || !isTraceableOpenAlexMatch(map.match)) return [];
+  return map.nodes.slice(0, 4).map((node) => ({
+    id: node.id,
+    doi: null,
+    title: node.title,
+    year: node.year,
+    citedByCount: node.citedByCount,
+    topic: node.topic ?? null,
+    url: node.url,
+    citable: false,
+  }));
 }
 
 type PaperDetailData = {
@@ -1276,7 +1329,13 @@ function evidenceBriefMarkdown(annotation: CivilMissionAnnotation, evidenceItems
 }
 
 function cardKey(card: ResearchCardData): string {
-  return card.id || card.source;
+  const doi = card.doi
+    ?.trim()
+    .toLocaleLowerCase("en")
+    .replace(/^doi:\s*/, "")
+    .replace(/^https?:\/\/(?:dx\.)?doi\.org\//, "");
+  if (doi) return `doi:${doi}`;
+  return card.source || card.id;
 }
 
 function isResearchCardData(value: unknown): value is ResearchCardData {
@@ -2821,6 +2880,60 @@ function DiscoveryTrustBar({
   );
 }
 
+function visibilityReceiptCopy(receipt: VisibilityReceipt): { label: string; detail: string } {
+  if (receipt.state === "globally_indexed") return { label: "Exact global identity", detail: "Exact DOI or reviewed identity in the dated OpenAlex audit." };
+  if (receipt.state === "under_indexed") return { label: "Under-indexed globally", detail: `Exact identity found, but local metadata is richer${receipt.metadataGaps.length ? ` · ${receipt.metadataGaps.length} gaps` : ""}.` };
+  if (receipt.state === "candidate_match") return { label: "Candidate · review required", detail: "A possible identity match is not treated as verified." };
+  if (receipt.state === "not_found_in_audit") return { label: "No exact match in dated audit", detail: "Not found in this bounded audit; this is not a permanent absence claim." };
+  if (receipt.state === "audit_unavailable") return { label: "Audit unavailable", detail: "The provider could not be checked, so no visibility claim is made." };
+  return { label: "Not audited yet", detail: "No dated visibility receipt exists for this work yet." };
+}
+
+function VisibilityReceiptBadge({ receipt }: { receipt?: VisibilityReceipt }) {
+  if (!receipt) return null;
+  const copy = visibilityReceiptCopy(receipt);
+  return (
+    <span className={`visibilityReceipt ${receipt.state}`} title={copy.detail}>
+      <GitFork size={12} aria-hidden />
+      {copy.label}
+    </span>
+  );
+}
+
+function VisibilityAuditPanel({ summary }: { summary: VisibilitySummary | null }) {
+  if (!summary) return null;
+  const dated = summary.snapshotDate
+    ? new Intl.DateTimeFormat("en-GB", { day: "numeric", month: "short", year: "numeric" }).format(new Date(`${summary.snapshotDate}T00:00:00Z`))
+    : "not started";
+  return (
+    <section className="visibilityAuditPanel" aria-label="Thai to global visibility audit">
+      <header>
+        <div>
+          <span className="workspaceEyebrow">Thai–Global Visibility Audit</span>
+          <h2>What global indexes can—and cannot yet—see</h2>
+          <p>Dated OpenAlex comparison receipts for the bounded ThaiJO cohort. Seedy connects overlooked Thai work inside the research workflow; it does not submit records to OpenAlex.</p>
+        </div>
+        <span className={`visibilityAuditStatus ${summary.runStatus}`}>{summary.runStatus.replace("_", " ")}</span>
+      </header>
+      {summary.runStatus === "not_started" ? (
+        <p className="visibilityAuditEmpty">Audit infrastructure is ready; no production audit receipt has been published yet.</p>
+      ) : (
+        <>
+          <div className="visibilityAuditMetrics">
+            <div><strong>{summary.attempted.toLocaleString("en-US")}</strong><span>attempted of {summary.denominator.toLocaleString("en-US")}</span></div>
+            <div><strong>{summary.globallyIndexed.toLocaleString("en-US")}</strong><span>exact global identity</span></div>
+            <div><strong>{summary.underIndexed.toLocaleString("en-US")}</strong><span>under-indexed</span></div>
+            <div><strong>{summary.candidateReview.toLocaleString("en-US")}</strong><span>candidate review</span></div>
+            <div><strong>{summary.notFoundInAudit.toLocaleString("en-US")}</strong><span>no exact match in audit</span></div>
+            <div><strong>{summary.unavailable.toLocaleString("en-US")}</strong><span>provider unavailable</span></div>
+          </div>
+          <p className="visibilityAuditFoot">Snapshot {dated} · {summary.strategy === "full" ? "identifier + title review candidates" : "identifier audit"} · {summary.complete ? "complete bounded cohort" : "partial cohort—no national percentage claimed"}</p>
+        </>
+      )}
+    </section>
+  );
+}
+
 function CoverageLedger({
   providers,
   activeProvider,
@@ -2850,7 +2963,9 @@ function CoverageLedger({
           <article key={provider.provider} className={activeProvider === provider.provider ? "active" : ""}>
             <div className="coverageIdentity">
               <strong>{provider.label}</strong>
-              <span>{provider.state === "pilot_internal" ? "bounded internal corpus" : "bounded live source"}</span>
+              <span>{provider.provider === "pmc_oa"
+                ? "global comparison corpus · excluded from Thai-local totals"
+                : provider.state === "pilot_internal" ? "bounded internal Thai corpus" : "bounded live Thai source"}</span>
             </div>
             <dl>
               <div><dt>Records</dt><dd>{provider.records.toLocaleString("en-US")}</dd></div>
@@ -2908,12 +3023,12 @@ function GlobalDiscoveryPanel({
             : "Search beyond the Thai corpus only when you need broader context.";
 
   return (
-    <section className="globalDiscoveryPanel" aria-label="Global research discovery">
+    <section className="globalDiscoveryPanel" aria-label="Suggested global comparison leads">
       <header className="globalDiscoveryHeader">
         <div>
-          <span className="globalDiscoveryEyebrow"><Compass size={15} strokeWidth={2.2} aria-hidden /> Global discovery</span>
-          <h2>Expand “{normalizedQuery}” beyond Thailand</h2>
-          <p>OpenAlex metadata is a discovery layer. Open the source before treating it as evidence.</p>
+          <span className="globalDiscoveryEyebrow"><Compass size={15} strokeWidth={2.2} aria-hidden /> Suggested comparison leads</span>
+          <h2>Compare “{normalizedQuery}” with global work</h2>
+          <p>Optional OpenAlex topical metadata appears after Thai-local results. It is not a verified connection and never counts as evidence.</p>
         </div>
         <button
           type="button"
@@ -3027,7 +3142,7 @@ function ResearchPassportPanel({
               ? "Page anchors reviewed · inference remains candidate"
               : artifact
                 ? allEvidenceOpened ? "Ready for page-review acknowledgment" : `Open exact pages · ${artifact.openedEvidenceIds.length}/${artifact.evidence.length}`
-                : "6 site tools ready"}
+                : "7 site tools ready"}
         </span>
       </header>
 
@@ -3355,9 +3470,11 @@ function ResearchCard({
     ? card.pageEnd === card.pageStart
       ? `p.${card.pageStart}`
       : `p.${card.pageStart}-${card.pageEnd}`
-    : card.pages
+    : nativeReaderCard
+      ? card.pageLabel
+      : card.pages
       ? `${card.pages} pages`
-      : "Indexed PDF";
+      : "Page mapping pending";
 
   return (
     <article className="researchCard">
@@ -3389,6 +3506,7 @@ function ResearchCard({
               : "Discovery metadata"}
           </span>
           {translated ? <span className="translatedMeta">EN translation</span> : null}
+          <VisibilityReceiptBadge receipt={card.visibility} />
         </div>
         <p className="paperSummary" lang={contentLanguage(summary)}>{summary}</p>
         <div className="tagRow" aria-label="Research tags">
@@ -3405,6 +3523,7 @@ function ResearchCard({
                   type="button"
                   className={`cardAction workspaceSelectAction ${workspaceSelected ? "selected" : ""}`}
                   aria-pressed={workspaceSelected}
+                  disabled={disabled}
                   onClick={() => onToggleWorkspace(card)}
                 >
                   {workspaceSelected ? <Check size={17} strokeWidth={2.3} aria-hidden /> : <TableProperties size={17} strokeWidth={2.2} aria-hidden />}
@@ -3421,6 +3540,7 @@ function ResearchCard({
                 aria-pressed={bookmarked}
                 aria-label={bookmarked ? "Remove saved paper" : "Save paper to library"}
                 title={bookmarked ? "Saved" : "Save to library"}
+                disabled={disabled}
                 onClick={() => onToggleBookmark(card)}
               >
                 <Bookmark size={17} strokeWidth={2.2} aria-hidden />
@@ -4035,9 +4155,11 @@ function PaperDetailDrawer({
                         ))}
                       </div>
                     </div>
+                  ) : citationMap.response && citationMap.response.status !== "connected" ? (
+                    <p className="detailEmpty">OpenAlex is temporarily unavailable, so Seedy makes no visibility or identity claim. <button type="button" className="inlineTextButton" onClick={onLoadCitationMap}>Retry</button>.</p>
                   ) : citationMap.response?.match.status === "candidate" ? (
                     <p className="detailEmpty">A candidate OpenAlex match needs human confirmation before SeedyMCP can trace its relationships. <a href={citationMap.response.searchUrl} target="_blank" rel="noreferrer">Review in OpenAlex</a>.</p>
-                  ) : <p className="detailEmpty">No OpenAlex match was found. <a href={citationMap.response?.searchUrl} target="_blank" rel="noreferrer">Search OpenAlex</a>.</p>}
+                  ) : <p className="detailEmpty">No exact OpenAlex match was found in this lookup. This is not a permanent absence claim. <a href={citationMap.response?.searchUrl} target="_blank" rel="noreferrer">Search OpenAlex</a>.</p>}
             </section>
 
             <section className="detailSection">
@@ -4421,7 +4543,7 @@ function PersonalizedResearchPathPanel({
           </div>
           {path ? (
             <div className="pathHeaderActions">
-              <button type="button" className="textAction" onClick={onExport}><Download size={15} aria-hidden /><span>Export</span></button>
+              <button type="button" className="textAction" onClick={onExport}><Download size={15} aria-hidden /><span>{progress === 100 ? "Export reviewed path" : "Export draft path"}</span></button>
               <button type="button" className="textAction pathResetAction" onClick={onReset}><RefreshCw size={15} aria-hidden /><span>New path</span></button>
             </div>
           ) : null}
@@ -5376,7 +5498,7 @@ export default function Home() {
   const [statusText, setStatusText] = useState("");
   const [isSharedView, setIsSharedView] = useState(false);
   const [openDropdown, setOpenDropdown] = useState<OpenDropdown>(null);
-  const [activeFeedFilter, setActiveFeedFilter] = useState<FeedFilter>("hot");
+  const [activeFeedFilter, setActiveFeedFilter] = useState<FeedFilter>("thai");
   // Explore is the stable public shell while the signed guest/account session
   // hydrates. Requested deep links are applied immediately after hydration;
   // starting on Settings or Path creates a misleading sign-in/product flash.
@@ -5420,7 +5542,7 @@ export default function Home() {
   const [bookmarksReady, setBookmarksReady] = useState(false);
   const [paperTranslations, setPaperTranslations] = useState<Record<string, PaperTranslationState>>({});
   const [translationCacheReady, setTranslationCacheReady] = useState(false);
-  const [paperLanguage, setPaperLanguage] = useState<PaperLanguage>("en");
+  const [paperLanguage, setPaperLanguage] = useState<PaperLanguage>("th");
   const [paperLanguageReady, setPaperLanguageReady] = useState(false);
   const [, setActivationSteps] = useState<ActivationStep[]>([]);
   const [translationRefreshNonce, setTranslationRefreshNonce] = useState(0);
@@ -5429,17 +5551,17 @@ export default function Home() {
   const [feedError, setFeedError] = useState("");
   const [feedQuery, setFeedQuery] = useState("");
   const [feedTotal, setFeedTotal] = useState(0);
-  const [feedCatalogTotal, setFeedCatalogTotal] = useState(0);
   const [feedCitableTotal, setFeedCitableTotal] = useState(0);
   const [feedMetadataOnlyTotal, setFeedMetadataOnlyTotal] = useState(0);
   const [feedTotalSections, setFeedTotalSections] = useState(0);
   const [feedTotalChunks, setFeedTotalChunks] = useState(0);
   const [feedFilterCounts, setFeedFilterCounts] = useState<Partial<Record<FeedFilter, number>>>({});
   const [feedCoverage, setFeedCoverage] = useState<ResearchCoverageProvider[]>([]);
-  const feedNativeFullPaperTotal = feedCoverage.reduce(
-    (sum, provider) => sum + provider.nativeFullPaper,
+  const feedThaiNativeFullPaperTotal = feedCoverage.reduce(
+    (sum, provider) => sum + (provider.provider === "pmc_oa" ? 0 : provider.nativeFullPaper),
     0,
   );
+  const [feedVisibility, setFeedVisibility] = useState<VisibilitySummary | null>(null);
   const [activeFeedProvider, setActiveFeedProvider] = useState("");
   const [feedGeneratedAt, setFeedGeneratedAt] = useState("");
   const [feedNextCursor, setFeedNextCursor] = useState<string | null>(null);
@@ -5484,7 +5606,7 @@ export default function Home() {
   const webMcpEvidenceContextRef = useRef<PaperDetailData | null>(null);
   const citationMapRef = useRef(citationMap);
   const citationMapSourceRef = useRef("");
-  const paperLanguageRef = useRef<PaperLanguage>("en");
+  const paperLanguageRef = useRef<PaperLanguage>("th");
   const paperTranslationsRef = useRef<Record<string, PaperTranslationState>>({});
   const translationInFlightRef = useRef(new Set<string>());
   const announcePaperLanguageRef = useRef(false);
@@ -5750,16 +5872,14 @@ export default function Home() {
   }, [completedPathStages, isAuthenticated, pathCheckpointAnswers, pathCheckpointAssessments, pathStageMastery, researchPath, researchPathReady, userProfile?.userId]);
 
   useEffect(() => {
-    let nextLanguage: PaperLanguage = "en";
+    let nextLanguage: PaperLanguage = "th";
     try {
       const storedLanguage = window.localStorage.getItem(PAPER_LANGUAGE_KEY);
       if (storedLanguage === "th" || storedLanguage === "en") {
         nextLanguage = storedLanguage;
-      } else if (navigator.languages.some((language) => language.toLowerCase().startsWith("th"))) {
-        nextLanguage = "th";
       }
     } catch {
-      if (navigator.language.toLowerCase().startsWith("th")) nextLanguage = "th";
+      nextLanguage = "th";
     }
     paperLanguageRef.current = nextLanguage;
     setPaperLanguage(nextLanguage);
@@ -5863,7 +5983,6 @@ export default function Home() {
     async function hydrate() {
       try {
         await fetchJson<{ sessionId: string }>("/api/session");
-
         const searchParams = new URLSearchParams(window.location.search);
         const shareId = searchParams.get("share")?.trim();
         const isRecovery = searchParams.get("auth") === "recovery";
@@ -6030,7 +6149,7 @@ export default function Home() {
   }, [activeMobileNav, draft]);
 
   useEffect(() => {
-    if (!isReady || (activeMobileNav !== "explore" && activeMobileNav !== "workspace")) return;
+    if (activeMobileNav !== "explore" && activeMobileNav !== "workspace") return;
     if (activeFeedFilter === "saved") {
       setFeedStatus("ready");
       setFeedError("");
@@ -6052,13 +6171,13 @@ export default function Home() {
         if (cancelled) return;
         setFeedCards(payload.cards ?? []);
         setFeedTotal(payload.facets?.total ?? 0);
-        setFeedCatalogTotal(payload.facets?.catalogTotal ?? payload.facets?.total ?? 0);
         setFeedCitableTotal(payload.facets?.citableTotal ?? payload.facets?.total ?? 0);
         setFeedMetadataOnlyTotal(payload.facets?.metadataOnlyTotal ?? 0);
         setFeedTotalSections(payload.facets?.totalSections ?? 0);
         setFeedTotalChunks(payload.facets?.totalChunks ?? 0);
         setFeedFilterCounts(payload.facets?.filters ?? {});
         setFeedCoverage(payload.facets?.coverage ?? []);
+        setFeedVisibility(payload.facets?.visibility ?? null);
         setFeedGeneratedAt(payload.generatedAt ?? "");
         setFeedNextCursor(payload.nextCursor ?? null);
         setFeedStatus("ready");
@@ -6075,13 +6194,13 @@ export default function Home() {
         if (cancelled || controller.signal.aborted) return;
         setFeedCards([]);
         setFeedTotal(0);
-        setFeedCatalogTotal(0);
         setFeedCitableTotal(0);
         setFeedMetadataOnlyTotal(0);
         setFeedTotalSections(0);
         setFeedTotalChunks(0);
         setFeedFilterCounts({});
         setFeedCoverage([]);
+        setFeedVisibility(null);
         setFeedNextCursor(null);
         setFeedStatus("error");
         setFeedError("The indexed paper collection could not be loaded. Please try again.");
@@ -6093,7 +6212,7 @@ export default function Home() {
       cancelled = true;
       controller.abort();
     };
-  }, [activeFeedFilter, activeMobileNav, buildFeedParams, feedRefreshNonce, isReady, recordActivationStep]);
+  }, [activeFeedFilter, activeMobileNav, buildFeedParams, feedRefreshNonce, recordActivationStep]);
 
   useEffect(() => {
     setShareUrl("");
@@ -6537,7 +6656,7 @@ export default function Home() {
   }, []);
 
   useEffect(() => {
-    if (!translationCacheReady || !paperLanguageReady || paperLanguage !== "en" || feedStatus !== "ready" || !visibleCards.length) return;
+    if (!translationRefreshNonce || !translationCacheReady || !paperLanguageReady || paperLanguage !== "en" || feedStatus !== "ready" || !visibleCards.length) return;
     const announce = announcePaperLanguageRef.current;
     announcePaperLanguageRef.current = false;
     const citableCards = visibleCards.filter((card) => card.citable !== false);
@@ -7239,17 +7358,11 @@ export default function Home() {
       setStatusText("The Notebook citation no longer resolves to an exact-page evidence packet.");
       return;
     }
-    const fallbackSearchUrl = `https://openalex.org/works?search=${encodeURIComponent(finding.question)}`;
-    const globalResponse = await fetchJson<GlobalDiscoveryResponse>("/api/global-discovery", {
-      method: "POST",
-      body: JSON.stringify({ query: finding.question }),
-    }).catch((): GlobalDiscoveryResponse => ({
-      status: "unavailable",
-      provider: "openalex",
-      generatedAt: new Date().toISOString(),
-      searchUrl: fallbackSearchUrl,
-      works: [],
-    }));
+    const connectionResponse = citationMapSourceRef.current === detail.document.source
+      ? citationMapRef.current.response
+      : null;
+    const globalWorks = tracedGlobalWorks(connectionResponse);
+    const fallbackSearchUrl = connectionResponse?.searchUrl || `https://openalex.org/works?search=${encodeURIComponent(finding.question)}`;
     const gap = passportGapCopy(finding.question, "validation");
     const artifact: ResearchPassportArtifact = {
       version: "seed-research-passport-v1",
@@ -7264,15 +7377,14 @@ export default function Home() {
       gapLens: "validation",
       paper: detail.document,
       evidence: evidence.map((item) => ({ ...item, englishSnippet: null })),
-      globalStatus: globalResponse.status,
-      globalSearchUrl: globalResponse.searchUrl || fallbackSearchUrl,
-      globalWorks: globalResponse.works.slice(0, 4),
+      globalStatus: connectionResponse?.status ?? "disabled",
+      globalSearchUrl: fallbackSearchUrl,
+      globalWorks,
       candidateGap: { ...gap, localBasisEvidenceIds: evidence.map((item) => item.id), relationValidated: false },
     };
     const ready: ResearchPassportState = { phase: "ready", artifact, error: "" };
     researchPassportRef.current = ready;
     setResearchPassport(ready);
-    setGlobalDiscovery({ phase: "ready", query: finding.question, response: globalResponse, error: "" });
     closePaperDetail();
     setAppView("explore");
     setStatusText("Notebook evidence promoted to a Research Passport. Open every exact page in the reader before acknowledging review.");
@@ -7333,13 +7445,13 @@ export default function Home() {
         return [...current, ...nextCards];
       });
       setFeedTotal(payload.facets?.total ?? feedTotal);
-      setFeedCatalogTotal(payload.facets?.catalogTotal ?? feedCatalogTotal);
       setFeedCitableTotal(payload.facets?.citableTotal ?? feedCitableTotal);
       setFeedMetadataOnlyTotal(payload.facets?.metadataOnlyTotal ?? feedMetadataOnlyTotal);
       setFeedTotalSections(payload.facets?.totalSections ?? feedTotalSections);
       setFeedTotalChunks(payload.facets?.totalChunks ?? feedTotalChunks);
       setFeedFilterCounts(payload.facets?.filters ?? feedFilterCounts);
       setFeedCoverage(payload.facets?.coverage ?? feedCoverage);
+      setFeedVisibility(payload.facets?.visibility ?? feedVisibility);
       setFeedGeneratedAt(payload.generatedAt ?? feedGeneratedAt);
       setFeedNextCursor(payload.nextCursor ?? null);
     } catch (error) {
@@ -7673,8 +7785,13 @@ export default function Home() {
 
   const exportResearchPath = () => {
     if (!researchPath) return;
+    const reviewed = completedPathStages.length === researchPath.stages.length;
     const lines = [
       `# Research Path — ${researchPath.goal}`,
+      "",
+      reviewed
+        ? "> REVIEWED PATH: every learning checkpoint was completed in this Seedy session. Candidate novelty still requires external validation."
+        : "> DRAFT — NOT REVIEWED: one or more learning checkpoints are incomplete. Do not present this export as a reviewed research artifact.",
       "",
       `- Starting point: ${researchPath.level}`,
       `- Target outcome: ${researchPath.outcome.replace(/_/g, " ")}`,
@@ -7738,11 +7855,11 @@ export default function Home() {
     const url = URL.createObjectURL(blob);
     const anchor = document.createElement("a");
     anchor.href = url;
-    anchor.download = `seed-research-path-${Date.now()}.md`;
+    anchor.download = `seed-research-path-${reviewed ? "reviewed" : "draft"}-${Date.now()}.md`;
     anchor.click();
     URL.revokeObjectURL(url);
-    trackProductEvent("review_exported", { surface: "research_path", completedStages: completedPathStages.length });
-    setStatusText("Research Path exported as Markdown");
+    if (reviewed) trackProductEvent("review_exported", { surface: "research_path", completedStages: completedPathStages.length });
+    setStatusText(reviewed ? "Reviewed Research Path exported as Markdown" : "Draft Research Path exported with an unreviewed watermark");
   };
 
   useEffect(() => {
@@ -7752,7 +7869,7 @@ export default function Home() {
         invalidateResearchContext();
         const collection: CollectionFilter = input.collection === "all" ? "" : input.collection;
         const params = new URLSearchParams({
-          filter: "hot",
+          filter: collection || "thai",
           collection: input.collection,
           limit: "8",
           q: input.query,
@@ -7779,16 +7896,16 @@ export default function Home() {
         setDraft(input.query);
         setFeedQuery(input.query);
         setSelectedCollection(collection);
-        setActiveFeedFilter("hot");
+        setActiveFeedFilter(collection || "thai");
         setFeedCards(cards);
         setFeedTotal(payload.facets?.total ?? cards.length);
-        setFeedCatalogTotal(payload.facets?.catalogTotal ?? payload.facets?.total ?? cards.length);
         setFeedCitableTotal(payload.facets?.citableTotal ?? cards.filter((card) => card.citable !== false).length);
         setFeedMetadataOnlyTotal(payload.facets?.metadataOnlyTotal ?? cards.filter((card) => card.citable === false).length);
         setFeedTotalSections(payload.facets?.totalSections ?? 0);
         setFeedTotalChunks(payload.facets?.totalChunks ?? 0);
         setFeedFilterCounts(payload.facets?.filters ?? {});
         setFeedCoverage(payload.facets?.coverage ?? []);
+        setFeedVisibility(payload.facets?.visibility ?? null);
         setFeedGeneratedAt(payload.generatedAt ?? "");
         setFeedNextCursor(payload.nextCursor ?? null);
         setFeedStatus("ready");
@@ -7831,6 +7948,16 @@ export default function Home() {
             evidencePackets: card.evidenceCount,
             nativeReaderVerified: card.accessLevel === "full_text_licensed",
           })),
+          thaiDiscoveryRecords: metadataOnly.slice(0, 4).map((card) => ({
+            source: card.source,
+            title: boundedToolText(card.title, 140),
+            provider: card.provider,
+            doi: boundedToolText(card.doi, 180) || null,
+            sourceUrl: boundedToolText(card.canonicalUrl, 220) || null,
+            visibilityState: card.visibility?.state ?? "not_audited",
+            visibilitySnapshotDate: card.visibility?.snapshotDate ?? null,
+            citable: false,
+          })),
           discoveryOnlyReturned: metadataOnly.length,
           globalMetadata: (globalResult.response?.works ?? []).slice(0, 3).map((work) => ({
             title: boundedToolText(work.title, 120),
@@ -7839,6 +7966,43 @@ export default function Home() {
             url: boundedToolText(work.url, 180),
           })),
           evidenceBoundary: "Only page-linked Thai evidence is citable here. Rights-verified ThaiJO reader papers are evidence; unverified Thai catalog records and OpenAlex leads remain discovery metadata.",
+        };
+      },
+      auditGlobalVisibility: async (input, signal) => {
+        const payload = await fetchJson<{ receipt: VisibilityReceipt }>(
+          `/api/visibility?source=${encodeURIComponent(input.source)}`,
+          { signal },
+        );
+        if (signal.aborted) throw new DOMException("The visibility audit read was cancelled.", "AbortError");
+        const receipt = payload.receipt;
+        setFeedCards((current) => current.map((card) => card.source === input.source ? { ...card, visibility: receipt } : card));
+        recordWebMcpActivity(
+          "audit_global_visibility",
+          `${boundedToolText(receipt.source, 100)} · ${visibilityReceiptCopy(receipt).label}`,
+        );
+        setStatusText(`Visibility receipt: ${visibilityReceiptCopy(receipt).label}.`);
+        return {
+          ok: true,
+          source: receipt.source,
+          provider: receipt.provider,
+          comparedAgainst: receipt.externalIndex,
+          state: receipt.state,
+          matchBasis: receipt.matchBasis,
+          snapshotDate: receipt.snapshotDate,
+          checkedAt: receipt.checkedAt,
+          externalWorkId: receipt.externalWorkId,
+          externalUrl: receipt.externalUrl,
+          confidence: receipt.confidence,
+          metadataGaps: receipt.metadataGaps,
+          requiresHumanReview: receipt.requiresHumanReview,
+          claimBoundary: receipt.state === "not_found_in_audit"
+            ? "No exact identity was found in this dated bounded audit. This is not a permanent absence claim."
+            : receipt.state === "audit_unavailable"
+              ? "The provider was unavailable, so no visibility claim is made."
+              : receipt.state === "not_audited"
+                ? "This work has not yet been included in a dated audit."
+                : "This receipt reports identity visibility only; global metadata remains a comparison lead, not Thai evidence.",
+          nextStep: "Open the Thai paper evidence, then trace verified relationships or continue with the Thai-local record alone.",
         };
       },
       inspectPaperEvidence: async (input, signal) => {
@@ -7971,9 +8135,11 @@ export default function Home() {
         setStatusText(
           traceable
             ? `SeedyMCP traced ${relations.length} global research relationships. They remain metadata-only leads.`
+            : map.status !== "connected"
+              ? "OpenAlex is temporarily unavailable. SeedyMCP makes no identity or visibility claim."
             : map.match.status === "candidate"
               ? "SeedyMCP found a candidate OpenAlex match. Human confirmation is required before tracing relationships."
-              : "SeedyMCP did not find a safe OpenAlex match for this paper.",
+              : "SeedyMCP found no safe exact match in this lookup; this is not a permanent absence claim.",
         );
         return {
           ok: true,
@@ -8008,9 +8174,12 @@ export default function Home() {
             citable: false,
           })),
           evidenceBoundary: "OpenAlex relationships are metadata-only Global Research Leads. They are not evidence until the underlying sources are separately opened and reviewed.",
+          providerStatus: map.status,
           nextHumanStep: traceable
             ? "Review the visible relationship map, then carry selected leads into a Research Path as comparison targets—not as evidence."
-            : "Review the candidate in OpenAlex or continue without a global relationship claim.",
+            : map.status !== "connected"
+              ? "Retry later or continue with the Thai-local evidence without a global identity claim."
+              : "Review the candidate in OpenAlex or continue without a global relationship claim.",
         };
       },
       draftResearchPassport: async (input, signal) => {
@@ -8057,21 +8226,7 @@ export default function Home() {
                 return null;
               })
             : Promise.resolve(null);
-          const globalRequest = fetchJson<GlobalDiscoveryResponse>("/api/global-discovery", {
-              method: "POST",
-              signal,
-              body: JSON.stringify({ query: input.focus }),
-            }).catch((error: unknown): GlobalDiscoveryResponse => {
-              if (signal.aborted) throw error;
-              return {
-              status: "unavailable",
-              provider: "openalex",
-              generatedAt: new Date().toISOString(),
-              searchUrl: fallbackSearchUrl,
-              works: [],
-              };
-            });
-          const [globalResponse, translationResponse] = await Promise.all([globalRequest, translationRequest]);
+          const translationResponse = await translationRequest;
           if (
             signal.aborted
             || researchPassportRequestIdRef.current !== requestId
@@ -8081,7 +8236,10 @@ export default function Home() {
           }
           const createdAt = new Date().toISOString();
           const candidateGapCopy = passportGapCopy(input.focus, input.gapLens);
-          const globalWorks = globalResponse.works.slice(0, 4);
+          const connectionResponse = citationMapSourceRef.current === activeDetail.document.source
+            ? citationMapRef.current.response
+            : null;
+          const globalWorks = tracedGlobalWorks(connectionResponse);
           const englishByRequestId = new Map(translationResponse?.translations.map((item) => [item.id, item.text.trim()]) ?? []);
           const englishByEvidenceId = new Map(
             thaiEvidence.map((item, index) => [item.id, englishByRequestId.get(`passport-${index}`) || null]),
@@ -8096,6 +8254,7 @@ export default function Home() {
           const priorRunSteps = webMcpActivityRef.current;
           const latestInspect = [...priorRunSteps].reverse().find((item) => item.tool === "inspect_paper_evidence");
           const latestDiscover = [...priorRunSteps].reverse().find((item) => item.tool === "discover_research");
+          const latestVisibilityAudit = [...priorRunSteps].reverse().find((item) => item.tool === "audit_global_visibility");
           const latestConnectionTrace = [...priorRunSteps].reverse().find((item) => item.tool === "trace_research_connections");
           const draftStep = recordWebMcpActivity(
             "draft_research_passport",
@@ -8108,14 +8267,14 @@ export default function Home() {
             reviewedAt: null,
             stale: false,
             openedEvidenceIds: [],
-            runSteps: [latestDiscover, latestInspect, latestConnectionTrace, draftStep].filter((item): item is WebMcpActivity => Boolean(item)),
+            runSteps: [latestDiscover, latestVisibilityAudit, latestInspect, latestConnectionTrace, draftStep].filter((item): item is WebMcpActivity => Boolean(item)),
             translationStatus,
             focus: input.focus,
             gapLens: input.gapLens,
             paper: activeDetail.document,
             evidence: passportEvidence,
-            globalStatus: globalResponse.status,
-            globalSearchUrl: globalResponse.searchUrl || fallbackSearchUrl,
+            globalStatus: connectionResponse?.status ?? "disabled",
+            globalSearchUrl: connectionResponse?.searchUrl || fallbackSearchUrl,
             globalWorks,
             candidateGap: {
               ...candidateGapCopy,
@@ -8126,7 +8285,6 @@ export default function Home() {
           const readyPassport: ResearchPassportState = { phase: "ready", artifact, error: "" };
           researchPassportRef.current = readyPassport;
           setResearchPassport(readyPassport);
-          setGlobalDiscovery({ phase: "ready", query: input.focus, response: globalResponse, error: "" });
           setStatusText("WebMCP drafted a Research Passport. Open every exact page before acknowledging page review and exporting.");
 
           return {
@@ -8155,6 +8313,7 @@ export default function Home() {
               citable: false,
             })),
             globalStatus: artifact.globalStatus,
+            globalLeadBasis: artifact.globalWorks.length ? "verified DOI relationship trace" : "no verified relationship carried",
             candidateGap: {
               lens: input.gapLens,
               status: "unsupported_candidate",
@@ -8163,7 +8322,7 @@ export default function Home() {
               localBasisEvidenceIds: artifact.candidateGap.localBasisEvidenceIds,
               nextVerificationQuery: candidateGapCopy.nextVerificationQuery,
             },
-            boundary: "Thai page-linked packets are evidence. OpenAlex records are metadata-only leads. Novelty and transferability are not established.",
+            boundary: "Thai page-linked packets are evidence. Only OpenAlex nodes from the active exact-DOI relationship trace are carried as metadata-only leads. Topical search results are excluded. Novelty and transferability are not established.",
             nextHumanStep: "Open every exact page, acknowledge the page review, then export the bounded artifact. The candidate inference remains unvalidated.",
           };
         } catch (error) {
@@ -8358,7 +8517,6 @@ export default function Home() {
   });
 
   useEffect(() => {
-    if (!isReady) return;
     let active = true;
     let registration: AbortController | null = null;
     setWebMcpStatus("checking");
@@ -8366,6 +8524,10 @@ export default function Home() {
       discoverResearch: (input, signal) => {
         if (!webMcpHandlersRef.current) throw new Error("Seedy Research is still preparing its site tools.");
         return webMcpHandlersRef.current.discoverResearch(input, signal);
+      },
+      auditGlobalVisibility: (input, signal) => {
+        if (!webMcpHandlersRef.current) throw new Error("Seedy Research is still preparing its site tools.");
+        return webMcpHandlersRef.current.auditGlobalVisibility(input, signal);
       },
       inspectPaperEvidence: (input, signal) => {
         if (!webMcpHandlersRef.current) throw new Error("Seedy Research is still preparing its site tools.");
@@ -8408,7 +8570,7 @@ export default function Home() {
       active = false;
       registration?.abort();
     };
-  }, [isReady]);
+  }, []);
 
   const selectExperience = (experience: ChatExperience) => {
     setSelectedExperience(experience);
@@ -8479,12 +8641,12 @@ export default function Home() {
               <>
                 <p className="searchLead">
                   {feedCitableTotal
-                    ? `Discover ${Math.max(feedCatalogTotal, feedCitableTotal + feedMetadataOnlyTotal, feedCitableTotal).toLocaleString("en-US")} bounded Thai records, read ${feedNativeFullPaperTotal.toLocaleString("en-US")} rights-verified full papers, and carry page-cited evidence into a Passport, Research Path, and next-study plan.`
-                    : "Discover local evidence, verify every supported claim on its original page, and carry it into a bounded Thai-to-global research path."}
+                    ? `Uncover Thai research global indexes may overlook, verify it on exact pages, connect it to global work, and carry the reviewed evidence into a Passport and testable next study.`
+                    : "Uncover Thai research global indexes may overlook, verify exact pages, and connect the reviewed evidence into a bounded Thai-to-global research path."}
                 </p>
                 <div className="corpusProof" aria-label="Seedy Research corpus coverage">
                   <span><strong>{feedCitableTotal ? feedCitableTotal.toLocaleString("en-US") : "—"}</strong> citable papers</span>
-                  <span><strong>{feedNativeFullPaperTotal ? feedNativeFullPaperTotal.toLocaleString("en-US") : "—"}</strong> native full papers</span>
+                  <span><strong>{feedThaiNativeFullPaperTotal ? feedThaiNativeFullPaperTotal.toLocaleString("en-US") : "—"}</strong> Thai-local native full papers</span>
                   <span><strong>{feedTotalSections ? feedTotalSections.toLocaleString("en-US") : "—"}</strong> page-linked sections</span>
                   <span><strong>{feedTotalChunks ? feedTotalChunks.toLocaleString("en-US") : "—"}</strong> cited passages</span>
                   {feedMetadataOnlyTotal ? <span><strong>{feedMetadataOnlyTotal.toLocaleString("en-US")}</strong> discovery records</span> : null}
@@ -8494,7 +8656,7 @@ export default function Home() {
                 {webMcpStatus === "ready" ? (
                   <p className="webMcpStatus" role="status" aria-label="WebMCP site tools ready">
                     <span aria-hidden />
-                    SeedyMCP active · 6 site tools · shared human-agent view
+                    SeedyMCP active · 7 site tools · shared human-agent view
                   </p>
                 ) : null}
               </>
@@ -8546,6 +8708,7 @@ export default function Home() {
               onRefresh={() => setFeedRefreshNonce((value) => value + 1)}
             />
             <DiscoveryTrustBar citableTotal={feedCitableTotal} metadataOnlyTotal={feedMetadataOnlyTotal} />
+            <VisibilityAuditPanel summary={feedVisibility} />
             <CoverageLedger
               providers={feedCoverage}
               activeProvider={activeFeedProvider}
@@ -8576,13 +8739,6 @@ export default function Home() {
                 void buildResearchPath([artifact.candidateGap.missingValidation], false, artifact);
               }}
             />
-            {researchPassport.phase === "ready" ? null : (
-              <GlobalDiscoveryPanel
-                query={activeFeedFilter === "saved" ? "" : feedQuery}
-                state={globalDiscovery}
-                onExpand={() => void expandGlobalDiscovery()}
-              />
-            )}
             <LivingReviewPanel
               authenticated={isAuthenticated}
               query={activeFeedFilter === "saved" ? "" : feedQuery}
@@ -8713,27 +8869,36 @@ export default function Home() {
             onExport={exportSession}
           />
         ) : activeMobileNav === "explore" ? (
-          <ResearchFeed
-            cards={visibleCards}
-            bookmarkedCards={bookmarkedCards}
-            paperTranslations={paperTranslations}
-            activeFilter={activeFeedFilter}
-            status={feedStatus}
-            error={feedError}
-            query={feedQuery}
-            hasMore={Boolean(feedNextCursor)}
-            isLoadingMore={isFeedLoadingMore}
-            onAsk={askPaper}
-            onOpen={(card) => void openPaperDetail(card)}
-            onToggleBookmark={toggleBookmark}
-            workspaceSelection={workspaceSelection}
-            onToggleWorkspace={toggleWorkspaceSelection}
-            onCompareSelected={compareSelectedPapers}
-            onClearWorkspaceSelection={() => setWorkspaceSelection([])}
-            onRetry={() => setFeedRefreshNonce((value) => value + 1)}
-            onLoadMore={() => void loadMoreFeed()}
-            disabled={!isReady || isLoading}
-          />
+          <>
+            <ResearchFeed
+              cards={visibleCards}
+              bookmarkedCards={bookmarkedCards}
+              paperTranslations={paperTranslations}
+              activeFilter={activeFeedFilter}
+              status={feedStatus}
+              error={feedError}
+              query={feedQuery}
+              hasMore={Boolean(feedNextCursor)}
+              isLoadingMore={isFeedLoadingMore}
+              onAsk={askPaper}
+              onOpen={(card) => void openPaperDetail(card)}
+              onToggleBookmark={toggleBookmark}
+              workspaceSelection={workspaceSelection}
+              onToggleWorkspace={toggleWorkspaceSelection}
+              onCompareSelected={compareSelectedPapers}
+              onClearWorkspaceSelection={() => setWorkspaceSelection([])}
+              onRetry={() => setFeedRefreshNonce((value) => value + 1)}
+              onLoadMore={() => void loadMoreFeed()}
+              disabled={!isReady || !bookmarksReady || isLoading}
+            />
+            {researchPassport.phase === "ready" ? null : (
+              <GlobalDiscoveryPanel
+                query={activeFeedFilter === "saved" ? "" : feedQuery}
+                state={globalDiscovery}
+                onExpand={() => void expandGlobalDiscovery()}
+              />
+            )}
+          </>
         ) : (
           <ChatWorkspace
             messages={messages}

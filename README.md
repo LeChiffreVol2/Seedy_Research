@@ -49,6 +49,20 @@ papers, reopen exact-page evidence targets, and translate bounded Thai evidence
 to English. Production also exposes the rights-verified native full-paper reader
 described below.
 
+The primary product metric is no longer the blended 1,000-paper reader count.
+Explore now starts with Thai-local discovery and exposes dated Thai–Global
+Visibility Audit receipts: exact global identity, under-indexed, candidate
+requiring review, no exact match in that audit, not audited, or provider
+unavailable. The 897 PMC papers remain a useful global comparison/control corpus
+and are explicitly excluded from Thai-local native-paper headline totals.
+The first production receipt set is a partial exact-DOI audit of all 2,681
+ThaiJO records as denominator: 836 attempted, 27 exact identities without the
+selected local metadata gaps, 805 under-indexed, four no-exact-match in that
+dated lookup, and zero unavailable. See the
+[dated audit note](docs/research/THAI_OPENALEX_VISIBILITY_AUDIT_2026-09-02.md);
+no national percentage is claimed until the non-DOI candidate pass is complete
+and reviewed.
+
 Production includes a deliberately bounded native-reader corpus of exactly
 **1,000 papers and 14,485 page-addressable pages**. It keeps two cohorts visible
 rather than presenting them as one national denominator: 103 ThaiJO-hosted
@@ -92,34 +106,37 @@ from an ignored, reproducible local pack and PDF binaries are not committed; see
 
 ## WebMCP: research with a shared human-agent view
 
-Seedy Research exposes six browser-native SeedyMCP site tools from the top-level page with `document.modelContext.registerTool(...)`. The tools reuse the same application APIs, signed-in session, validation, evidence boundary, and visible UI that a person uses:
+Seedy Research exposes seven browser-native SeedyMCP site tools from the top-level page with `document.modelContext.registerTool(...)`. The tools reuse the same application APIs, signed-in session, validation, evidence boundary, and visible UI that a person uses:
 
 | Site tool | Shared result |
 | --- | --- |
-| `discover_research` | Searches Thai evidence and optional OpenAlex metadata, then updates Explore without confusing discovery records with citable evidence. |
+| `discover_research` | Searches Thai-local records by default; optional OpenAlex topical metadata appears only as a secondary comparison layer. |
+| `audit_global_visibility` | Returns the latest dated visibility receipt without converting candidates, unavailable checks, or not-yet-audited work into a missing claim. |
 | `inspect_paper_evidence` | Opens the paper drawer and highlights bounded evidence with its original page for human verification. For a rights-verified reader paper it also reports the lawful access mode and a reopenable verified page anchor, but never returns full page text through WebMCP. |
 | `trace_research_connections` | Matches the active Thai paper to OpenAlex by exact DOI, exposes cites/cited-by/related leads on the shared page, and keeps title-based matches as review-only candidates with no graph. Every returned relation remains metadata-only and non-citable. |
-| `draft_research_passport` | Turns one to three exact-page anchors already opened in the active Thai paper into a visible Thai → Global Research Passport with bounded English renderings when needed, at most four non-citable OpenAlex leads, and one candidate validation gap. Every selected page must be reopened before the person can acknowledge page review and export Markdown. |
+| `draft_research_passport` | Turns one to three exact-page anchors already opened in the active Thai paper into a visible Thai → Global Research Passport with bounded English renderings when needed, at most four non-citable leads from the active exact-DOI relationship trace, and one candidate validation gap. Generic topical search results are excluded. |
 | `build_research_path` | Creates or adapts a visible Thai-to-global path: map the Thai field, inspect full-paper/page evidence, connect selected metadata-only global leads, then frame a candidate gap and falsifiable Next-Study Protocol. |
 | `inspect_learning_progress` | Reads checkpoint status and reviewed learning gaps without returning the learner's private free-text answers. |
 
 This is complementary to the remote MCP service: remote MCP works without an open page, while WebMCP lets a browser agent and a person collaborate in the same live research workspace. Inputs are validated again in application code; paper and external metadata outputs are marked as untrusted content; read-only tools are annotated explicitly; registration and in-flight work support cancellation.
 
-### Challenge hero flow: Passport Trust Gate
+### Challenge hero flow: Thai Visibility → Research Action
 
 The repeatable Challenge flow begins with a rights-reviewed Thai paper, not a
-generated summary. The Site tools menu exposes all six capabilities, while the
-timed proof invokes only the three calls needed to produce a consequential
-human-agent handoff:
+generated summary. The Site tools menu exposes all seven capabilities, while
+the proof makes the visibility and evidence boundary observable:
 
-1. `discover_research` finds the rights-reviewed ThaiJO paper;
-2. `inspect_paper_evidence` opens its exact page and lawful reader state;
-3. `draft_research_passport` creates a one-anchor Passport with non-citable
-   global metadata and one unvalidated validation gap; and
-4. the person reopens the page, acknowledges review, and exports Markdown.
+1. `discover_research` finds the rights-reviewed Thai-local paper;
+2. `audit_global_visibility` reads its dated OpenAlex comparison receipt;
+3. `inspect_paper_evidence` opens its exact page and lawful reader state;
+4. `trace_research_connections` may connect an exact-DOI control paper;
+5. `draft_research_passport` carries only inspected pages and verified
+   relationship nodes, never generic topical search results; and
+6. the person reopens the pages, acknowledges review, and continues into a
+   Research Path whose incomplete export is visibly watermarked as a draft.
 
-Research Path, connection tracing, and progress inspection remain available
-outside the 75-second must-pass flow. The Passport is the trust checkpoint
+The recommended demo uses a dated no-exact-match or under-indexed Thai-local
+hero plus an exact-DOI control. The Passport is the trust checkpoint
 inside the broader Thai-to-Global Research Path. It renders
 three deliberately separate layers:
 

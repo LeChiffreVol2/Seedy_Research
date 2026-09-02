@@ -1,5 +1,12 @@
 # Thai Research Full-Text System
 
+The full-text system is paired with a dated Thai–Global Visibility Audit. The
+audit compares Thai-local source identities with OpenAlex but does not submit or
+repair external records. Its receipts preserve exact identity, under-indexing,
+review candidates, bounded not-found, not-audited, and provider-unavailable as
+different states. Only lawful page-linked evidence may support a claim; a
+visibility result is provenance, not scientific evidence.
+
 ## Decision
 
 Seedy Research needs a full-paper reading layer to become an end-to-end research

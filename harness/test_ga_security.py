@@ -346,7 +346,9 @@ class GASecurityContracts(unittest.TestCase):
 
         for tool in (
             "discover_research",
+            "audit_global_visibility",
             "inspect_paper_evidence",
+            "trace_research_connections",
             "draft_research_passport",
             "build_research_path",
             "inspect_learning_progress",
@@ -376,17 +378,19 @@ class GASecurityContracts(unittest.TestCase):
         self.assertIn("Private paper sources cannot be included in a public Research Passport.", passport_handler)
         self.assertIn('activeDetail.document.citable !== true || activeDetail.document.discoveryLayer === "thai_discovery"', passport_handler)
         self.assertIn("Discovery-only records cannot be used as Research Passport evidence.", passport_handler)
-        self.assertIn("globalResponse.works.slice(0, 4)", passport_handler)
+        self.assertIn("citationMapSourceRef.current === activeDetail.document.source", passport_handler)
+        self.assertIn("const globalWorks = tracedGlobalWorks(connectionResponse)", passport_handler)
+        self.assertNotIn("globalResponse.works", passport_handler)
         self.assertIn("researchContextRevisionRef.current !== contextRevision", passport_handler)
-        self.assertIn('status: "unavailable"', passport_handler)
-        self.assertIn("Promise.all([globalRequest, translationRequest])", passport_handler)
+        self.assertIn("const translationResponse = await translationRequest", passport_handler)
         self.assertIn("thaiEvidence = exactEvidence.filter", passport_handler)
         self.assertIn("englishSnippet: englishByEvidenceId.get(item.id) ?? null", passport_handler)
         self.assertIn("citable: false", passport_handler)
         self.assertIn("reviewRequired: true", passport_handler)
         self.assertIn('status: "unsupported_candidate"', passport_handler)
         self.assertIn("evidenceRelationValidated: false", passport_handler)
-        self.assertIn("OpenAlex records are metadata-only leads", passport_handler)
+        self.assertIn("Only OpenAlex nodes from the active exact-DOI relationship trace", passport_handler)
+        self.assertIn("Topical search results are excluded", passport_handler)
         for private_state in ("libraryNote", "workspaceItems", "pathCheckpointAnswers"):
             self.assertNotIn(private_state, passport_handler)
 

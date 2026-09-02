@@ -80,6 +80,7 @@ EXPECTED_WRITE_TOOLS = {
 }
 EXPECTED_WEBMCP_TOOLS = {
     "discover_research",
+    "audit_global_visibility",
     "inspect_paper_evidence",
     "trace_research_connections",
     "draft_research_passport",
@@ -190,7 +191,7 @@ def check_webmcp_contract() -> Check:
         "exact_tool_count": len(declared) == len(EXPECTED_WEBMCP_TOOLS),
         "strict_schemas": bridge.count("additionalProperties: false") >= len(EXPECTED_WEBMCP_TOOLS),
         "read_and_untrusted_hints": "readOnlyHint" in bridge and bridge.count("untrustedContentHint: true") >= len(EXPECTED_WEBMCP_TOOLS),
-        "wired_to_page": "registerSeedResearchWebMcpTools(proxy)" in page and "SeedyMCP active · 6 site tools" in page,
+        "wired_to_page": "registerSeedResearchWebMcpTools(proxy)" in page and "SeedyMCP active · 7 site tools" in page,
         "fail_closed_connection_trace": all(
             marker in page
             for marker in (
@@ -226,11 +227,13 @@ def check_webmcp_contract() -> Check:
                 "artifact.openedEvidenceIds.includes(item.id)",
                 "artifact.stale || !allEvidenceOpened",
                 "Review the current Research Passport before exporting it.",
-                "globalResponse.works.slice(0, 4)",
-                'status: "unavailable"',
+                "tracedGlobalWorks(connectionResponse)",
+                'item.tool === "audit_global_visibility"',
+                'receipt.state === "audit_unavailable"',
                 "researchContextRevisionRef.current !== contextRevision",
-                "Promise.all([globalRequest, translationRequest])",
+                "const translationResponse = await translationRequest",
                 "englishSnippet: englishByEvidenceId.get(item.id) ?? null",
+                "globalLeadBasis",
                 "citable: false",
                 "global records used as evidence: 0",
             )
@@ -268,7 +271,7 @@ def check_webmcp_contract() -> Check:
     return Check(
         "webmcp_contract",
         "pass",
-        "Six bounded WebMCP tools are wired to visible UI state with fail-closed connection matching, exact-page Passport evidence, review gating, annotations, cleanup, and browser execution coverage.",
+        "Seven bounded WebMCP tools are wired to visible UI state with dated visibility audit, fail-closed connection matching, exact-page Passport evidence, review gating, annotations, cleanup, and browser execution coverage.",
     )
 
 
@@ -584,8 +587,9 @@ def check_product_contract() -> Check:
             marker in page
             for marker in (
                 "feedCitableTotal",
+                "feedThaiNativeFullPaperTotal",
                 "feedTotalChunks",
-                "feedCitableTotal + feedMetadataOnlyTotal",
+                "feedMetadataOnlyTotal",
                 "Exact-page citations",
             )
         ),

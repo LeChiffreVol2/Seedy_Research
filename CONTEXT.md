@@ -84,6 +84,30 @@ _Avoid_: search result, abstract-only match
 An external bibliographic record or scholarly relationship used for discovery and comparison but not yet admitted as evidence.
 _Avoid_: global evidence, verified citation
 
+**Thai–Global Visibility Audit**:
+A dated comparison of a bounded Thai-provider cohort against a named global index that preserves the method, denominator, unresolved candidates, and provider failures. It measures whether and how Thai work is represented; it does not submit or repair records in the external index.
+_Avoid_: OpenAlex sync, national missingness claim, permanent proof of absence
+
+**Global Visibility State**:
+The record-level outcome of a Thai–Global Visibility Audit: globally indexed by exact identity, under-indexed, candidate match requiring review, not found in the dated audit, or audit unavailable. A candidate or unavailable lookup is never counted as not found.
+_Avoid_: matched/unmatched boolean, missing from the world
+
+**Global Research Bridge**:
+A bounded connection from Thai evidence to exact or explicitly unresolved external works and scholarly relationships for comparison, synthesis, and next-study design inside Seedy Research. It is not a pipeline for publishing or repairing records in OpenAlex.
+_Avoid_: OpenAlex submission pipeline, external metadata as page-level evidence
+
+**Global Comparison Corpus**:
+A separately labelled set of Thai-affiliated international works used to compare local evidence with the global literature and exercise the lawful reader at scale. It is not counted as Thai-local discovery or national evidence coverage.
+_Avoid_: Thai-local corpus, hidden Thai research, national coverage
+
+**Visibility Receipt**:
+A replayable work-level record of the provider identity, global visibility state, comparison index, audit time, matching basis, confidence, and unresolved errors. It supports a scoped visibility statement rather than a timeless claim that a work is missing.
+_Avoid_: match badge without provenance, permanent absence claim
+
+**Visibility Review Decision**:
+An attributed accept or reject judgment on a candidate identity match, with its evidence and history preserved. A user suggestion does not become the canonical visibility state until an authorized steward reviews it.
+_Avoid_: silent fuzzy merge, anonymous canonical edit
+
 **Candidate Gap**:
 An unresolved method, context, population, outcome, or validation question suggested by the reviewed literature.
 _Avoid_: proven novelty, validated research gap

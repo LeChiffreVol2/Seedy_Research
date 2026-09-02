@@ -271,13 +271,13 @@ automation or a remote answer detached from the human review surface.
 2. **Write the build-period delta.** Use `1179b09` (20 Aug) as the documented
    pre-Challenge baseline if repository history confirms it was the deployed
    baseline. Enumerate only work first added after 25 Aug: top-level WebMCP
-   registration, six schemas/handlers, visible shared-state updates, Passport
+   registration, seven schemas/handlers including the dated visibility receipt, visible shared-state updates, Passport
    review/export gate, WebMCP activity trace, actual-host testing, and
    Challenge-specific documentation. Link the dated commits. Do not count the
    pre-existing remote MCP, research UI, evidence corpus, Path, or Workspace as
    new Challenge work.
 3. **Run the golden flow in the real hosts.** Record the exact model, browser
-   version, URL, six discovered tools, prompts, tool results, UI effects, and
+   version, URL, seven discovered tools, prompts, tool results, UI effects, and
    screenshots for ChatGPT's in-app browser and WebMCP-enabled Chrome.
 4. **Record real performance.** One uninterrupted rehearsal should capture total
    elapsed time, tool-call count, any confirmation, and degraded-provider
@@ -305,7 +305,7 @@ automation or a remote answer detached from the human review surface.
    while the Civil Research Pack is the first proof vertical.” The production
    URL and database identifiers can remain stable through judging.
 5. **Make the README judge path one screen long.** Live link, 30-second golden
-   prompt, six tool names, one architecture diagram, exact new-vs-existing
+   prompt, seven tool names, one architecture diagram, exact new-vs-existing
    delta, deterministic test, rights boundary, and licence should be reachable
    without searching.
 
@@ -357,7 +357,7 @@ Do not submit until every **Go** item is true:
 | --- | --- |
 | Eligibility | Entrant/team eligibility confirmed; baseline and after-25-Aug WebMCP commit delta linked and honest. |
 | Live access | Production URL opens signed out or valid judge credentials are supplied. |
-| Actual WebMCP | Exact six tools discovered and golden flow completed in both required real-browser paths. |
+| Actual WebMCP | Exact seven tools discovered and the four-call visibility-to-Passport flow completed in both required real-browser paths. |
 | Demo | Public YouTube, audio, English, under three minutes, no unlicensed media, actual product/tool calls visible. |
 | Repository | Public, licence detected, setup/test instructions work, candidate SHA frozen. |
 | Claims | Catalog, evidence, reader, and provider-coverage counts are distinct and dated; no completeness or scientific-validation claim. |
@@ -453,11 +453,11 @@ evidence like this, provided it truthfully reflects the work history:
 
 > Seedy Research was a pre-existing research product at baseline `1179b09`. The
 > Challenge extension recorded after the submission window opened adds the
-> browser-native WebMCP registration, six bounded site tools, shared visible
+> browser-native WebMCP registration, seven bounded site tools, shared visible
 > state, the Research Passport page-review/export gate, tool-run trace, and the
 > focused browser contract. The remote MCP server, existing corpus, Research
 > Path, and Research Workspace pre-date the Challenge and are not claimed as new.
-> The final candidate adds the sixth fail-closed connection-trace tool and
+> The current candidate adds the dated visibility-audit tool beside the fail-closed connection trace and
 > carries human-visible metadata leads into a Path ending in a provisional
 > Next-Study Protocol.
 
