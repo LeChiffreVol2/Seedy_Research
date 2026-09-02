@@ -1075,7 +1075,10 @@ export function buildCoverageLedger(
       pageCitable: pmcSnapshot?.pageCitable ?? pmc?.citable ?? 0,
       nativeFullPaper: pmcSnapshot?.nativeFullPaper ?? 0,
       sourceHostedFullPaper: pmcSnapshot?.sourceHostedFullPaper ?? null,
-      endpointObserved: pmcSnapshot?.endpointObserved ?? 1,
+      // The coverage RPC counts legacy OAI endpoint families and therefore
+      // reports zero for PMC. This cohort has one explicit, fixed NLM Article
+      // Datasets source slice, so keep the UI denominator truthful.
+      endpointObserved: Math.max(1, pmcSnapshot?.endpointObserved ?? 0),
       endpointKnown: 1,
       rights: "article_specific" as const,
       freshness: pmcSnapshot?.freshness ?? "",

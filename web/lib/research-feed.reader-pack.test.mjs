@@ -188,7 +188,7 @@ test("coverage ledger keeps Thai-local and Thai-affiliated global OA cohorts dis
       pageCitable: 897,
       nativeFullPaper: 897,
       sourceHostedFullPaper: 897,
-      endpointObserved: 1,
+      endpointObserved: 0,
       freshness: "2026-09-02",
     },
   ]);
@@ -199,4 +199,5 @@ test("coverage ledger keeps Thai-local and Thai-affiliated global OA cohorts dis
   assert.equal(pmc.nativeFullPaper, 897);
   assert.equal(pmc.rights, "article_specific");
   assert.equal(pmc.filter, "pmc_oa");
+  assert.equal(pmc.endpointObserved, 1);
 });
