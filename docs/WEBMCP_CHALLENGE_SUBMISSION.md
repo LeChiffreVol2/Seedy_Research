@@ -2,9 +2,9 @@
 
 ## Candidate status
 
-> Release facts below that name a frozen commit, deployment, or pass count are
-> historical evidence until the September 2 visibility/performance release is
-> deployed and re-verified. Do not reuse them as the latest claim.
+> The application candidate below was deployed and re-verified on September 2.
+> A following repository commit may update release evidence only; do not treat
+> that documentation-only commit as a different application build.
 
 - Product: **Seedy Research**
 - Browser-agent layer: **SeedyMCP**
@@ -13,18 +13,31 @@
 - Deadline: **September 3, 2026 at 1:00 PM PDT** (**September 4 at 3:00 AM ICT**)
 - Public source repository: <https://github.com/LeChiffreVol2/Seedy_Research>
 - Public YouTube demo under three minutes: **REQUIRED — add the final URL before submission**
-- Frozen application candidate commit: [`dd759d870b357e50b8fa00b97b48ab1189a192c1`](https://github.com/LeChiffreVol2/Seedy_Research/commit/dd759d870b357e50b8fa00b97b48ab1189a192c1)
+- Frozen application candidate commit: [`f547375dc89ad1b138013ca5aada3b7f38d91e6c`](https://github.com/LeChiffreVol2/Seedy_Research/commit/f547375dc89ad1b138013ca5aada3b7f38d91e6c)
   (the following repository commit changes submission evidence only)
-- Candidate production deployment ID: `dpl_A21DF8nU5zQ6YMQMeqgudCBHbVUC`
-- Rollback deployment ID: `dpl_8vYz8CFcgFuBVfTmSrSbTav9sTyH`
+- Candidate production deployment ID: `dpl_8LmwYqYkhHF6GWP9FwZMsDef85xj`
+- Rollback deployment ID: `dpl_5HvnHnvPRxqRxEJPBiZbGQi11D3u`
 
 Do not submit while any `REQUIRED` field above is unresolved. The Devpost entry, video, repository, and supporting text must be public and in English. The repository must expose the MIT license in its About section and remain frozen during judging except for an organizer-approved correction.
 
-## Release verification — September 1, 2026 ICT
+## Release verification — September 2, 2026 ICT
+
+- Production build: pass; Next.js compiled and type-checked all routes and generated 23 static pages on Vercel.
+- Browser regression suite: pass, 32/32 serial Chromium scenarios across the core product, responsive/accessibility behavior, performance, and seven-tool WebMCP contract. The corrected realistic four-call golden flow then passed its focused E2E again.
+- GitHub-hosted gates: CI run `33647419169` and Preview/source-gate run `33647419112` passed for candidate `f547375`. The intentional production jobs remained skipped because the repository promotion flag is disabled. The new resumable visibility workflow passed run `33646336097`, including production environment secret validation.
+- Production Supabase: migrations `20260902123406_civil_global_visibility_audit.sql` and `20260902173000_civil_catalog_relevance_first.sql` are applied. The second migration fixes a live-discovered failure in which native-reader status could outrank exact metadata relevance.
+- Dated visibility audit: 836 DOI-bearing records attempted from the bounded 2,681-record ThaiJO cohort; 27 exact identities, 805 under-indexed identities, four no-exact-match-in-this-audit receipts, zero provider-unavailable receipts. The run is partial and supports no provider-wide or national percentage.
+- Production alias: `https://seedresearch.vercel.app` points to READY deployment `dpl_8LmwYqYkhHF6GWP9FwZMsDef85xj`.
+- Actual-host WebMCP proof: the OpenAI in-app browser exposed all seven Site tools. The final four-call path completed in 22.782 seconds: exact-title Thai discovery returned `oai:ph01.tci-thaijo.org:article/259406` first, the dated audit returned `not_found_in_audit`, the lawful control paper reopened `thaijo-learn-291631-page-2` at p.2, and Passport `SR-MTK8S2CE-4` preserved an unsupported candidate gap with zero global records used as evidence. A separate same-host pass opened the verified reader receipt, enabled human acknowledgment, and reached the page-reviewed Markdown export success state.
+- Interaction performance: the production Thai feed became visibly usable in 256–801 ms across observed reloads. The browser regression also proves feed discovery begins while session/history are delayed by 1.5 seconds and that no translation request fires before explicit user intent.
+- Current live corpus boundary: 103 Thai-local native full papers, 2,578 ThaiJO discovery-only records, 1,297 NCCE/Chula page-citable evidence papers, and 897 PMC papers kept explicitly as a global comparison corpus. National completeness is not claimed.
+- Numeric quality score: the September 1 100/100 report below remains historical because the final candidate has not been re-run through the separate strict cross-service score fingerprint. The current candidate instead has zero local contract, browser, GitHub CI, deployment, or live-flow failures in the evidence recorded above; do not relabel the historical score as current.
+
+## Historical release verification — September 1, 2026 ICT
 
 - Production build: pass (all routes compiled and type-checked; 23 static pages generated).
 - Browser suite: pass, 42/42 serial Chromium scenarios across desktop, mobile, accessibility, Coverage Ledger/provider filtering, Research Notebook exact-page continuity, research workflows, the real reader-pack route, OpenAlex identity safety, and WebMCP.
-- Historical focused WebMCP contract: the earlier six-tool candidate passed 8/8 scenarios. The current seven-tool candidate adds a four-call visibility-gated Passport flow and must be re-frozen only after the updated browser suite, deployment, and actual-host checks pass. The separate OpenAlex adapter contract passes 8/8 scenarios, including regression coverage proving that question marks and asterisks cannot turn a natural-language research question into an invalid OpenAlex wildcard query.
+- Historical focused WebMCP contract: the earlier six-tool candidate passed 8/8 scenarios. The separate OpenAlex adapter contract passed 8/8 scenarios, including regression coverage proving that question marks and asterisks cannot turn a natural-language research question into an invalid OpenAlex wildcard query.
 - Repository invariants: pass.
 - GitHub Actions: public evidence manifest `0d67c7f` (containing frozen application candidate `dd759d8`) passed CI run `33534602230` and Preview/source-gate run `33534602303`. GitHub-hosted checks reran Python syntax, repository invariants, data-quality contracts, and the production web build; deployment/promotion jobs correctly remained skipped for an ordinary push.
 - Security, provider-registry, data-integrity, and rights-reviewed reader units: pass, 36/36; the separate paper-reader JavaScript contract passes 5/5.
@@ -342,14 +355,15 @@ Git history separates the pre-existing baseline from the Challenge work: `1179b0
 - [x] Record the baseline commit and every competition-period WebMCP commit with real timestamps.
 - [x] Run `git diff --check` and `python3.10 harness/check_invariants.py`.
 - [x] Run `python3.10 -m unittest pipeline.test_reader_pack`, the combined reader/feed units, and the focused `paper-reader.spec.ts` browser suite.
-- [ ] Run the focused WebMCP E2E with exact-seven, dated visibility-state separation, fail-closed connection matching, and no-full-page-text assertions against the current candidate.
+- [x] Run the focused WebMCP E2E with exact-seven, dated visibility-state separation, fail-closed connection matching, and no-full-page-text assertions against the current candidate.
 - [x] Run all 42 local desktop/mobile/reader/OpenAlex/WebMCP E2E scenarios serially for candidate `dd759d8`, including the OpenAlex question-query regression.
 - [x] Rerun the judge flow against the frozen deployment candidate in the OpenAI in-app browser with Site tools visibly available: six-tool inventory, exact three-call Passport path, page review, and export success state all passed without login.
 - [x] Run the web build, security checks, Supabase-backed data quality, full strict live smoke, 15-question retrieval eval, memory eval, and 100/100 quality score against one candidate fingerprint.
-- [ ] Test the deployed candidate in ChatGPT's built-in browser if it differs from the recorded OpenAI in-app host; record the exact app build, account class, selected model, all seven visible tools, and the four-call Passport review/export flow.
+- [x] Test the deployed candidate in the OpenAI in-app browser; record all seven visible tools and complete the four-call Passport review/export flow.
+- [ ] If ChatGPT's submission browser differs from the recorded OpenAI in-app host, repeat the same seven-tool flow there and record the app build/account class.
 - [ ] Test the deployed candidate in Chrome with native WebMCP enabled. The connected Chrome UI pass is insufficient because that host exposed no WebMCP capability or `modelContext`.
 - [x] Confirm the live deployment SHA matches the public candidate commit.
-- [x] Record actual demo latency and tool-call count: 3 calls, 15.882 seconds total on the production OpenAI in-app run.
+- [x] Record actual demo latency and tool-call count: 4 calls, 22.782 seconds total on the final production OpenAI in-app run.
 - [ ] Upload a public English YouTube video shorter than three minutes.
 - [ ] Complete every Devpost text field in English, add test credentials if needed, and submit before the deadline.
 - [ ] Freeze the repository and live candidate during judging unless organizers approve a correction.
