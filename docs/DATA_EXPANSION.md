@@ -21,6 +21,7 @@ only evidence-index records.
 | NCCE25/26/29 | Indexed evidence | Existing quality gates |
 | NCCE31 | Production: 356 papers; staged repair: 358 eligible | Non-contiguous reused-code papers split; one 99.88%-similar duplicate is excluded by the same manifest enforced by QA and the indexer; production refresh awaits explicit embedding/cleanup approval |
 | ThaiJO (legacy provider ID `tci_thaijo`) | Official OAI metadata only | Article/asset license or permission, stable URL, lawful full-text access, page mapping, OCR/text quality |
+| PMC Thai-affiliated global OA (`pmc_oa`) | 897 version-of-record native papers live | Explicit Thailand author affiliation, exact item/version CC BY, NLM OA status, retraction/manuscript exclusions, S3 MD5 + Seedy SHA-256, PDF/page parity, third-party credit scan |
 | TCI Citation Index | Partner metadata/export only | Official agreement, refresh/deletion contract, dedupe against ThaiJO, and publisher-level asset resolution |
 | TNRR | Authenticated `ResearchOutput` metadata only | Approved account and terms; `hasfullReport` is not permission; separate asset rights are required |
 | ThaiLIS / TDC | Partner metadata and institution-mediated links | Metadata denominator agreement; never proxy member authentication; asset-specific permission for native reading |
@@ -41,6 +42,14 @@ only as removed audit tombstones: 38 from `ph01` and six added by the `sc01`
 pilot. Separately, six `FULL ISSUE` / `ฉบับเต็ม` containers are
 excluded from the paper count. These are discovery coverage metrics, not a claim
 of Thai affiliation, full-text rights, or citation coverage.
+
+Production snapshot, 2 September 2026: the native reader contains 1,000 papers
+and 14,485 pages. The 103-paper Thai-local/ThaiJO proof remains a distinct
+coverage class. A separate `pmc_oa` cohort contributes 897 Thai-affiliated
+global OA papers and 13,380 pages from NLM's official public Article Datasets.
+All 897 records retain explicit Thailand-affiliation evidence and exact
+item/version CC BY; this route connects globally published Thai work and does
+not fill the still-unmeasured Thai-local provider gap.
 
 For native-reader growth, the dated
 [5,000-paper source plan](research/NATIVE_FULL_TEXT_1000_TO_5000_SOURCE_PLAN.md)

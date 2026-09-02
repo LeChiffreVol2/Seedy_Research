@@ -75,6 +75,13 @@ SOURCES = {
         ingestion_mode="repository_metadata",
         default_rights_status="metadata_only_unverified",
     ),
+    "pmc_oa": SourceSpec(
+        provider="pmc_oa",
+        collection="thai_affiliated_global_oa",
+        label="PMC Thai-affiliated Global OA",
+        ingestion_mode="official_open_data_full_text",
+        default_rights_status="metadata_only_unverified",
+    ),
 }
 
 

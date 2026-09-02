@@ -7,10 +7,12 @@ documentation. Product-state claims come from this repository and are labelled
 separately from external facts.
 
 > **Product-state update — 2 September 2026:** the three-paper/68-page gap
-> documented in this research snapshot has been closed for the first scale
-> cohort. Production now has 103 native-verified ThaiJO papers and 1,105 pages;
-> 100 are Original/Review Articles from a fixed BSCM TCI Group 1 cohort. The
-> historical analysis below is retained to show why that release gate was chosen.
+> documented in this research snapshot has been closed. Production now has
+> 1,000 native-verified papers and 14,485 pages: 103 Thai-local/ThaiJO papers
+> (including the fixed 100-paper BSCM TCI Group 1 cohort) plus 897
+> Thai-affiliated global OA PMC papers. The historical analysis below is
+> retained to show why those release gates were chosen; national completeness
+> remains unproven.
 
 ## Executive verdict
 

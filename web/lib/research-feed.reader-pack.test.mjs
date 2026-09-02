@@ -154,3 +154,49 @@ test("coverage ledger uses authoritative database counts instead of the three-pa
   assert.equal(thaiJo.endpointKnown, null);
   assert.equal(thaiJo.freshness, "2026-09-02");
 });
+
+test("coverage ledger keeps Thai-local and Thai-affiliated global OA cohorts distinct", () => {
+  const base = {
+    total: 2197,
+    totalSections: 11523,
+    totalChunks: 68614,
+    catalogTotal: 3578,
+    citableTotal: 2197,
+    metadataOnlyTotal: 2578,
+    providers: [
+      { provider: "tci_thaijo", records: 2681, citable: 103, metadataOnly: 2578 },
+      { provider: "pmc_oa", records: 897, citable: 897, metadataOnly: 0 },
+    ],
+    collections: [],
+    filters: { hot: 2197, recent: 0, evidence: 2197, thai: 3475, tci: 2578, ncce: 1200, ce_project: 100 },
+  };
+  const coverage = feed.buildCoverageLedger(base, [
+    {
+      provider: "tci_thaijo",
+      records: 2681,
+      metadataOnly: 2578,
+      pageCitable: 103,
+      nativeFullPaper: 103,
+      sourceHostedFullPaper: 0,
+      endpointObserved: 3,
+      freshness: "2026-09-02",
+    },
+    {
+      provider: "pmc_oa",
+      records: 897,
+      metadataOnly: 0,
+      pageCitable: 897,
+      nativeFullPaper: 897,
+      sourceHostedFullPaper: 897,
+      endpointObserved: 1,
+      freshness: "2026-09-02",
+    },
+  ]);
+
+  const pmc = coverage.find((row) => row.provider === "pmc_oa");
+  assert.equal(pmc.label, "PMC · Thai-affiliated global OA");
+  assert.equal(pmc.records, 897);
+  assert.equal(pmc.nativeFullPaper, 897);
+  assert.equal(pmc.rights, "article_specific");
+  assert.equal(pmc.filter, "pmc_oa");
+});

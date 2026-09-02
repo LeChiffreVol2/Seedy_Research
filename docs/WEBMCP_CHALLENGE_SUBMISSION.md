@@ -61,11 +61,13 @@ Judge expansion contract: [Thai Research Full-Text System](THAI_RESEARCH_FULL_TE
 ## Full-paper and national-coverage decision — 31 August 2026
 
 The winning product direction includes a rights-aware full-paper reader and a
-measured national provider graph. Current production now provides the native
-reader for an explicitly bounded proof: exactly 103 rights-reviewed ThaiJO-hosted
-papers, 103 verified assets, and 1,105 checksum-bound pages. The corpus combines
-three LEARN fixtures with 100 Original/Review Articles from the TCI Group 1 BSCM
-journal under exact item-level CC BY 4.0 evidence. Every other paper continues through the
+measured national provider graph. Current production provides an explicitly
+bounded proof: exactly 1,000 rights-reviewed native papers, 1,000 verified
+assets/canonical works, and 14,485 checksum-bound pages. The corpus keeps 103
+Thai-local ThaiJO papers (three LEARN plus 100 TCI Group 1 BSCM papers) separate
+from 897 Thai-affiliated global OA papers acquired from NLM's official PMC
+Article Datasets. Every promoted item has exact item/version CC BY evidence.
+Every other paper continues through the
 fail-closed access resolver and is never presented as native full text without an
 asset-level rights decision.
 
@@ -77,8 +79,8 @@ The repository and production release now contain:
 - a bounded, fixture-tested TNRR `ResearchOutput` metadata connector that never
   downloads full reports or stores abstracts;
 - the applied additive canonical work/asset/page/rights/annotation migration;
-- a deterministic three-paper Git fixture plus a DB-first, reproducible 100-paper
-  BSCM cohort, for 103 ThaiJO papers and 1,105 pages in production, with
+- a deterministic three-paper Git fixture plus reproducible DB-first BSCM and
+  PMC cohort builders, for 1,000 native papers and 14,485 pages in production, with
   item-level rights, checksum, page-count, per-page integrity, and no committed
   PDF binaries;
 - a native reader with outline, page search/navigation, stable anchors,
@@ -103,7 +105,8 @@ The repository and production release now contain:
 - an explicit reader and completeness contract in
   [Thai Research Full-Text System](THAI_RESEARCH_FULL_TEXT_SYSTEM.md).
 
-The full-paper reader may be described as **live for this 103-paper proof only**.
+The full-paper reader may be described as **live for this bounded 1,000-paper
+proof: 103 Thai-local/ThaiJO plus 897 Thai-affiliated global OA**.
 Do not describe the database as **complete Thai research**, and do not promote
 any additional asset to native reading until it passes all of these gates:
 
@@ -118,7 +121,7 @@ any additional asset to native reading until it passes all of these gates:
 
 Demo the live pack after the Passport flow: discover a Thai work, open the lawful
 reader mode, navigate to an exact page, search within the paper, highlight a
-passage, save a local note, and copy its citation. A verified 103-paper proof is
+passage, save a local note, and copy its citation. A verified 1,000-paper proof is
 stronger than an unverified claim to host hundreds of thousands of PDFs. Do not
 imply that browser-local notes are already workspace-synced or that this small
 proof materially changes national provider coverage.
@@ -151,7 +154,7 @@ Important Thai research is fragmented across conference proceedings, university 
 
 ### What Seedy Research does
 
-Seedy Research is built toward whole Thai research and begins with a production civil-engineering proof vertical plus a 103-paper rights-reviewed ThaiJO reader: 1,400 page-citable records and 12,628 page-linked sections/pages. The 2,578-record metadata-only ThaiJO slice brings Explore to 3,978 searchable records without silently treating metadata as evidence. The 100-paper BSCM cohort is a fixed TCI Group 1 rights-and-integrity proof, not a claim of national completeness. OpenAlex adds bounded global research metadata while preserving the same boundary and degrading visibly when unavailable.
+Seedy Research is built toward whole Thai research and begins with a production civil-engineering proof vertical plus a 1,000-paper rights-reviewed native reader: 2,297 page-citable records and 26,008 page-linked sections/pages. It visibly separates 103 Thai-local/ThaiJO papers from 897 Thai-affiliated global OA PMC papers. The 2,578-record metadata-only ThaiJO slice brings Explore to 4,875 searchable records without silently treating metadata as evidence. The BSCM and PMC cohorts are fixed rights, affiliation, and integrity proofs—not a claim of national completeness. OpenAlex adds bounded global research metadata while preserving the same boundary and degrading visibly when unavailable.
 
 The Challenge hero is the Passport Trust Gate. The agent discovers a rights-reviewed ThaiJO paper, opens one exact page, and drafts a Research Passport from only that visible evidence. The page keeps global OpenAlex results non-citable, labels the validation gap unproven, and blocks export. The person—not the agent—must reopen the selected page and acknowledge review before the real Markdown artifact becomes available. The broader Research Path, verified connection mapping, and Next-Study Protocol remain available after the timed proof; they do not dilute its consequential human checkpoint. Reopening a page verifies access to the claimed provenance; it does not establish scientific correctness, novelty, transferability, or a comprehensive literature gap.
 
@@ -279,10 +282,10 @@ trace rather than relying on narration alone.
 
 - Source code is MIT licensed.
 - The MIT license does not grant rights to source papers, extracted text, previews, embeddings, or third-party datasets.
-- The current public branch contains a synthetic redistributable fixture plus page-mapped extracted text for exactly three rights-reviewed LEARN Journal CC BY 4.0 papers and the reproducible plan for the 100-paper DB-first BSCM cohort; it contains no paper PDF binaries, no BSCM page pack, and no generated NCCE previews.
+- The public branch contains a synthetic redistributable fixture plus page-mapped extracted text for exactly three rights-reviewed LEARN Journal CC BY 4.0 papers and reproducible builders for the DB-first BSCM and PMC cohorts; it contains no production paper PDF binaries, no generated DB-first page packs, and no generated NCCE previews.
 - Generated preview images existed in an older reachable public commit. They are removed from the frozen branch and from production, but purging them from Git history is a separate destructive operation requiring an explicit maintainer decision before submission.
-- Current production paper pages expose rights-safe metadata, page ranges, and source links without redistributing raw full text.
-- ThaiJO and OpenAlex remain metadata-only by default. The exceptions are the three committed LEARN papers and the 100 DB-first BSCM papers whose asset actions, licence evidence, checksums, and page provenance are recorded; they do not grant rights for any other ThaiJO asset.
+- Current production reader pages expose checksum-bound extracted page text only for assets whose storage, extraction, native-display, translation, and citation actions passed the recorded rights gate.
+- ThaiJO and OpenAlex remain metadata-only by default. The native exceptions are 103 ThaiJO papers and 897 Thai-affiliated PMC OA papers whose asset actions, exact licence evidence, checksums, affiliation evidence, and page provenance are recorded; they do not grant rights for any other asset or establish Thai-national completeness.
 - Submission copy must say “structured and curated evidence” rather than implying ownership of the underlying papers or official Thai-government endorsement.
 
 ## Meaningful competition-period extension
@@ -297,7 +300,7 @@ The pre-existing product already had a Next.js research UI, a remote MCP server,
 - a visible WebMCP readiness indicator;
 - deterministic browser execution coverage;
 - an official 36-family ThaiJO endpoint registry, duplicate-safe metadata harvesting, whole-issue filtering, and a live `sc01` metadata expansion that adds 198 net-new discovery records without promoting full text;
-- a deployed 103-paper/1,105-page rights-reviewed reader slice and
+- a deployed 1,000-paper/14,485-page rights-reviewed reader slice and
   fail-closed access resolver, plus reader-access enrichment inside the
   existing WebMCP contract without returning full page text;
 - guarded OpenAlex seed resolution plus selected-lead carryover into a Research Path that ends in a candidate gap and Next-Study Protocol;

@@ -140,6 +140,92 @@ class ReaderPackTest(unittest.TestCase):
         self.assertEqual(len(papers), 1)
         self.assertFalse(papers[0][0]["medicalResearchOnly"])
 
+    def test_approved_thai_affiliated_open_data_cohort_uses_its_own_provider_contract(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            pack = Path(directory)
+            paper = deepcopy(self.manifest["papers"][0])
+            pages_payload = json.loads((PACK / paper["pagesFile"]).read_text(encoding="utf-8"))
+            paper.update({
+                "source": "pmc:PMC123456.1",
+                "provider": "pmc_oa",
+                "providerRecordId": "PMC123456.1",
+                "collection": "thai_affiliated_global_oa",
+                "sourceType": "journal_article",
+                "articleType": "Research Article",
+                "tciTier": None,
+                "medicalResearchOnly": True,
+                "affiliationCountries": ["TH"],
+                "thaiAffiliationEvidence": ["Example University, Bangkok, Thailand"],
+                "sourceUrl": "https://pmc.ncbi.nlm.nih.gov/articles/PMC123456/",
+            })
+            paper["asset"] = {
+                **paper["asset"],
+                "id": "pmc-PMC123456.1-pdf",
+                "originUrl": "https://pmc-oa-opendata.s3.amazonaws.com/PMC123456.1/PMC123456.1.pdf",
+                "licenseExpression": "CC-BY-4.0",
+                "rightsProvenance": {
+                    **paper["asset"]["rightsProvenance"],
+                    "source": "https://pmc-oa-opendata.s3.amazonaws.com/metadata/PMC123456.1.json",
+                    "affiliationEvidence": ["Example University, Bangkok, Thailand"],
+                },
+            }
+            pages_payload["source"] = paper["source"]
+            (pack / paper["pagesFile"]).write_text(json.dumps(pages_payload), encoding="utf-8")
+            manifest = {
+                **self.manifest,
+                "papers": [paper],
+                "releaseGate": {
+                    "minimumNativePapers": 1,
+                    "expectedNativePapers": 1,
+                    "allowedProviders": ["pmc_oa"],
+                    "allowedArticleTypes": ["Research Article"],
+                    "requiredAffiliationCountry": "TH",
+                    "medicalResearchOnly": True,
+                    "assetDeliveryMode": "official_open_data_cloud",
+                },
+            }
+            (pack / "manifest.json").write_text(json.dumps(manifest), encoding="utf-8")
+            _, papers = read_pack(pack)
+            row = build_rows(papers[0][0], papers[0][1])
+
+        self.assertEqual(row["catalog"]["provider"], "pmc_oa")
+        self.assertEqual(row["catalog"]["collection"], "thai_affiliated_global_oa")
+        self.assertEqual(row["catalog"]["source_type"], "journal_article")
+        self.assertEqual(row["catalog"]["raw_metadata"]["affiliation_countries"], ["TH"])
+        self.assertIn("Thailand", row["catalog"]["raw_metadata"]["thai_affiliation_evidence"][0])
+        self.assertEqual(row["pages"][0]["extraction_provenance"]["method"], "pdftotext-layout")
+
+    def test_open_data_release_rejects_a_paper_without_required_thai_affiliation(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            pack = Path(directory)
+            paper = deepcopy(self.manifest["papers"][0])
+            shutil.copy(PACK / paper["pagesFile"], pack / paper["pagesFile"])
+            paper.update({
+                "provider": "pmc_oa",
+                "providerRecordId": "PMC123456.1",
+                "articleType": "Research Article",
+                "tciTier": None,
+                "medicalResearchOnly": True,
+                "affiliationCountries": ["US"],
+                "thaiAffiliationEvidence": [],
+            })
+            manifest = {
+                **self.manifest,
+                "papers": [paper],
+                "releaseGate": {
+                    "minimumNativePapers": 1,
+                    "expectedNativePapers": 1,
+                    "allowedProviders": ["pmc_oa"],
+                    "allowedArticleTypes": ["Research Article"],
+                    "requiredAffiliationCountry": "TH",
+                    "medicalResearchOnly": True,
+                    "assetDeliveryMode": "official_open_data_cloud",
+                },
+            }
+            (pack / "manifest.json").write_text(json.dumps(manifest), encoding="utf-8")
+            with self.assertRaisesRegex(ValueError, "affiliation"):
+                read_pack(pack)
+
     def test_ingest_identity_falls_back_to_provider_identifier_when_doi_is_absent(self) -> None:
         paper = deepcopy(self.manifest["papers"][0])
         paper["doi"] = None

@@ -71,8 +71,8 @@ provider-supplied license strings are retained as provenance but do not
 automatically authorize embedding, summarization, translation, redistribution,
 commercial use, or model training.
 
-As of 2 September 2026, the separately promoted native-reader corpus contains
-103 ThaiJO papers and 1,105 pages. The first scale cohort is a fixed set of 100
+As of 2 September 2026, the Thai-local native-reader cohort contains 103 ThaiJO
+papers and 1,105 pages. Its first scale cohort is a fixed set of 100
 Original/Review Articles from ten BSCM issues. The current TCI portal identifies
 BSCM as Group 1, but that ranking does not grant content rights: every included
 article independently exposes the exact CC BY 4.0 license, an official publisher
@@ -95,6 +95,25 @@ or linked evidence; reactivation is a separate reviewed action.
 This distinction is intentional: discoverability in CivilMCP does not imply
 permission to redistribute or process a journal's full text.
 
+## PMC Thai-affiliated global OA boundary
+
+The separate `pmc_oa` cohort contributes 897 version-of-record papers and
+13,380 pages, bringing production native coverage to exactly 1,000 papers and
+14,485 pages. Acquisition uses the official NCBI ESearch service and NLM PMC
+Article Datasets public S3 objects; it does not crawl PMC article pages or
+publisher sites. Each accepted record has explicit Thailand author-affiliation
+evidence in JATS, an exact item/version CC BY licence, OA/non-manuscript/
+non-retracted flags, NLM PDF/XML MD5 values, a PDF SHA-256, matching extracted
+page count, non-empty per-page text and hash, a PDF licence notice, and no
+explicit third-party permission-language signal.
+
+The accepted cohort contains 896 CC-BY-4.0 papers and one CC-BY-3.0 paper. PDF
+binaries and generated page packs remain ignored operator artifacts; production
+stores the rights/provenance manifest and checksum-bound page text. This is a
+Thai-affiliated global OA bridge, not Thai-local coverage, Thai-language
+coverage, or a denominator for TCI, TNRR, TDC, conferences, repositories, or
+Thai research nationally.
+
 ## Provenance retained by the index
 
 Each indexed record retains the available provider, collection, source
@@ -110,7 +129,8 @@ without silently changing provenance.
 The public repository also contains page-mapped extracted text for exactly
 three LEARN Journal papers whose version-of-record assets and journal-level
 CC BY 4.0 statement are recorded in the reader manifest. It contains no paper
-PDF binaries. The 100-paper BSCM page pack is database-first and is not committed.
+PDF binaries. The 100-paper BSCM and 897-paper PMC page packs are database-first
+and are not committed.
 All other paper text, generated previews, and embeddings remain excluded;
 software MIT licensing does not replace the recorded paper licence.
 

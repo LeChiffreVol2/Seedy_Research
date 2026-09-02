@@ -34,6 +34,11 @@ const CONCEPTS = [
   },
 ];
 
+// Topic anchors carry the user's domain intent. Study-design terms such as
+// "mixed-method" or "longitudinal" may refine that intent, but cannot replace
+// it merely because the corpus grew to include many Thai-affiliated studies.
+const DOMAIN_ANCHOR_CONCEPTS = new Set(["ai", "elt", "efl", "road_safety"]);
+
 const TERM_SIGNAL = new Map([
   ["ai", "ai"],
   ["elt", "elt"],
@@ -120,13 +125,17 @@ export function scoreResearchCardRelevance(query, card) {
   }
 
   let queryConceptCount = 0;
+  const requiredDomainConcepts = [];
+  const matchedDomainConcepts = new Set();
   for (const concept of CONCEPTS) {
     if (!concept.test(normalizedQuery)) continue;
     queryConceptCount += 1;
+    if (DOMAIN_ANCHOR_CONCEPTS.has(concept.id)) requiredDomainConcepts.push(concept.id);
     if (concept.test(fields.all)) {
       score += 6;
       matches.add(`concept:${concept.id}`);
       matchedSignals.add(concept.id);
+      if (DOMAIN_ANCHOR_CONCEPTS.has(concept.id)) matchedDomainConcepts.add(concept.id);
     }
   }
 
@@ -139,8 +148,9 @@ export function scoreResearchCardRelevance(query, card) {
   const signalCount = terms.length + queryConceptCount;
   const minimumDistinctMatches = signalCount >= 4 ? 2 : 1;
   const minimumScore = signalCount >= 4 ? 6 : 4;
+  const domainAnchorsSatisfied = requiredDomainConcepts.every((concept) => matchedDomainConcepts.has(concept));
   return {
-    relevant: matchedSignals.size >= minimumDistinctMatches && score >= minimumScore,
+    relevant: domainAnchorsSatisfied && matchedSignals.size >= minimumDistinctMatches && score >= minimumScore,
     score,
     matches: [...matches],
   };

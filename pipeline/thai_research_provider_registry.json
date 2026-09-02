@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "as_of": "2026-09-01",
+  "as_of": "2026-09-02",
   "scope": "Thai research discovery, lawful reading, and page-citable evidence",
   "completeness_policy": {
     "claim": "No provider or combined corpus is represented as complete unless its official denominator, harvest window, deletions, deduplication, rights review, and quality audit are all measured for the same dated snapshot.",
@@ -9,9 +9,11 @@
     "global_indexes_are_enrichment_only": true
   },
   "live_baseline": {
-    "searchable_records": 3878,
-    "page_citable_evidence_records": 1300,
+    "searchable_records": 4875,
+    "page_citable_evidence_records": 2297,
     "metadata_only_discovery_records": 2578,
+    "native_full_papers": 1000,
+    "native_fulltext_pages": 14485,
     "thaijo_endpoint_families_registered": 36,
     "thaijo_endpoint_families_active": 2,
     "coverage_claim": "bounded_live_snapshot_not_national_completeness"
@@ -19,13 +21,16 @@
   "local_reader_candidate": {
     "state": "deployed_and_database_applied",
     "pack_version": "civilmcp-rights-reviewed-reader-pack-v1",
-    "provider": "tci_thaijo",
-    "journal": "LEARN Journal: Language Education and Acquisition Research Network",
-    "license_expression": "CC-BY-4.0",
-    "rights_basis": "official_journal_license_statement_with_asset_checksums_and_action_manifest",
-    "papers": 3,
-    "assets": 3,
-    "page_addressable_pages": 68,
+    "provider": "multi_provider",
+    "cohorts": [
+      {"provider": "tci_thaijo", "papers": 103, "pages": 1105},
+      {"provider": "pmc_oa", "papers": 897, "pages": 13380}
+    ],
+    "license_expression": "item_version_cc_by",
+    "rights_basis": "provider_and_item_version_license_with_asset_checksums_affiliation_and_action_manifest",
+    "papers": 1000,
+    "assets": 1000,
+    "page_addressable_pages": 14485,
     "source_pdf_binaries_committed": false,
     "capabilities": [
       "native_page_reading",
@@ -328,6 +333,48 @@
       "official_url": null,
       "official_url_note": "No single official endpoint is assumed; every repository entry must retain its institution-controlled base URL and protocol declaration.",
       "required_next_action": "Inventory Thai university and agency repositories, validate Identify/ListSets before harvesting, record embargo and bitstream-license fields, and recruit deposit partners for repositories without stable machine access."
+    },
+    {
+      "id": "pmc_oa",
+      "label": "PMC · Thai-affiliated global OA",
+      "role": "thai_affiliated_global_open_access_bridge_not_thai_local_denominator",
+      "protocol": {
+        "metadata": ["NCBI E-Utilities", "PMC Article Datasets version metadata", "JATS XML"],
+        "full_text": ["PMC Article Datasets public S3 version-of-record PDF"],
+        "integrity": ["NLM URL MD5", "Seedy SHA-256", "PDF page count", "per-page text SHA-256"]
+      },
+      "auth": {
+        "metadata": "public_with_NCBI_tool_and_email_identification",
+        "full_text": "public_PMC_OA_dataset_subject_to_item_license"
+      },
+      "current_status": {
+        "state": "bounded_native_reader_live",
+        "active_records": 897,
+        "evidence_promotions": 897,
+        "native_pages": 13380,
+        "explicit_thailand_affiliation_records": 897,
+        "note": "Thai-affiliated globally published OA work; not Thai-local provider coverage and not a national denominator."
+      },
+      "access_modes": [
+        "native_verified_reader",
+        "official_PMC_article_deep_link",
+        "exact_page_citation"
+      ],
+      "rights_posture": {
+        "metadata": "official_NLM_public_services",
+        "full_text": "exact_item_version_CC_BY_only",
+        "storage_display_transformation_redistribution": "enabled_only_after_manifest_rights_integrity_affiliation_and_third_party_credit_gates"
+      },
+      "coverage_denominator": {
+        "unit": "fixed_2026-09-02_PMC_query_and_accepted_manifest",
+        "source_query_matches": 33517,
+        "observed": 897,
+        "fixed_release_manifest_complete": true,
+        "national_completeness_denominator": false,
+        "complete": false
+      },
+      "official_url": "https://pmc.ncbi.nlm.nih.gov/tools/pmcaws/",
+      "required_next_action": "Reconcile the dated cohort against NLM inventory updates/retractions and keep it separate from Thai-local provider coverage."
     },
     {
       "id": "openalex",

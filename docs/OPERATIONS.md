@@ -209,8 +209,11 @@ database for the deterministic fixture. For the reviewed 100-paper cohort, run
 `pipeline/build_native_reader_cohort.py` against
 `pipeline/cohorts/bscm_tci1_100.json`, validate its ignored output pack, and
 apply that pack explicitly. Apply `20260902010000_civil_authoritative_research_coverage.sql`,
-then apply `20260902020000_civil_native_reader_scale_1000.sql`. Verify 103 native
-assets, 1,105 checksum-valid pages, zero asset/page-count
+then apply `20260902020000_civil_native_reader_scale_1000.sql`. Build the
+Thai-affiliated PMC pack with `pipeline/build_pmc_thai_reader_pack.py`, validate
+it with `pipeline/ingest_reader_pack.py`, and promote it in stable 100–250-paper
+windows. Verify 1,000 native assets and canonical works, 14,485 checksum-valid
+pages, 103 `tci_thaijo` plus 897 `pmc_oa` assets, zero asset/page-count
 or page-hash mismatches, RLS on all graph tables, and no
 `anon`/`authenticated` table grants.
 

@@ -21,6 +21,7 @@ class SourceRegistryTests(unittest.TestCase):
             "thailis_tdc",
             "thai_conference",
             "thai_ir",
+            "pmc_oa",
         }
         self.assertTrue(required.issubset(SOURCES))
         self.assertNotEqual(source_spec("tci_thaijo").provider, source_spec("tci_citation").provider)
@@ -49,6 +50,7 @@ class SourceRegistryTests(unittest.TestCase):
             "ncce",
             "thai_conference",
             "thai_ir",
+            "pmc_oa",
         }
         self.assertTrue(runtime_external_ids.issubset(provider_ids))
         self.assertTrue(all(item["coverage_denominator"]["complete"] is False for item in registry["providers"]))
@@ -58,9 +60,11 @@ class SourceRegistryTests(unittest.TestCase):
         self.assertEqual(
             registry["live_baseline"],
             {
-                "searchable_records": 3878,
-                "page_citable_evidence_records": 1300,
+                "searchable_records": 4875,
+                "page_citable_evidence_records": 2297,
                 "metadata_only_discovery_records": 2578,
+                "native_full_papers": 1000,
+                "native_fulltext_pages": 14485,
                 "thaijo_endpoint_families_registered": 36,
                 "thaijo_endpoint_families_active": 2,
                 "coverage_claim": "bounded_live_snapshot_not_national_completeness",
@@ -70,8 +74,12 @@ class SourceRegistryTests(unittest.TestCase):
         self.assertEqual(reader["state"], "deployed_and_database_applied")
         self.assertEqual(reader["webmcp"]["registered_site_tools"], 6)
         self.assertEqual(reader["verification_status"], "production_verified")
+        self.assertEqual(reader["papers"], 1000)
+        self.assertEqual(reader["page_addressable_pages"], 14485)
         thaijo = next(item for item in registry["providers"] if item["id"] == "tci_thaijo")
         self.assertEqual(thaijo["current_status"]["local_native_reader_candidate_state"], "deployed_and_database_applied")
+        pmc = next(item for item in registry["providers"] if item["id"] == "pmc_oa")
+        self.assertEqual(pmc["current_status"]["evidence_promotions"], 897)
 
 
 if __name__ == "__main__":

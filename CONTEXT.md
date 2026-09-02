@@ -112,14 +112,15 @@ _Avoid_: publicly reachable PDF count, metadata records with outbound full-text 
 A fixed, denominator-complete set of paper versions promoted together only when every included asset passes rights, integrity, page-mapping, and reader gates.
 _Avoid_: a cherry-picked PDF sample, a raw download count, a national-coverage claim
 
-The current production cohort contains 100 BSCM Original/Review Articles from
-ten fixed issues; together with the three LEARN fixtures, production has 103
-native papers and 1,105 verified pages. This is a release proof, not a national
-coverage denominator.
+The current production cohort contains 1,000 rights-verified native full papers
+and 14,485 verified pages: 103 Thai-local/ThaiJO papers (100 BSCM plus three
+LEARN fixtures) and 897 Thai-affiliated global OA papers from PMC. This is a
+bounded release proof, not a Thai-local or national coverage denominator.
 
 **5,000-Paper Native Capacity Envelope**:
 The tested storage, bounded-read, and resumable-ingest shape for a future 5,000
-rights-verified native-paper corpus. It projects about 53,641 page rows and
+rights-verified native-paper corpus. At the current observed mean it projects
+about 72,425 page rows and
 requires approved publisher/institution delivery for every asset cohort.
 _Avoid_: 5,000 live papers, 5,000 simultaneous users, or a claim that screening
 records and OAI metadata are native full text.

@@ -5436,6 +5436,10 @@ export default function Home() {
   const [feedTotalChunks, setFeedTotalChunks] = useState(0);
   const [feedFilterCounts, setFeedFilterCounts] = useState<Partial<Record<FeedFilter, number>>>({});
   const [feedCoverage, setFeedCoverage] = useState<ResearchCoverageProvider[]>([]);
+  const feedNativeFullPaperTotal = feedCoverage.reduce(
+    (sum, provider) => sum + provider.nativeFullPaper,
+    0,
+  );
   const [activeFeedProvider, setActiveFeedProvider] = useState("");
   const [feedGeneratedAt, setFeedGeneratedAt] = useState("");
   const [feedNextCursor, setFeedNextCursor] = useState<string | null>(null);
@@ -8475,11 +8479,12 @@ export default function Home() {
               <>
                 <p className="searchLead">
                   {feedCitableTotal
-                    ? `Discover ${Math.max(feedCatalogTotal, feedCitableTotal + feedMetadataOnlyTotal, feedCitableTotal).toLocaleString("en-US")} bounded Thai records, verify ${feedCitableTotal.toLocaleString("en-US")} page-citable papers, and carry reviewed evidence into a Passport, Research Path, and next-study plan.`
+                    ? `Discover ${Math.max(feedCatalogTotal, feedCitableTotal + feedMetadataOnlyTotal, feedCitableTotal).toLocaleString("en-US")} bounded Thai records, read ${feedNativeFullPaperTotal.toLocaleString("en-US")} rights-verified full papers, and carry page-cited evidence into a Passport, Research Path, and next-study plan.`
                     : "Discover local evidence, verify every supported claim on its original page, and carry it into a bounded Thai-to-global research path."}
                 </p>
                 <div className="corpusProof" aria-label="Seedy Research corpus coverage">
                   <span><strong>{feedCitableTotal ? feedCitableTotal.toLocaleString("en-US") : "—"}</strong> citable papers</span>
+                  <span><strong>{feedNativeFullPaperTotal ? feedNativeFullPaperTotal.toLocaleString("en-US") : "—"}</strong> native full papers</span>
                   <span><strong>{feedTotalSections ? feedTotalSections.toLocaleString("en-US") : "—"}</strong> page-linked sections</span>
                   <span><strong>{feedTotalChunks ? feedTotalChunks.toLocaleString("en-US") : "—"}</strong> cited passages</span>
                   {feedMetadataOnlyTotal ? <span><strong>{feedMetadataOnlyTotal.toLocaleString("en-US")}</strong> discovery records</span> : null}

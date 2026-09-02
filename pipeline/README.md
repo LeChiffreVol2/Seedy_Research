@@ -179,11 +179,12 @@ extraction, embedding, translation หรือ redistribution ต้องม�
 
 ## Rights-Reviewed ThaiJO Reader Pack
 
-candidate ฝั่ง local มีบทความ LEARN Journal บน ThaiJO **3 เรื่อง รวม 68 หน้า**
+fixture ฝั่ง local มีบทความ LEARN Journal บน ThaiJO **3 เรื่อง รวม 68 หน้า**
 ที่บันทึกหลักฐานสิทธิ์ CC BY 4.0 ระดับวารสาร, checksum ของ PDF, page count,
 attribution และสิทธิ์แยกตาม action. ชุดนี้เป็น proof ที่ตั้งใจให้เล็ก ไม่ใช่
-ตัวแทน coverage ของ ThaiJO, TCI หรือ Thai research ทั้งประเทศ และยังไม่ได้
-apply เข้า database หรือ deploy ขึ้น production.
+ตัวแทน coverage ของ ThaiJO, TCI หรือ Thai research ทั้งประเทศ. Production
+รวม fixture นี้กับ BSCM 100 เรื่องและ PMC Thai-affiliated global OA 897 เรื่อง
+เป็น native reader 1,000 papers / 14,485 pages.
 
 ไฟล์ PDF ต้นฉบับไม่ commit เข้า repository. หากต้อง rebuild ให้เตรียมไฟล์จาก
 official publisher ตามชื่อที่ builder กำหนด แล้วรัน:
@@ -229,8 +230,8 @@ python3.10 pipeline/ingest_reader_pack.py --apply
 ```
 
 รัน window เดิมซ้ำได้เพราะ identity และ write เป็น idempotent upsert; ใช้ค่า
-`window.nextStartPaper` เป็น offset ของรอบถัดไป. ที่ 5,000 papers / 53,640
-pages / 10 providers แผน conservative ใช้ไม่เกิน 405 PostgREST requests
+`window.nextStartPaper` เป็น offset ของรอบถัดไป. ที่ 5,000 papers / 72,425
+pages / 10 providers แผน conservative ใช้ไม่เกิน 499 PostgREST requests
 เทียบกับอย่างน้อย 30,002 requests ในเส้นทางทีละ paper
 เดิม. ตัวเลขนี้เป็น ingest request budget ไม่ใช่สิทธิ์ใช้งานหรือหลักฐานว่า
 production มี 5,000 papers แล้ว.
@@ -252,6 +253,38 @@ builder v2 รองรับ official ThaiJO hosts, TCI Group 1/2, สาขา
 มาจาก signed publisher manifest, institutional deposit หรือ manual approved
 delivery ที่มี evidence ID, takedown contact และ SHA-256 ครบทุก article;
 metadata discovery ใช้ official OAI-PMH route ตาม rate limit.
+
+## Thai-affiliated PMC OA Reader Pack
+
+`build_pmc_thai_reader_pack.py` ใช้เฉพาะ NCBI E-Utilities และ PMC Article
+Datasets public S3 ของ NLM ไม่ crawl publisher pages. Query ถูกตรึงไว้ที่
+Thailand affiliation, OA, has-PDF, CC BY, 2000–2025 และตัด correction,
+retraction, preprint และ author manuscript ออก. แต่ละรายการต้องผ่าน JATS
+Thailand-affiliation, exact item/version CC BY, NLM PDF/XML MD5, PDF SHA-256,
+page parity, non-empty page text, per-page hash, PDF licence notice และ
+third-party permission-language scan ก่อนเข้า pack.
+
+```bash
+pipeline/.venv/bin/python pipeline/build_pmc_thai_reader_pack.py \
+  --output-dir pipeline/data/reader-packs/pmc-thai-897 \
+  --target-papers 897 \
+  --candidate-limit 1500 \
+  --workers 6 \
+  --existing-dois-file /path/to/current-native-dois.txt
+
+pipeline/.venv/bin/python -m unittest \
+  pipeline.test_pmc_thai_reader_pack pipeline.test_reader_pack
+
+pipeline/.venv/bin/python pipeline/ingest_reader_pack.py \
+  --pack-dir pipeline/data/reader-packs/pmc-thai-897 \
+  --start-paper 0 --max-papers 250 --batch-size 200 --page-batch-size 50
+```
+
+Pack และ PDF เป็น generated/ignored operator artifacts. Production apply ใช้
+สี่ idempotent windows (250 + 250 + 250 + 147). ผลวันที่ 2 September 2026 คือ
+897 assets / 13,380 pages โดยทุก record มี Thailand-affiliation evidence;
+เมื่อรวม ThaiJO 103/1,105 เป็น 1,000/14,485. ตัวเลขนี้หมายถึง Thai-affiliated
+global OA ไม่ใช่ Thai-local หรือนับความครบถ้วนระดับประเทศ.
 
 ตรวจ reader contract และ browser flow จาก repository root:
 

@@ -28,10 +28,10 @@ class NativeScaleHarnessTests(unittest.TestCase):
         self.assertEqual(
             capacity_projection(
                 target_native_papers=5_000,
-                observed_native_papers=103,
-                observed_pages=1_105,
+                observed_native_papers=1_000,
+                observed_pages=14_485,
             ),
-            {"targetNativePapers": 5_000, "projectedPagesAtCurrentMean": 53_641},
+            {"targetNativePapers": 5_000, "projectedPagesAtCurrentMean": 72_425},
         )
 
 

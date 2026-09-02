@@ -19,6 +19,7 @@ const unrelatedCivilPapers = [
   { source: "ncce:biochar", title: "Effect of biochar on crack depth in concrete", summary: "A mixed material experiment." },
   { source: "ncce:bridge", title: "Performance of bridge bearings in Thailand", summary: "A longitudinal inspection study." },
   { source: "ncce:water", title: "Development of an automatic water regulator", summary: "A research method for water control." },
+  { source: "pmc:aging", title: "Thai older persons' technology outcomes: a mixed-method study", summary: "A longitudinal health study." },
 ];
 
 test("long research goals retain the AI/ELT anchor and reject generic civil matches", () => {

@@ -61,6 +61,7 @@ test("desktop feed keeps the approved research hierarchy", async ({ page }) => {
   await page.getByRole("button", { name: "Explore" }).click();
   await expect(page.getByRole("heading", { name: "Connect Thai evidence to global research." })).toBeVisible();
   await expect(page.getByLabel("Seedy Research corpus coverage")).toContainText("papers");
+  await expect(page.getByLabel("Seedy Research corpus coverage")).toContainText("native full papers");
   await expect(page.getByLabel("Seedy Research corpus coverage")).toContainText("page-linked sections");
   await expect(page.getByLabel("Seedy Research corpus coverage")).toContainText("Exact-page citations");
   await expect(page.getByText("Thai-first corpus · Multidisciplinary discovery · Page-linked sources")).toBeVisible();
@@ -112,6 +113,8 @@ test("Explore separates ThaiJO discovery metadata from citable evidence", async 
   await expect.poll(() => feed.getByRole("button", { name: "Read paper" }).count()).toBeGreaterThan(0);
   const coverageLedger = page.getByRole("region", { name: "Thai research coverage ledger" });
   await expect(coverageLedger.getByText("103 native full papers", { exact: true })).toBeVisible();
+  await expect(coverageLedger.getByText("897 native full papers", { exact: true })).toBeVisible();
+  await expect(coverageLedger.getByText("PMC · Thai-affiliated global OA", { exact: true })).toBeVisible();
   await expect(coverageLedger.getByText("2,578 metadata-only", { exact: true })).toBeVisible();
 
   type ThaiCard = { citable?: boolean; evidenceStatus?: string; canonicalUrl?: string };

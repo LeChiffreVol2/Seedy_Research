@@ -26,13 +26,13 @@ coverage statement must name a provider, denominator, access layer, and date.
 
 ## Live baseline and the missing link
 
-As of 2 September 2026, production exposes **3,978 searchable records**:
+As of 2 September 2026, production exposes **4,875 searchable records**:
 
-- **1,400 page-citable evidence records**, including the 103 rights-reviewed
-  reader papers below;
+- **2,297 page-citable evidence records**, including the 1,000 rights-reviewed
+  native reader papers below;
 - **2,578 metadata-only discovery records**; and
-- **4 observed ThaiJO source families** across metadata and native-reader
-  ingestion. The public ledger no longer hardcodes an unverified national
+- separately labelled ThaiJO/local and Thai-affiliated global OA provider
+  cohorts. The public ledger no longer hardcodes an unverified national
   endpoint denominator.
 
 These are real production counts, not national completeness. The deployed product
@@ -44,14 +44,15 @@ evidence boundary.
 
 ### Production native-reader slice
 
-Production contains a bounded proof of that layer: exactly **103 ThaiJO-hosted
-papers and 1,105 page-addressable pages**. Three LEARN Journal papers remain the
-deterministic Git fixture. A DB-first cohort adds 100 Original/Review Articles
-from BSCM, a current TCI Group 1 journal; every item has an exact article-level
-CC BY 4.0 marker, official publisher PDF, content checksum, matching page count,
-non-empty page extraction, per-page checksum, and no explicit third-party
-permission-language signal. Source PDF binaries and the generated 100-paper
-page pack remain outside Git.
+Production contains a bounded proof of that layer: exactly **1,000 native full
+papers and 14,485 page-addressable pages**. The Thai-local slice is 103
+ThaiJO-hosted papers: three deterministic LEARN fixtures plus 100 BSCM
+Original/Review Articles from a current TCI Group 1 journal. The separate
+Thai-affiliated global OA slice is 897 version-of-record PMC papers with an
+explicit Thailand author affiliation and exact item-level CC BY. Every asset has
+source MD5 evidence, a Seedy SHA-256, matching PDF/page count, non-empty page
+extraction, per-page checksum, and no explicit third-party permission-language
+signal. Source PDF binaries and generated DB-first page packs remain outside Git.
 
 The reader supports native page reading, outline navigation, in-paper
 search, stable page anchors, highlights, browser-local notes, and citation/source
@@ -61,24 +62,22 @@ mode receives full page text; every other mode exposes the appropriate official
 link or access explanation without proxying the asset.
 
 This is a production slice, not a national coverage claim. Migrations
-`20260831120000`, `20260902010000`, and `20260902020000`, all 103 assets, and
-all 1,105 pages are applied to Supabase;
+`20260831120000`, `20260902010000`, and `20260902020000`, all 1,000 assets, and
+all 14,485 pages are applied to Supabase;
 the matching MCP and web releases are live on Vercel. Post-apply checks report
 zero page-checksum mismatches, RLS on every graph table, and no direct
-`anon`/`authenticated` table reads. The 103-paper cohort proves a lawful,
+`anon`/`authenticated` table reads. The 1,000-paper cohort proves a lawful,
 database-backed end-to-end slice; it does not establish
 coverage of TCI, TNRR, TDC, Thai conferences, or Thai research nationally.
 
 ### 5,000-paper capacity envelope
 
-The native reader and promotion path are now engineered for a **5,000-paper
-rights-cleared cohort**, while production still contains 103 papers. At the
-observed mean of 10.73 pages per paper, 5,000 papers project to approximately
-53,641 page rows. Applying the current page-text footprint linearly gives about
-204 MB before indexes, replicas, backups, and database overhead. Source PDF
-metadata totals about 78 MB for 103 papers; if binaries were stored by Seedy
-under an approved delivery rather than retained by the source, the same mean is
-about 3.8 GB before object-storage replication and backups.
+The native reader and promotion path are engineered for a **5,000-paper
+rights-cleared cohort**, while production now contains 1,000 papers. At the
+observed mean of 14.485 pages per paper, 5,000 papers project to approximately
+72,425 page rows. The 897-paper PMC source-PDF set totals about 2.87 GB, but
+Seedy does not commit those binaries; the native reader serves checksum-bound
+page text and retains the official NLM asset URL and integrity evidence.
 
 Migration `20260902020000_civil_native_reader_scale_1000.sql` originally added a bounded,
 service-only native-first catalog RPC and supporting feed/page indexes. A deep
@@ -89,7 +88,7 @@ records plus the current 2,578 ThaiJO discovery records, so no schema mutation
 is needed merely to raise this capacity contract. The synthetic page-167 test
 exercises offset 4,990 with exactly one catalog RPC. Bulk ingest uses 200-row
 identity/write batches and stable 100-250-paper promotion windows; the
-conservative 5,000-paper/53,640-page/10-provider plan is at most 405 PostgREST
+conservative 5,000-paper/72,425-page/10-provider plan is at most 499 PostgREST
 requests, versus at least 30,002 on the former per-paper path.
 
 This is a storage and request-shape readiness claim, not proof of 5,000-paper
@@ -354,10 +353,11 @@ maps to one asset; every asset has a rights state and source provenance.
   translation/explanation within allowed actions, and citation copy.
 - Preserve the exact-page review gate used by Research Passport.
 
-**Production status:** the three-paper/68-page committed LEARN fixture plus the
-DB-first 100-paper BSCM cohort provide 103 papers and 1,105 CC BY 4.0 pages with
-native reading, outline/search, stable anchors, highlights, browser-local notes,
-and citation/source export. Supabase apply and Vercel deployment are complete;
+**Production status:** the three-paper/68-page committed LEARN fixture, DB-first
+100-paper BSCM cohort, and 897-paper Thai-affiliated PMC OA cohort provide 1,000
+papers and 14,485 CC BY pages with native reading, outline/search, stable anchors,
+highlights, browser-local notes, and citation/source export. Supabase apply and
+Vercel deployment are complete;
 workspace-scoped annotation sync and the manual Passport-to-reader host demo
 remain later release gates.
 

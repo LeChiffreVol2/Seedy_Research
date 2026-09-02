@@ -120,25 +120,53 @@ def read_pack(pack_dir: Path) -> tuple[dict[str, Any], list[tuple[dict[str, Any]
             or len(allowed_types) != len(set(allowed_types))
         ):
             raise ValueError("releaseGate.allowedArticleTypes must be a non-empty exact section allowlist.")
-        allowed_tiers = release_gate.get("allowedTciTiers", ["group_1"])
+        allowed_providers = release_gate.get("allowedProviders", ["tci_thaijo"])
         if (
-            not isinstance(allowed_tiers, list)
-            or not allowed_tiers
-            or any(tier not in ("group_1", "group_2") for tier in allowed_tiers)
+            not isinstance(allowed_providers, list)
+            or not allowed_providers
+            or any(not isinstance(provider, str) or not provider.strip() for provider in allowed_providers)
+            or len(allowed_providers) != len(set(allowed_providers))
         ):
-            raise ValueError("releaseGate.allowedTciTiers must contain group_1 and/or group_2.")
+            raise ValueError("releaseGate.allowedProviders must be a non-empty exact provider allowlist.")
+        allowed_tiers = release_gate.get("allowedTciTiers")
+        if "tci_thaijo" in allowed_providers:
+            allowed_tiers = allowed_tiers or ["group_1"]
+            if (
+                not isinstance(allowed_tiers, list)
+                or not allowed_tiers
+                or any(tier not in ("group_1", "group_2") for tier in allowed_tiers)
+            ):
+                raise ValueError("releaseGate.allowedTciTiers must contain group_1 and/or group_2.")
+        elif allowed_tiers is not None:
+            raise ValueError("releaseGate.allowedTciTiers is only valid for a tci_thaijo cohort.")
+        required_country = release_gate.get("requiredAffiliationCountry")
+        if required_country is not None and (
+            not isinstance(required_country, str)
+            or len(required_country) != 2
+            or required_country != required_country.upper()
+        ):
+            raise ValueError("releaseGate.requiredAffiliationCountry must be an ISO alpha-2 code.")
         medical_only = release_gate.get("medicalResearchOnly")
         if not isinstance(medical_only, bool):
             raise ValueError("releaseGate.medicalResearchOnly must be an explicit boolean.")
         if release_gate.get("assetDeliveryMode") == "automated_pdf_crawl":
             raise ValueError("releaseGate.assetDeliveryMode cannot use automated PDF crawling.")
         for paper, _pages in resolved:
+            if paper.get("provider") not in allowed_providers:
+                raise ValueError(f"Reader release paper has an unapproved provider: {paper.get('source')}")
             if paper.get("articleType") not in allowed_types:
                 raise ValueError(f"Reader release paper has an unapproved article type: {paper.get('source')}")
-            if paper.get("tciTier") not in allowed_tiers:
+            if paper.get("provider") == "tci_thaijo" and paper.get("tciTier") not in allowed_tiers:
                 raise ValueError(f"Reader release paper is outside the approved TCI tiers: {paper.get('source')}")
             if paper.get("medicalResearchOnly") is not medical_only:
                 raise ValueError(f"Reader release paper crosses the approved medical scope: {paper.get('source')}")
+            if required_country is not None:
+                countries = paper.get("affiliationCountries") or []
+                evidence = paper.get("thaiAffiliationEvidence") or []
+                if required_country not in countries or not evidence:
+                    raise ValueError(
+                        f"Reader release paper is missing required affiliation evidence: {paper.get('source')}"
+                    )
     return manifest, resolved
 
 
@@ -178,6 +206,8 @@ def build_rows(paper: dict[str, Any], pages: list[dict[str, Any]]) -> dict[str, 
         "article_type": paper.get("articleType"),
         "tci_tier": paper.get("tciTier"),
         "medical_research_only": paper.get("medicalResearchOnly") is True,
+        "affiliation_countries": paper.get("affiliationCountries", []),
+        "thai_affiliation_evidence": paper.get("thaiAffiliationEvidence", []),
         "issue_id": paper.get("issueId"),
         "issue_title": paper.get("issueTitle"),
         "reader_pack_version": "civilmcp-rights-reviewed-reader-pack-v1",
@@ -219,8 +249,8 @@ def build_rows(paper: dict[str, Any], pages: list[dict[str, Any]]) -> dict[str, 
             "id": source_catalog_id,
             "provider": paper["provider"],
             "provider_record_id": paper["providerRecordId"],
-            "collection": "tci_journal",
-            "source_type": "journal_article",
+            "collection": paper.get("collection") or "tci_journal",
+            "source_type": paper.get("sourceType") or "journal_article",
             "title_en": paper["title"],
             "authors": paper["authors"],
             "doi": doi,
@@ -268,10 +298,12 @@ def build_rows(paper: dict[str, Any], pages: list[dict[str, Any]]) -> dict[str, 
             "rights_verified_at": asset["rightsVerifiedAt"],
             "reader_access_mode": "native_verified",
             "access_notes": (
-                "CC BY 4.0 publisher version; page text is a checksum-verified extraction. "
-                "Biomedical content is provided for research and evidence review, not clinical advice."
+                f"{asset['licenseExpression']} {asset.get('version', 'article')} asset; "
+                "page text is a checksum-verified extraction. Biomedical content is provided for "
+                "research and evidence review, not clinical advice."
                 if paper.get("medicalResearchOnly") is True
-                else "CC BY 4.0 publisher version; page text is a checksum-verified extraction."
+                else f"{asset['licenseExpression']} {asset.get('version', 'article')} asset; "
+                "page text is a checksum-verified extraction."
             ),
             "asset_status": "active",
             "last_verified_at": asset["rightsVerifiedAt"],
@@ -293,7 +325,7 @@ def build_rows(paper: dict[str, Any], pages: list[dict[str, Any]]) -> dict[str, 
                     "section_title": page["sectionTitle"],
                 },
                 "extraction_provenance": {
-                    "method": "pdftotext-layout",
+                    "method": asset.get("extractionMethod") or "pdftotext-layout",
                     "source_asset_sha256": asset["contentSha256"],
                     "reader_pack_version": "civilmcp-rights-reviewed-reader-pack-v1",
                 },
@@ -456,8 +488,9 @@ def apply_rows(
         page_batch_size=page_batch_size,
     )
     try:
+        providers = sorted({row["asset"]["provider"] for row in rows})
         response = client.table("civil_ingest_runs").insert({
-            "provider": "tci_thaijo",
+            "provider": providers[0] if len(providers) == 1 else "multi_provider",
             "endpoint": "rights-reviewed-reader-pack-v1",
             "mode": "full_text",
             "status": "running",

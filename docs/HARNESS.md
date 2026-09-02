@@ -85,15 +85,19 @@ matrix is `native_verified`, `source_hosted`, `restricted`, `metadata_only`, and
 These suites verify the implementation contract; by themselves they are not
 evidence of a database apply, deployment, or national Thai research coverage.
 The September 2 production promotion records migrations `20260831120000` and
-`20260902010000`, 103 rights-verified assets, 1,105 checksum-valid pages, zero
+`20260902010000`, 1,000 rights-verified assets, 14,485 checksum-valid pages, zero
 page-count/hash mismatches, service-only table grants, and authoritative
-coverage/facet RPCs. For later releases, rerun the focused
+coverage/facet RPCs. The native total is 103 Thai-local/ThaiJO papers plus 897
+Thai-affiliated global OA PMC papers; it is not a national-completeness count.
+For later releases, rerun the focused
 suites against the frozen candidate and manually
 confirm that `inspect_paper_evidence` reports the lawful access state and verified reader anchor without
 including full page text and that the page still registers exactly six WebMCP
 site tools.
 
-`harness/run_native_scale.py` is the bounded 5,000-paper capacity smoke. Its
+`harness/run_native_scale.py` is the bounded 5,000-paper capacity smoke. It
+exercises `pmc_oa` by default and derives the total native count from the dated
+coverage ledger. Its
 target cursor is 4,990; before production contains that many rows it automatically
 uses the deepest complete live catalog page and reports
 `targetCursorExercised=false`. The independent synthetic web contract exercises

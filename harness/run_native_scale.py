@@ -103,7 +103,9 @@ def main() -> None:
     parser.add_argument("--web-url", default="", help="Web origin; defaults to WEB_URL or production.")
     parser.add_argument("--requests", type=int, default=24, help="Requests per endpoint (1-100).")
     parser.add_argument("--concurrency", type=int, default=6, help="Concurrent workers (1-12).")
+    parser.add_argument("--provider", default="pmc_oa", help="Native provider exercised by the live probe.")
     parser.add_argument("--target-native-papers", type=int, default=5_000, help="Native-paper capacity target.")
+    parser.add_argument("--observed-pages", type=int, default=14_485, help="Verified pages in the current production native corpus.")
     parser.add_argument("--cursor-offset", type=int, help="Override the deepest full catalog page exercised.")
     parser.add_argument("--strict", action="store_true", help="Exit non-zero when a scale check fails.")
     args = parser.parse_args()
@@ -113,10 +115,12 @@ def main() -> None:
         parser.error("--target-native-papers must be 1-10010")
     if args.cursor_offset is not None and not 0 <= args.cursor_offset <= 10_000:
         parser.error("--cursor-offset must be 0-10000")
+    if args.observed_pages < 1:
+        parser.error("--observed-pages must be positive")
 
     env = load_env()
     web_url = (args.web_url or env.get("WEB_URL") or "https://seedresearch.vercel.app").rstrip("/")
-    bootstrap_url = f"{web_url}/api/research-feed?filter=thai&provider=tci_thaijo&limit=30"
+    bootstrap_url = f"{web_url}/api/research-feed?filter=thai&provider={quote(args.provider, safe='')}&limit=30"
     status, bootstrap, bootstrap_latency = load_once(bootstrap_url)
     cards = bootstrap.get("cards", []) if isinstance(bootstrap, dict) else []
     facets = bootstrap.get("facets", {}) if isinstance(bootstrap, dict) else {}
@@ -125,7 +129,7 @@ def main() -> None:
         (
             int(row.get("records", 0))
             for row in provider_facets
-            if isinstance(row, dict) and row.get("provider") == "tci_thaijo"
+            if isinstance(row, dict) and row.get("provider") == args.provider
         ),
         int(facets.get("catalogTotal", 0)) if isinstance(facets, dict) else 0,
     )
@@ -144,6 +148,12 @@ def main() -> None:
         None,
     )
     bootstrap_ok = status == 200 and isinstance(native, dict) and bool(native.get("source"))
+    coverage = facets.get("coverage", []) if isinstance(facets, dict) else []
+    observed_native_papers = sum(
+        int(row.get("nativeFullPaper", 0))
+        for row in coverage
+        if isinstance(row, dict)
+    )
     checks = [
         Check(
             "native_scale_bootstrap",
@@ -159,7 +169,7 @@ def main() -> None:
             f"{bootstrap_url}&cursor={quote(encoded_cursor(cursor_offset), safe='')}"
         )
         reader_url = (
-            f"{web_url}/api/papers/{quote(str(native['source']), safe='')}/reader?page=1&limit=10"
+            f"{web_url}/api/papers/{quote(str(native['source']), safe='')}/reader?provider={quote(args.provider, safe='')}&page=1&limit=10"
         )
         checks.append(exercise_endpoint(
             "native_scale_deep_feed",
@@ -188,16 +198,17 @@ def main() -> None:
 
     projection = capacity_projection(
         target_native_papers=args.target_native_papers,
-        observed_native_papers=103,
-        observed_pages=1_105,
+        observed_native_papers=observed_native_papers,
+        observed_pages=args.observed_pages,
     )
     report = make_report(
         "native_scale",
         checks,
         {
             **projection,
-            "observedNativePapers": 103,
-            "observedPages": 1_105,
+            "providerExercised": args.provider,
+            "observedNativePapers": observed_native_papers,
+            "observedPages": args.observed_pages,
             "targetCursorOffset": max(0, args.target_native_papers - 10),
             "exercisedCursorOffset": cursor_offset,
             "targetCursorExercised": cursor_offset >= max(0, args.target_native_papers - 10),

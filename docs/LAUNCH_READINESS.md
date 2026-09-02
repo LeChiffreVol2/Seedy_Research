@@ -12,6 +12,12 @@ The launch promise is narrow and testable:
 > supported claim at the page, and turn the evidence into reviews, learning
 > paths, and research decisions.
 
+The 2 September 2026 production snapshot contains 1,000 native full papers and
+14,485 pages: 103 Thai-local/ThaiJO papers plus 897 Thai-affiliated global OA
+PMC papers. This clears the bounded native-reader scale proof, but it does not
+clear national-provider completeness; TCI, TNRR, TDC, Thai conferences, and
+institutional repositories remain separately measured rollout tracks.
+
 ## Launch surfaces
 
 - Explore: indexed Thai evidence plus clearly separated ThaiJO discovery

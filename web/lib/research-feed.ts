@@ -643,6 +643,7 @@ function collectionLabel(value: CollectionFilter): string {
 
 function providerLabel(value: string): string {
   if (value === "tci_thaijo") return "ThaiJO";
+  if (value === "pmc_oa") return "PMC · Thai-affiliated global OA";
   if (value === "tci_citation") return "TCI Citation Index";
   if (value === "tnrr") return "TNRR";
   if (value === "thailis_tdc") return "ThaiLIS / TDC";
@@ -661,6 +662,8 @@ function disciplineLabel(value: string | null | undefined): string {
     life_sciences: "Life Sciences",
     physical_sciences: "Physical Sciences",
     health_sciences: "Health Sciences",
+    medical_and_health_sciences: "Medical & Health Sciences",
+    medical_and_life_sciences: "Medical & Life Sciences",
     social_sciences: "Social Sciences",
     transport: "Transport",
     structural: "Structural",
@@ -840,9 +843,14 @@ function cardFromCatalog(row: CatalogRow): ResearchFeedCard {
   const isNativeCitable = row.evidence_status === "extracted"
     && row.rights_status === "open_license_verified"
     && row.access_level === "full_text_licensed";
-  const isMedicalResearch = row.discipline === "medical_and_health_sciences";
+  const isMedicalResearch = row.discipline === "medical_and_health_sciences"
+    || row.discipline === "medical_and_life_sciences";
+  const normalizedLicense = cleanText(row.license || "", 40);
+  const ccByVersion = normalizedLicense.match(/^CC[- ]BY[- ](\d+(?:\.\d+)?)$/i)?.[1] ?? null;
+  const licenseLabel = ccByVersion ? `CC BY ${ccByVersion}` : normalizedLicense;
+  const isThaiJo = row.provider === "tci_thaijo";
   const tags = [
-    ...(isNativeCitable ? ["Native reader", "CC BY 4.0"] : []),
+    ...(isNativeCitable ? ["Native reader", licenseLabel] : []),
     disciplineLabel(row.discipline),
     providerLabel(row.provider),
     ...keywordTags,
@@ -875,7 +883,11 @@ function cardFromCatalog(row: CatalogRow): ResearchFeedCard {
     sourceLabel: [providerLabel(row.provider), journalTitle, disciplineLabel(row.discipline)].filter(Boolean).join(" · "),
     summary,
     tags,
-    filters: isNativeCitable ? ["hot", "evidence", "thai", "tci"] : ["thai", "tci"],
+    filters: [
+      ...(isNativeCitable ? ["hot", "evidence"] as FeedFilter[] : []),
+      "thai",
+      ...(isThaiJo ? ["tci"] as FeedFilter[] : []),
+    ],
     evidenceCount: isNativeCitable ? 1 : 0,
     pages: 0,
     pageLabel: isNativeCitable ? "Native full paper" : "Metadata only",
@@ -892,7 +904,7 @@ function cardFromCatalog(row: CatalogRow): ResearchFeedCard {
     rightsStatus: row.rights_status,
     accessLevel: row.access_level,
     licenseExpression: row.license,
-    licenseUrl: row.license === "CC-BY-4.0" ? "https://creativecommons.org/licenses/by/4.0/" : null,
+    licenseUrl: ccByVersion ? `https://creativecommons.org/licenses/by/${ccByVersion}/` : null,
     discoveryLayer: isNativeCitable ? "evidence" : "thai_discovery",
   };
 }
@@ -1032,6 +1044,8 @@ export function buildCoverageLedger(
   const snapshotMap = new Map(snapshots.map((row) => [row.provider, row]));
   const thaiJo = providers.get("tci_thaijo");
   const snapshot = snapshotMap.get("tci_thaijo");
+  const pmc = providers.get("pmc_oa");
+  const pmcSnapshot = snapshotMap.get("pmc_oa");
   const ncceSnapshot = snapshotMap.get("ncce");
   const studentSnapshot = snapshotMap.get("student_transport_projects");
   const thaiJoMetadataOnly = snapshot?.metadataOnly ?? thaiJo?.metadataOnly ?? 0;
@@ -1052,6 +1066,21 @@ export function buildCoverageLedger(
       freshness: snapshot?.freshness ?? "",
       filter: "tci_thaijo",
     },
+    ...((pmc || pmcSnapshot) ? [{
+      provider: "pmc_oa",
+      label: "PMC · Thai-affiliated global OA",
+      state: "live_bounded" as const,
+      records: pmcSnapshot?.records ?? pmc?.records ?? 0,
+      metadataOnly: pmcSnapshot?.metadataOnly ?? pmc?.metadataOnly ?? 0,
+      pageCitable: pmcSnapshot?.pageCitable ?? pmc?.citable ?? 0,
+      nativeFullPaper: pmcSnapshot?.nativeFullPaper ?? 0,
+      sourceHostedFullPaper: pmcSnapshot?.sourceHostedFullPaper ?? null,
+      endpointObserved: pmcSnapshot?.endpointObserved ?? 1,
+      endpointKnown: 1,
+      rights: "article_specific" as const,
+      freshness: pmcSnapshot?.freshness ?? "",
+      filter: "pmc_oa",
+    }] : []),
     {
       provider: "ncce",
       label: "NCCE",
@@ -1659,7 +1688,7 @@ export async function listResearchFeed(params: ListFeedParams): Promise<Research
         facetsFromCounts(evidenceFacets, catalogFacets),
         snapshots,
       ));
-  const hasAuthoritativeNative = facets.coverage.some((row) => row.provider === "tci_thaijo" && row.nativeFullPaper > 0);
+  const hasAuthoritativeNative = facets.coverage.some((row) => row.nativeFullPaper > 0);
   const readerCards = rightsReviewedReaderCards(filter, collection, q)
     .filter((card) => !provider || card.provider === provider);
   if (filter === "thai" || filter === "tci") {
