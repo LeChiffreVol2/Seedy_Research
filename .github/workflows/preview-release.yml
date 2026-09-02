@@ -177,6 +177,7 @@ jobs:
           psql "$SUPABASE_PREVIEW_DB_URL" -v ON_ERROR_STOP=1 -f supabase/migrations/20260902010000_civil_authoritative_research_coverage.sql
           psql "$SUPABASE_PREVIEW_DB_URL" -v ON_ERROR_STOP=1 -f supabase/migrations/20260902020000_civil_native_reader_scale_1000.sql
           psql "$SUPABASE_PREVIEW_DB_URL" -v ON_ERROR_STOP=1 -f supabase/migrations/20260902123406_civil_global_visibility_audit.sql
+          psql "$SUPABASE_PREVIEW_DB_URL" -v ON_ERROR_STOP=1 -f supabase/migrations/20260902173000_civil_catalog_relevance_first.sql
           test "$(psql "$SUPABASE_PREVIEW_DB_URL" -v ON_ERROR_STOP=1 -Atqc "$CIVIL_DATA_RPC_STATE_SQL")" = "ready"
 
   deploy-mcp-preview:
@@ -356,6 +357,7 @@ jobs:
           psql "$SUPABASE_DB_URL" -v ON_ERROR_STOP=1 -f supabase/migrations/20260902010000_civil_authoritative_research_coverage.sql
           psql "$SUPABASE_DB_URL" -v ON_ERROR_STOP=1 -f supabase/migrations/20260902020000_civil_native_reader_scale_1000.sql
           psql "$SUPABASE_DB_URL" -v ON_ERROR_STOP=1 -f supabase/migrations/20260902123406_civil_global_visibility_audit.sql
+          psql "$SUPABASE_DB_URL" -v ON_ERROR_STOP=1 -f supabase/migrations/20260902173000_civil_catalog_relevance_first.sql
           test "$(psql "$SUPABASE_DB_URL" -v ON_ERROR_STOP=1 -Atqc "$CIVIL_DATA_RPC_STATE_SQL")" = "ready"
       - name: Stage MCP production deployment
         id: stage_mcp

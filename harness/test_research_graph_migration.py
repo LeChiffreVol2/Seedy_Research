@@ -9,6 +9,7 @@ MIGRATION = ROOT / "supabase" / "migrations" / "20260831120000_civil_research_gr
 COVERAGE_MIGRATION = ROOT / "supabase" / "migrations" / "20260902010000_civil_authoritative_research_coverage.sql"
 SCALE_MIGRATION = ROOT / "supabase" / "migrations" / "20260902020000_civil_native_reader_scale_1000.sql"
 VISIBILITY_MIGRATION = ROOT / "supabase" / "migrations" / "20260902123406_civil_global_visibility_audit.sql"
+CATALOG_RELEVANCE_MIGRATION = ROOT / "supabase" / "migrations" / "20260902173000_civil_catalog_relevance_first.sql"
 
 
 class ResearchGraphMigrationTests(unittest.TestCase):
@@ -174,6 +175,28 @@ class VisibilityAuditMigrationTests(unittest.TestCase):
     def test_security_definer_functions_pin_an_empty_search_path(self) -> None:
         self.assertEqual(self.lower.count("security definer\nset search_path = ''"), 3)
         self.assertNotIn("(?:", self.lower)
+
+
+class CatalogRelevanceMigrationTests(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls) -> None:
+        cls.lower = CATALOG_RELEVANCE_MIGRATION.read_text(encoding="utf-8").lower()
+
+    def test_relevance_precedes_native_reader_tie_break(self) -> None:
+        order = self.lower.split("order by\n    ranked.score desc", 1)
+        self.assertEqual(len(order), 2)
+        ordering = order[1].split("limit (select safe_count", 1)[0]
+        self.assertIn("case when native_first then ranked.native_rank else 0 end", ordering)
+
+    def test_corrected_catalog_rpc_stays_bounded_and_service_only(self) -> None:
+        signature = (
+            "public.search_civil_source_catalog_public_v2"
+            "(text,text,text,text,boolean,integer,integer)"
+        )
+        self.assertIn("least(greatest(coalesce(match_count, 20), 1), 30)", self.lower)
+        self.assertIn(f"revoke all on function {signature}", self.lower)
+        self.assertIn(f"grant execute on function {signature}\nto service_role", self.lower)
+        self.assertNotIn(f"grant execute on function {signature}\nto anon", self.lower)
 
 
 if __name__ == "__main__":

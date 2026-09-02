@@ -54,7 +54,8 @@ Required variables:
 
 The visibility audit is a comparison layer inside Seedy Research. It does not
 submit, repair, or synchronize records with OpenAlex. Apply migration
-`20260902123406_civil_global_visibility_audit.sql`, then preview a bounded run:
+`20260902123406_civil_global_visibility_audit.sql` followed by
+`20260902173000_civil_catalog_relevance_first.sql`, then preview a bounded run:
 
 ```bash
 python3.10 pipeline/audit_openalex_visibility.py --provider tci_thaijo --strategy identifiers --max-records 25
@@ -72,6 +73,10 @@ attempted from a 2,681-record active ThaiJO cohort, yielding 27 exact identities
 provider-unavailable receipts. Preserve the earlier v1 run as incident history;
 its DOI OR-filter result is known to contain false negatives and must not be
 used in product claims.
+
+The relevance-first follow-up ensures an exact Thai-local metadata title ranks
+ahead of loosely related native-reader records while native access remains the
+tie-breaker for equally relevant results.
 
 ## Rollback
 - Return to the legacy section-then-chunk recipe: `FAST_RETRIEVAL_ENABLED=false`.

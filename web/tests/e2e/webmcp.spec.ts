@@ -706,7 +706,7 @@ test("completes the production-seed visibility-gated Passport in exactly four si
       status: 200,
       contentType: "application/json",
       body: JSON.stringify({
-        cards: [overlookedThaiCard, goldenPassportCard],
+        cards: [overlookedThaiCard],
         facets: {
           total: 1300,
           catalogTotal: 3878,
@@ -777,7 +777,7 @@ test("completes the production-seed visibility-gated Passport in exactly four si
   const discovered = await page.evaluate(async () => {
     const tools = (window as unknown as { __seedResearchWebMcpTools: Map<string, { execute: (input: unknown) => Promise<unknown> }> }).__seedResearchWebMcpTools;
     return tools.get("discover_research")?.execute({
-      query: "AI in English language teaching in Thailand methodological limitations",
+      query: "Numerical Analyses of Piled Raft Foundation in Soft Soil Using 3D-FEM",
       collection: "all",
       scope: "thai",
     });
@@ -785,7 +785,7 @@ test("completes the production-seed visibility-gated Passport in exactly four si
     thaiEvidence?: Array<{ source?: string; nativeReaderVerified?: boolean }>;
     thaiDiscoveryRecords?: Array<{ source?: string; visibilityState?: string; citable?: boolean }>;
   };
-  expect(discovered.thaiEvidence?.[0]).toMatchObject({ source: goldenPassportCard.source, nativeReaderVerified: true });
+  expect(discovered.thaiEvidence).toEqual([]);
   expect(discovered.thaiDiscoveryRecords?.[0]).toMatchObject({
     source: overlookedThaiCard.source,
     visibilityState: "not_found_in_audit",
