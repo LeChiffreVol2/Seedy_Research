@@ -7,6 +7,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 MIGRATION = ROOT / "supabase" / "migrations" / "20260831120000_civil_research_graph_assets.sql"
 COVERAGE_MIGRATION = ROOT / "supabase" / "migrations" / "20260902010000_civil_authoritative_research_coverage.sql"
+SCALE_MIGRATION = ROOT / "supabase" / "migrations" / "20260902020000_civil_native_reader_scale_1000.sql"
 
 
 class ResearchGraphMigrationTests(unittest.TestCase):
@@ -97,6 +98,42 @@ class AuthoritativeCoverageMigrationTests(unittest.TestCase):
         self.assertIn("grant execute on function public.civil_research_coverage_v1()\nto service_role", self.lower)
         self.assertNotIn("grant execute on function public.civil_research_coverage_v1()\nto anon", self.lower)
         self.assertIn("evidence_status in ('extracted', 'indexed')", self.lower)
+
+
+class NativeReaderScaleMigrationTests(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls) -> None:
+        cls.lower = SCALE_MIGRATION.read_text(encoding="utf-8").lower()
+
+    def test_catalog_page_is_bounded_and_native_first_without_exposing_abstracts(self) -> None:
+        for marker in (
+            "search_civil_source_catalog_public_v2",
+            "native_first boolean",
+            "match_offset integer",
+            "evidence_status in ('extracted', 'indexed')",
+            "least(greatest(coalesce(match_count, 20), 1), 30)",
+            "least(greatest(coalesce(match_offset, 0), 0), 10000)",
+        ):
+            self.assertIn(marker, self.lower)
+        self.assertNotIn("abstract_local text", self.lower)
+        self.assertNotIn("abstract_en text", self.lower)
+
+    def test_catalog_and_native_reader_indexes_support_thousand_paper_access(self) -> None:
+        for index in (
+            "civil_source_catalog_native_feed_idx",
+            "civil_source_catalog_provider_native_feed_idx",
+            "civil_fulltext_pages_asset_page_idx",
+        ):
+            self.assertIn(index, self.lower)
+
+    def test_scale_rpc_remains_service_only(self) -> None:
+        signature = (
+            "public.search_civil_source_catalog_public_v2"
+            "(text,text,text,text,boolean,integer,integer)"
+        )
+        self.assertIn(f"revoke all on function {signature}", self.lower)
+        self.assertIn(f"grant execute on function {signature}\nto service_role", self.lower)
+        self.assertNotIn(f"grant execute on function {signature}\nto anon", self.lower)
 
 
 if __name__ == "__main__":

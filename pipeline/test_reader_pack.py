@@ -1,13 +1,17 @@
 import hashlib
 import json
+import os
 import shutil
+import sys
 import tempfile
+import types
 import unittest
 from copy import deepcopy
 from pathlib import Path
 from urllib.parse import urlparse
+from unittest.mock import patch
 
-from pipeline.ingest_reader_pack import build_rows, read_pack
+from pipeline.ingest_reader_pack import apply_rows, build_rows, plan_apply_batches, read_pack
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -119,6 +123,85 @@ class ReaderPackTest(unittest.TestCase):
         self.assertEqual(row["catalog"]["doi"], None)
         self.assertEqual(row["catalog"]["discipline"], "medical_and_health_sciences")
         self.assertTrue(row["catalog"]["raw_metadata"]["medical_research_only"])
+
+    def test_thousand_paper_apply_plan_stays_bounded(self) -> None:
+        plan = plan_apply_batches(
+            paper_count=1_000,
+            page_count=11_000,
+            provider_count=10,
+            batch_size=100,
+            page_batch_size=100,
+        )
+        self.assertEqual(plan["papers"], 1_000)
+        self.assertEqual(plan["pages"], 11_000)
+        self.assertLessEqual(plan["estimatedApiRequests"], 175)
+        self.assertEqual(plan["legacyEstimatedApiRequests"], 6_002)
+
+    def test_apply_uses_bulk_identity_reads_and_bounded_upserts(self) -> None:
+        class FakeResponse:
+            def __init__(self, data: list[dict[str, object]]) -> None:
+                self.data = data
+
+        class FakeQuery:
+            def __init__(self, client: "FakeClient", table: str) -> None:
+                self.client = client
+                self.table = table
+                self.operation = ""
+                self.payload: object = None
+
+            def select(self, _columns: str) -> "FakeQuery":
+                self.operation = "select"
+                return self
+
+            def insert(self, payload: object) -> "FakeQuery":
+                self.operation = "insert"
+                self.payload = payload
+                return self
+
+            def upsert(self, payload: object, **_kwargs: object) -> "FakeQuery":
+                self.operation = "upsert"
+                self.payload = payload
+                return self
+
+            def update(self, payload: object) -> "FakeQuery":
+                self.operation = "update"
+                self.payload = payload
+                return self
+
+            def eq(self, *_args: object) -> "FakeQuery":
+                return self
+
+            def in_(self, *_args: object) -> "FakeQuery":
+                return self
+
+            def execute(self) -> FakeResponse:
+                self.client.calls.append((self.table, self.operation, self.payload))
+                if self.table == "civil_ingest_runs" and self.operation == "insert":
+                    return FakeResponse([{"id": "run-1"}])
+                return FakeResponse([])
+
+        class FakeClient:
+            def __init__(self) -> None:
+                self.calls: list[tuple[str, str, object]] = []
+
+            def table(self, name: str) -> FakeQuery:
+                return FakeQuery(self, name)
+
+        _, papers = read_pack(PACK)
+        rows = [build_rows(paper, pages) for paper, pages in papers]
+        client = FakeClient()
+        fake_supabase = types.ModuleType("supabase")
+        fake_supabase.create_client = lambda _url, _key: client  # type: ignore[attr-defined]
+        with patch.dict(sys.modules, {"supabase": fake_supabase}), patch.dict(
+            os.environ,
+            {"SUPABASE_URL": "https://example.supabase.co", "SUPABASE_SERVICE_KEY": "test-key"},
+        ):
+            apply_rows(rows, batch_size=2, page_batch_size=20)
+
+        self.assertEqual(len(client.calls), 16)
+        writes = [payload for _table, operation, payload in client.calls if operation == "upsert"]
+        self.assertTrue(writes)
+        self.assertLessEqual(max(len(payload) for payload in writes if isinstance(payload, list)), 20)
 
 
 if __name__ == "__main__":

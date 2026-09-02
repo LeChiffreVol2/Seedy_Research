@@ -20,6 +20,13 @@ Run production smoke by overriding URLs:
 make prod-smoke
 ```
 
+Run the bounded 1,000-paper request-path smoke after applying the matching
+migration and deploying web:
+
+```bash
+make native-scale
+```
+
 Strict smoke uses the same checks as local smoke, but `--strict`/`--fail-on-warn` exits non-zero on `warn`. Use it for deploy promotion so unreachable production services, missing auth, or degraded live checks block the promotion path. Keep plain `python3.10 harness/run_smoke.py` for offline local development because unreachable local services remain warnings.
 
 For a full local + production release gate:
@@ -202,9 +209,26 @@ database for the deterministic fixture. For the reviewed 100-paper cohort, run
 `pipeline/build_native_reader_cohort.py` against
 `pipeline/cohorts/bscm_tci1_100.json`, validate its ignored output pack, and
 apply that pack explicitly. Apply `20260902010000_civil_authoritative_research_coverage.sql`,
-then verify 103 native assets, 1,105 checksum-valid pages, zero asset/page-count
+then apply `20260902020000_civil_native_reader_scale_1000.sql`. Verify 103 native
+assets, 1,105 checksum-valid pages, zero asset/page-count
 or page-hash mismatches, RLS on all graph tables, and no
 `anon`/`authenticated` table grants.
+
+For a larger reviewed pack, always inspect the dry-run request budget before
+writing:
+
+```bash
+.venv310/bin/python pipeline/ingest_reader_pack.py \
+  --pack-dir /path/to/rights-reviewed-pack \
+  --batch-size 100 \
+  --page-batch-size 100
+```
+
+The same command with `--apply` performs bounded bulk reads/upserts. Keep both
+batch sizes at 200 or below. After apply, compare `civil_work_assets.page_count`
+to `civil_fulltext_pages`, recompute page hashes, confirm graph-table RLS/grants,
+and run `make native-scale`. Scaling page storage does not authorize any new
+asset and does not automatically promote its text into the vector index.
 
 For public MCP OAuth, set the Supabase OAuth authorization path to
 `/oauth/consent`, enable dynamic client registration, and select

@@ -216,6 +216,21 @@ environment ฝั่ง server (`SUPABASE_URL`, `SUPABASE_SERVICE_KEY`) แล�
 python3.10 pipeline/ingest_reader_pack.py --apply
 ```
 
+ชุดขนาดใหญ่ใช้ bulk identity lookup และ bounded upsert; ตรวจแผนแบบ dry-run
+ก่อนเสมอ แล้วจึงเติม `--apply` หลัง rights review และ database preview ผ่าน:
+
+```bash
+.venv310/bin/python pipeline/ingest_reader_pack.py \
+  --pack-dir /path/to/rights-reviewed-pack \
+  --batch-size 100 \
+  --page-batch-size 100
+```
+
+ที่ 1,000 papers / 11,000 pages / 10 providers แผน conservative ใช้ไม่เกิน
+171 PostgREST requests เทียบกับอย่างน้อย 6,002 requests ในเส้นทางทีละ paper
+เดิม. ตัวเลขนี้เป็น ingest request budget ไม่ใช่สิทธิ์ใช้งานหรือหลักฐานว่า
+production มี 1,000 papers แล้ว.
+
 ตรวจ reader contract และ browser flow จาก repository root:
 
 ```bash

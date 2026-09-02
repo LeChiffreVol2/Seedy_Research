@@ -320,6 +320,7 @@ def check_backbone_guardrails() -> Check:
     page_text = (ROOT / "web" / "app" / "page.tsx").read_text(encoding="utf-8", errors="replace")
     mcp_requirements = (ROOT / "mcp-server" / "requirements.txt").read_text(encoding="utf-8", errors="replace")
     catalog_boundary = (ROOT / "supabase" / "migrations" / "20260813100000_civil_catalog_public_rights_boundary.sql").read_text(encoding="utf-8", errors="replace")
+    native_scale = (ROOT / "supabase" / "migrations" / "20260902020000_civil_native_reader_scale_1000.sql").read_text(encoding="utf-8", errors="replace")
     account_deletion = (ROOT / "supabase" / "migrations" / "20260813110000_civil_transactional_account_deletion.sql").read_text(encoding="utf-8", errors="replace")
     mcp_units = (ROOT / "supabase" / "migrations" / "20260815150000_civil_mcp_research_units.sql").read_text(encoding="utf-8", errors="replace")
     billing_release_chain = [
@@ -408,6 +409,18 @@ def check_backbone_guardrails() -> Check:
             "search_civil_source_catalog_public_v1" in server_text
             and "search_civil_source_catalog_public_v1" in catalog_boundary
             and "Stored abstracts are intentionally omitted" in catalog_boundary
+            and "search_civil_source_catalog_public_v2" in native_scale
+            and "abstract_local text" not in native_scale
+            and "abstract_en text" not in native_scale
+        ),
+        "native_reader_scale_1000": (
+            release_text.count("20260902020000_civil_native_reader_scale_1000.sql") == 2
+            and release_text.count("python harness/run_native_scale.py --strict") == 2
+            and "search_civil_source_catalog_public_v2" in release_text
+            and "native_first boolean" in native_scale
+            and "civil_source_catalog_native_feed_idx" in native_scale
+            and "civil_source_catalog_provider_native_feed_idx" in native_scale
+            and "civil_fulltext_pages_asset_page_idx" in native_scale
         ),
         "bounded_evidence_feed_rpc": (
             "20260813140000_civil_bounded_evidence_feed.sql" in release_text

@@ -60,13 +60,39 @@ export. Its access resolver fails closed across five modes: `native_verified`,
 mode receives full page text; every other mode exposes the appropriate official
 link or access explanation without proxying the asset.
 
-This is a production slice, not a national coverage claim. Migration
-`20260831120000`, `20260902010000`, all 103 assets, and all 1,105 pages are applied to Supabase;
+This is a production slice, not a national coverage claim. Migrations
+`20260831120000`, `20260902010000`, and `20260902020000`, all 103 assets, and
+all 1,105 pages are applied to Supabase;
 the matching MCP and web releases are live on Vercel. Post-apply checks report
 zero page-checksum mismatches, RLS on every graph table, and no direct
 `anon`/`authenticated` table reads. The 103-paper cohort proves a lawful,
 database-backed end-to-end slice; it does not establish
 coverage of TCI, TNRR, TDC, Thai conferences, or Thai research nationally.
+
+### 1,000-paper capacity envelope
+
+The native reader is now engineered for a **1,000-paper rights-cleared cohort**,
+but production still contains 103 papers. At the observed mean of 10.73 pages
+per paper, 1,000 papers project to roughly 10,728 page rows. The current 1,105
+page rows occupy about 4.2 MB in PostgreSQL, so page text is not the immediate
+capacity bottleneck. Source PDF metadata totals about 78 MB for 103 papers; if
+binaries were later stored rather than left at the official host, the same mean
+projects to roughly 0.76 GB before replicas, backups, and storage overhead.
+
+Migration `20260902020000_civil_native_reader_scale_1000.sql` adds a bounded,
+service-only native-first catalog RPC and supporting feed/page indexes. A deep
+Explore cursor now reads at most 30 catalog rows instead of accumulating every
+preceding native and metadata record in one Vercel invocation. The reader still
+returns at most 10 pages. Bulk ingest batches identity resolution and writes;
+the conservative 1,000-paper/11,000-page/10-provider plan is at most 171
+PostgREST requests, versus at least 6,002 on the former per-paper path.
+
+This is a storage and request-shape readiness claim, not proof of 1,000-paper
+rights coverage or 1,000 simultaneous users. Before each cohort expansion, run
+the rights gate, dry-run apply plan, preview migration, production-like scale
+smoke, and post-apply integrity queries. If the same cohort is promoted into
+semantic RAG, benchmark recall and latency separately: the current database is
+already dominated by about 71,000 vector chunks, not by reader page rows.
 
 OpenAlex and Scopus are not empty of Thai research. Some Thai journals,
 Thai-affiliated international publications, DOI records, and repository copies

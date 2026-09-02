@@ -6,11 +6,13 @@ The harness is the engineering feedback loop for agentic development. It verifie
 ```bash
 make local-gate
 make prod-smoke
+make native-scale
 make release-gate
 
 python3.10 harness/check_invariants.py
 python3.10 harness/run_smoke.py
 python3.10 harness/run_smoke.py --strict
+python3.10 harness/run_native_scale.py --strict
 python3.10 harness/run_memory_eval.py
 python3.10 harness/run_eval.py --mode smoke
 python3.10 harness/score_quality.py
@@ -90,6 +92,14 @@ confirm that `inspect_paper_evidence` reports the lawful access state and verifi
 including full page text and that the page still registers exactly six WebMCP
 site tools.
 
+`harness/run_native_scale.py` is the bounded 1,000-paper capacity smoke. It
+loads a ThaiJO catalog cursor at offset 990 and a rights-verified reader page in
+parallel, rejects unbounded response shapes or non-200 responses, and records
+median/p95 latency. Defaults are intentionally modest (24 requests per endpoint,
+concurrency 6); this verifies the deployed request path without pretending to be
+a 1,000-concurrent-user load test. Increase traffic only in a dedicated preview
+environment with agreed Supabase and Vercel limits.
+
 ## Report Contract
 Every harness command writes JSON to `harness/reports/` with:
 - `status`: `pass | warn | fail`
@@ -113,7 +123,15 @@ Quality scoring rejects reports older than `HARNESS_MAX_REPORT_AGE_HOURS` (defau
 ## CI And Deploy Readiness
 `.github/workflows/ci.yml` runs CivilMCP source checks only. `.github/workflows/preview-release.yml` builds the CivilMCP MCP and web Vercel Preview deployments from the same commit, runs strict cross-service smoke, and stores harness reports as workflow artifacts. Protected projects may use separate `MCP_VERCEL_AUTOMATION_BYPASS_SECRET` and `WEB_VERCEL_AUTOMATION_BYPASS_SECRET` values; the shared secret remains a fallback.
 
-The workflow first applies the additive CivilMCP migrations to `SUPABASE_PREVIEW_DB_URL` from the protected GitHub `preview` environment. Production release is manual through `workflow_dispatch` with `promote=true`, `GA_PROMOTION_ENABLED=true` in the protected GitHub `production` environment. After approval it migrates `SUPABASE_DB_URL`, creates staged Production deployments, smokes those exact URLs, then promotes MCP followed by CivilMCP web. The final gate compares canonical aliases with the staged deployment IDs. No rebuild occurs between production-candidate smoke and promotion.
+The workflow first applies the additive CivilMCP migrations, including the
+native-reader scale migration, to `SUPABASE_PREVIEW_DB_URL` from the protected
+GitHub `preview` environment. Production release is manual through
+`workflow_dispatch` with `promote=true`, `GA_PROMOTION_ENABLED=true` in the
+protected GitHub `production` environment. After approval it migrates
+`SUPABASE_DB_URL`, creates staged Production deployments, smokes those exact
+URLs, then promotes MCP followed by CivilMCP web. The final gate compares
+canonical aliases with the staged deployment IDs. No rebuild occurs between
+production-candidate smoke and promotion.
 
 Source checks include:
 - Python syntax: `py_compile` over harness, MCP server, pipeline, Supabase, and eval Python files.

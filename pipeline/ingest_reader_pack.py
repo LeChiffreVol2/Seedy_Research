@@ -12,8 +12,10 @@ from __future__ import annotations
 import argparse
 import hashlib
 import json
+import math
 import os
 import uuid
+from collections import defaultdict
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
@@ -285,7 +287,108 @@ def build_rows(paper: dict[str, Any], pages: list[dict[str, Any]]) -> dict[str, 
     }
 
 
-def apply_rows(rows: list[dict[str, Any]]) -> None:
+def plan_apply_batches(
+    *,
+    paper_count: int,
+    page_count: int,
+    provider_count: int,
+    batch_size: int = 100,
+    page_batch_size: int = 100,
+) -> dict[str, int]:
+    """Return a conservative PostgREST request budget for a bulk apply.
+
+    The estimate is part of the operator-facing dry-run contract: it makes a
+    1,000-paper release reviewable before any database or embedding write.
+    """
+    if paper_count < 0 or page_count < 0 or provider_count < 0:
+        raise ValueError("Apply-plan counts cannot be negative.")
+    if batch_size < 1 or page_batch_size < 1:
+        raise ValueError("Apply-plan batch sizes must be positive.")
+    providers = max(1, provider_count) if paper_count else 0
+    identity_lookup_batches = math.ceil(paper_count / batch_size) if paper_count else 0
+    # Worst case with every observed provider represented: one provider owns
+    # almost the whole cohort and each remaining provider owns one record.
+    provider_lookup_batches = (
+        math.ceil(max(0, paper_count - providers + 1) / batch_size) + providers - 1
+        if paper_count else 0
+    )
+    row_write_batches = 3 * math.ceil(paper_count / batch_size) if paper_count else 0
+    page_write_batches = math.ceil(page_count / page_batch_size) if page_count else 0
+    run_ledger_requests = 2 if paper_count else 0
+    estimated = (
+        identity_lookup_batches
+        + provider_lookup_batches
+        + row_write_batches
+        + page_write_batches
+        + run_ledger_requests
+    )
+    # The legacy path issued five per-paper identity/write requests plus at
+    # least one page request for every non-empty paper.
+    legacy = paper_count * 6 + run_ledger_requests
+    return {
+        "papers": paper_count,
+        "pages": page_count,
+        "providers": provider_count,
+        "batchSize": batch_size,
+        "pageBatchSize": page_batch_size,
+        "estimatedApiRequests": estimated,
+        "legacyEstimatedApiRequests": legacy,
+    }
+
+
+def _batches(items: list[Any], size: int) -> list[list[Any]]:
+    return [items[offset : offset + size] for offset in range(0, len(items), size)]
+
+
+def _response_rows(response: Any) -> list[dict[str, Any]]:
+    return list(getattr(response, "data", None) or [])
+
+
+def _prepare_existing_identities(client: Any, rows: list[dict[str, Any]], batch_size: int) -> None:
+    canonical_keys = list(dict.fromkeys(row["work"]["canonical_key"] for row in rows))
+    existing_works: dict[str, str] = {}
+    for batch in _batches(canonical_keys, batch_size):
+        response = client.table("civil_works").select("canonical_key,work_id").in_(
+            "canonical_key", batch
+        ).execute()
+        existing_works.update({str(item["canonical_key"]): str(item["work_id"]) for item in _response_rows(response)})
+    for row in rows:
+        resolved_work_id = existing_works.get(row["work"]["canonical_key"])
+        if not resolved_work_id:
+            continue
+        row["work"]["work_id"] = resolved_work_id
+        row["catalog"]["work_id"] = resolved_work_id
+        row["asset"]["work_id"] = resolved_work_id
+
+    assets_by_provider: dict[str, list[str]] = defaultdict(list)
+    for row in rows:
+        assets_by_provider[row["asset"]["provider"]].append(row["asset"]["provider_asset_id"])
+    existing_assets: dict[tuple[str, str], str] = {}
+    for provider, provider_asset_ids in assets_by_provider.items():
+        for batch in _batches(list(dict.fromkeys(provider_asset_ids)), batch_size):
+            response = client.table("civil_work_assets").select(
+                "provider,provider_asset_id,asset_id"
+            ).eq("provider", provider).in_("provider_asset_id", batch).execute()
+            existing_assets.update({
+                (str(item["provider"]), str(item["provider_asset_id"])): str(item["asset_id"])
+                for item in _response_rows(response)
+            })
+    for row in rows:
+        asset_key = (row["asset"]["provider"], row["asset"]["provider_asset_id"])
+        resolved_asset_id = existing_assets.get(asset_key)
+        if not resolved_asset_id:
+            continue
+        row["asset"]["asset_id"] = resolved_asset_id
+        for page in row["pages"]:
+            page["asset_id"] = resolved_asset_id
+
+
+def apply_rows(
+    rows: list[dict[str, Any]],
+    *,
+    batch_size: int = 100,
+    page_batch_size: int = 100,
+) -> None:
     from supabase import create_client
 
     url = os.getenv("SUPABASE_URL", "").strip()
@@ -293,52 +396,61 @@ def apply_rows(rows: list[dict[str, Any]]) -> None:
     if not url or not service_key:
         raise RuntimeError("SUPABASE_URL and SUPABASE_SERVICE_KEY are required with --apply.")
     client = create_client(url, service_key)
+    if not 1 <= batch_size <= 200 or not 1 <= page_batch_size <= 200:
+        raise ValueError("Database batch sizes must be between 1 and 200.")
     run_id: str | None = None
     started_at = utc_now()
     counts = {"papers": len(rows), "assets": len(rows), "pages": sum(len(row["pages"]) for row in rows)}
+    apply_plan = plan_apply_batches(
+        paper_count=counts["papers"],
+        page_count=counts["pages"],
+        provider_count=len({row["asset"]["provider"] for row in rows}),
+        batch_size=batch_size,
+        page_batch_size=page_batch_size,
+    )
     try:
         response = client.table("civil_ingest_runs").insert({
             "provider": "tci_thaijo",
             "endpoint": "rights-reviewed-reader-pack-v1",
             "mode": "full_text",
             "status": "running",
-            "counts": {**counts, "full_text_downloads": 0},
+            "counts": {**counts, "full_text_downloads": 0, "apply_plan": apply_plan},
             "started_at": started_at,
         }).execute()
         data = getattr(response, "data", None) or []
         run_id = str(data[0]["id"]) if data else None
 
-        for row in rows:
-            existing_work = client.table("civil_works").select("work_id").eq(
-                "canonical_key", row["work"]["canonical_key"]
-            ).limit(1).execute()
-            existing_work_rows = getattr(existing_work, "data", None) or []
-            if existing_work_rows:
-                resolved_work_id = str(existing_work_rows[0]["work_id"])
-                row["work"]["work_id"] = resolved_work_id
-                row["catalog"]["work_id"] = resolved_work_id
-                row["asset"]["work_id"] = resolved_work_id
-            client.table("civil_works").upsert(row["work"], on_conflict="canonical_key").execute()
-            client.table("civil_source_catalog").upsert(row["catalog"], on_conflict="provider,provider_record_id").execute()
-            existing_asset = client.table("civil_work_assets").select("asset_id").eq(
-                "provider", row["asset"]["provider"]
-            ).eq("provider_asset_id", row["asset"]["provider_asset_id"]).limit(1).execute()
-            existing_asset_rows = getattr(existing_asset, "data", None) or []
-            if existing_asset_rows:
-                resolved_asset_id = str(existing_asset_rows[0]["asset_id"])
-                row["asset"]["asset_id"] = resolved_asset_id
-                for page in row["pages"]:
-                    page["asset_id"] = resolved_asset_id
-            client.table("civil_work_assets").upsert(row["asset"], on_conflict="provider,provider_asset_id").execute()
-            pages = row["pages"]
-            for offset in range(0, len(pages), 20):
-                client.table("civil_fulltext_pages").upsert(
-                    pages[offset : offset + 20], on_conflict="asset_id,page_number"
-                ).execute()
+        _prepare_existing_identities(client, rows, batch_size)
+        works = list({row["work"]["canonical_key"]: row["work"] for row in rows}.values())
+        catalogs = [row["catalog"] for row in rows]
+        assets = list({
+            (row["asset"]["provider"], row["asset"]["provider_asset_id"]): row["asset"]
+            for row in rows
+        }.values())
+        pages = [page for row in rows for page in row["pages"]]
+        for batch in _batches(works, batch_size):
+            client.table("civil_works").upsert(batch, on_conflict="canonical_key").execute()
+        for batch in _batches(catalogs, batch_size):
+            client.table("civil_source_catalog").upsert(
+                batch, on_conflict="provider,provider_record_id"
+            ).execute()
+        for batch in _batches(assets, batch_size):
+            client.table("civil_work_assets").upsert(
+                batch, on_conflict="provider,provider_asset_id"
+            ).execute()
+        for batch in _batches(pages, page_batch_size):
+            client.table("civil_fulltext_pages").upsert(
+                batch, on_conflict="asset_id,page_number"
+            ).execute()
         if run_id:
             client.table("civil_ingest_runs").update({
                 "status": "completed",
-                "counts": {**counts, "full_text_downloads": 0, "rights_verified_assets": len(rows)},
+                "counts": {
+                    **counts,
+                    "full_text_downloads": 0,
+                    "rights_verified_assets": len(rows),
+                    "apply_plan": apply_plan,
+                },
                 "finished_at": utc_now(),
             }).eq("id", run_id).execute()
     except Exception as exc:
@@ -359,6 +471,8 @@ def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--pack-dir", type=Path, default=DEFAULT_PACK)
     parser.add_argument("--apply", action="store_true", help="Mutate the configured Supabase project.")
+    parser.add_argument("--batch-size", type=int, default=100, help="Works/catalog/assets per PostgREST upsert (1-200).")
+    parser.add_argument("--page-batch-size", type=int, default=100, help="Full-text pages per PostgREST upsert (1-200).")
     args = parser.parse_args()
     load_dotenv(ROOT / ".env")
     _, papers = read_pack(args.pack_dir.resolve())
@@ -370,9 +484,16 @@ def main() -> None:
         "pages": sum(len(row["pages"]) for row in rows),
         "full_text_downloads": 0,
         "sources": [row["catalog"]["provider_record_id"] for row in rows],
+        "applyPlan": plan_apply_batches(
+            paper_count=len(rows),
+            page_count=sum(len(row["pages"]) for row in rows),
+            provider_count=len({row["asset"]["provider"] for row in rows}),
+            batch_size=args.batch_size,
+            page_batch_size=args.page_batch_size,
+        ),
     }
     if args.apply:
-        apply_rows(rows)
+        apply_rows(rows, batch_size=args.batch_size, page_batch_size=args.page_batch_size)
     print(json.dumps(summary, ensure_ascii=False, indent=2))
 
 

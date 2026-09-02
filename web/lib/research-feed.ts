@@ -1253,17 +1253,35 @@ async function searchCatalog({
   q,
   provider = "",
   evidenceStatus,
+  nativeFirst = false,
   limit,
   offset,
 }: {
   q: string;
   provider?: string;
   evidenceStatus?: CatalogRow["evidence_status"];
+  nativeFirst?: boolean;
   limit: number;
   offset: number;
 }): Promise<{ rows: CatalogRow[]; total: number }> {
   const supabase = getSupabaseAdmin() as any;
-  if (!evidenceStatus) {
+  const v2 = await supabase.rpc("search_civil_source_catalog_public_v2", {
+    search_query: q,
+    filter_provider: provider || null,
+    filter_discipline: null,
+    filter_evidence_status: evidenceStatus ?? null,
+    native_first: nativeFirst,
+    match_count: limit,
+    match_offset: offset,
+  });
+  if (!v2.error) {
+    const rows = (v2.data ?? []) as Array<CatalogRow & { total_count?: number | string }>;
+    return { rows, total: Number(rows[0]?.total_count ?? 0) };
+  }
+  if (!rpcUnavailable(v2.error, "search_civil_source_catalog_public_v2")) {
+    throw new Error(`Failed to search source catalog: ${v2.error.message}`);
+  }
+  if (!evidenceStatus && !nativeFirst) {
     const { data, error } = await supabase.rpc("search_civil_source_catalog_public_v1", {
       search_query: q,
       filter_provider: provider || null,
@@ -1286,10 +1304,17 @@ async function searchCatalog({
     .from("civil_source_catalog")
     .select(CATALOG_SELECT, { count: "exact" })
     .neq("evidence_status", "removed")
-    .order("published_at", { ascending: false, nullsFirst: false })
     .range(offset, offset + limit - 1);
   if (provider) query = query.eq("provider", provider);
   if (evidenceStatus) query = query.eq("evidence_status", evidenceStatus);
+  if (nativeFirst) {
+    query = query
+      .in("evidence_status", ["extracted", "indexed", "metadata_only"])
+      .order("evidence_status", { ascending: true })
+      .order("published_at", { ascending: false, nullsFirst: false });
+  } else {
+    query = query.order("published_at", { ascending: false, nullsFirst: false });
+  }
   if (q) {
     const term = searchContext(q).baseTerms[0] ?? q;
     query = query.or([
@@ -1639,21 +1664,19 @@ export async function listResearchFeed(params: ListFeedParams): Promise<Research
     .filter((card) => !provider || card.provider === provider);
   if (filter === "thai" || filter === "tci") {
     if (hasAuthoritativeNative) {
-      const window = Math.min(5000, offset + limit);
-      const [nativeCatalog, metadataCatalog] = await Promise.all([
-        searchCatalog({ q, provider, evidenceStatus: "extracted", limit: window, offset: 0 }),
-        searchCatalog({ q, provider, evidenceStatus: "metadata_only", limit: window, offset: 0 }),
-      ]);
-      const combined = [
-        ...nativeCatalog.rows.map(cardFromCatalog),
-        ...metadataCatalog.rows.map(cardFromCatalog),
-      ];
-      const cards = combined.slice(offset, offset + limit);
+      const catalogPage = await searchCatalog({
+        q,
+        provider,
+        nativeFirst: true,
+        limit,
+        offset,
+      });
+      const cards = catalogPage.rows.map(cardFromCatalog);
       const nextOffset = offset + cards.length;
       return {
         cards,
         facets,
-        nextCursor: nextOffset < nativeCatalog.total + metadataCatalog.total ? encodeCursor(nextOffset) : null,
+        nextCursor: nextOffset < catalogPage.total ? encodeCursor(nextOffset) : null,
         generatedAt: new Date().toISOString(),
       };
     }
