@@ -177,6 +177,11 @@ class GASecurityContracts(unittest.TestCase):
         self.assertIn("python -m unittest harness.test_data_quality_integrity", ci)
         self.assertIn("vars.PREVIEW_RELEASE_ENABLED == 'true'", preview)
         self.assertIn("github.event_name == 'workflow_dispatch'", preview)
+        preview_migration = preview.split("  migrate-preview:", 1)[1].split("  deploy-mcp-preview:", 1)[0]
+        production_stage = preview.split("  stage-production:", 1)[1].split("  production-candidate-smoke:", 1)[0]
+        self.assertNotIn("github.event_name == 'workflow_dispatch' ||", preview_migration)
+        self.assertIn("needs: source-gate", production_stage)
+        self.assertNotIn("needs: preview-smoke", production_stage)
 
     def test_github_actions_use_node24_runtime(self) -> None:
         workflows = "\n".join(

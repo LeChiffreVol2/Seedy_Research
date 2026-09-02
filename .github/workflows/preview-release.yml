@@ -112,7 +112,7 @@ jobs:
 
   migrate-preview:
     if: >-
-      (github.event_name == 'workflow_dispatch' || vars.PREVIEW_RELEASE_ENABLED == 'true') &&
+      vars.PREVIEW_RELEASE_ENABLED == 'true' &&
       (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository)
     needs: source-gate
     runs-on: ubuntu-latest
@@ -281,7 +281,10 @@ jobs:
       github.event_name == 'workflow_dispatch' &&
       github.ref == 'refs/heads/main' &&
       inputs.promote == true
-    needs: preview-smoke
+    # A production candidate is staged with --skip-domain and receives its own
+    # strict smoke before promotion. Do not make a manual release depend on an
+    # optional preview database that may not be provisioned.
+    needs: source-gate
     runs-on: ubuntu-latest
     timeout-minutes: 35
     environment: production
