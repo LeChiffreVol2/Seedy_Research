@@ -47,7 +47,7 @@ jobs:
 
       - name: Reader cohort and migration contracts
         run: |
-          python -m pip install 'beautifulsoup4>=4.12,<5'
+          python -m pip install 'beautifulsoup4>=4.12,<5' 'requests>=2.32,<3'
           python -m unittest pipeline.test_reader_pack pipeline.test_native_reader_cohort pipeline.test_native_portfolio harness.test_native_scale harness.test_research_graph_migration
 
       - name: Install web dependencies
