@@ -38,7 +38,7 @@ The north-star objective of measuring and connecting Thai research provider by p
 _Avoid_: a claim that the current catalog, evidence index, or native reader is nationally complete
 
 **Production Preview**:
-A publicly runnable, monitored candidate whose bounded workflows and rollback path have passed the recorded release gates; it is not institution-ready general availability.
+A publicly accessible research release whose readiness is limited to explicitly dated verification evidence. Implemented capabilities, verified behavior, and planned work remain distinct; it is not institution-ready general availability.
 _Avoid_: production-ready when implying national coverage, institutional procurement readiness, or unlimited traffic
 
 **Primary Researcher**:

@@ -1,10 +1,43 @@
-# CivilMCP Operations
+# Seedy Research Operations
 
 ## Local Services
+
+For credential-free verification, use [the fixture gate](HARNESS.md) first.
+A live development environment additionally needs a Supabase development
+project, lawful indexed data, and provider credentials; cloning the repository
+does not reproduce the production corpus.
+
+1. Copy `.env.example` to `.env` and configure server-only values. Install
+   `mcp-server/requirements.txt` in a Python 3.10 virtual environment and run
+   `npm ci --prefix web`.
+2. Review [the base schema](../supabase/schema.sql) and ordered
+   [migration ledger](../supabase/migrations/) to prepare a separate
+   development database. Review every migration before applying it; do not
+   run production migration commands as a quick-start shortcut.
+3. Load the root env explicitly in each local terminal before starting the
+   services. Next.js does not automatically read the parent `.env`:
+
 ```bash
+set -a
+. ./.env
+set +a
 cd mcp-server && uvicorn server:app --reload --port 8000
+```
+
+In a second terminal, starting from the repository root:
+
+```bash
+set -a
+. ./.env
+set +a
 cd web && npm run dev -- --port 3000
 ```
+
+Configure Supabase Auth redirect origins for local and deployed callback URLs.
+Only anon/publishable project identifiers may use `NEXT_PUBLIC_*`; provider,
+service-role, signing, and MCP keys must remain server-only. Keep dormant Stripe
+credentials absent while Open Access is enabled. The full OpenRAG runtime is
+optional; Notebook Light Mode does not require a separate sidecar.
 
 ## Production URLs
 - Web: `https://seedresearch.vercel.app`

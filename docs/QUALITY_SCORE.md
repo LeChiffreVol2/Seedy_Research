@@ -1,4 +1,4 @@
-# CivilMCP Quality Score
+# Seedy Research Quality Gates
 
 `python3.10 harness/score_quality.py` converts latest harness reports into a product readiness score.
 
@@ -22,7 +22,7 @@
   Chat and Studio must use admitted Case Sources, persist bounded owner-scoped
   state, mark source-dependent artifacts stale, and keep OpenRAG visibly
   inactive while Seedy Light Retrieval is the runtime.
-- CityMCP reports are excluded; CityMCP has its own readiness score under `citymcp/harness/`.
+- Archived-project reports are excluded; only Seedy surfaces contribute to this score.
 
 ## Status Meaning
 - `pass`: ready for this gate.

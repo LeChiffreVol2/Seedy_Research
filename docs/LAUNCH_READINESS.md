@@ -31,9 +31,12 @@ institutional repositories remain separately measured rollout tracks.
   mastery/gap state, and local progress.
 - Research Workspace: up-to-50-paper Verified Review Project, six-paper bounded
   server batches, Scientific Evidence Snapshot, private PDF/citation imports,
-  human review, PRISMA-ScR guided export, and a selected-source Research
-  Notebook with exact-page citations. Public findings may continue to a
-  review-gated Passport or Research Path; private findings remain non-shareable.
+  human review, and PRISMA-ScR guided export. Reviewed exact-page findings can
+  be sent to Notebook as a versioned Workspace Evidence Pack.
+- Research Notebook: separate Sources–Chat–Studio surface within a Research
+  Case, with bounded persistent threads, notes, and artifact versions. Light
+  Mode uses model APIs and admitted sources. Public findings may continue to
+  a review-gated Passport or Research Path; private findings remain non-shareable.
 - Coverage Ledger: dated, provider-filterable counts that separate searchable
   metadata, page-citable evidence, native reader assets, source-hosted links,
   rights state, endpoint coverage, and providers not yet connected.
@@ -95,7 +98,7 @@ All of the following must pass against the same source state:
     the exact host build, account class, selected model, permissions, and calls.
 14. Research Notebook ownership and saved-source membership fail closed;
     citations resolve only to supplied exact-page packets; private answers are
-    non-shareable and not persisted; public promotion returns to the Passport
+    non-shareable and persisted only in owner-scoped state; public promotion returns to the Passport
     page-review gate.
 15. Passport-to-Path continuity rejects stale or off-paper evidence and carries
     the reviewed Passport ID, source, exact evidence locators, gap lens, and

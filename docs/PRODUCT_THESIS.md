@@ -42,14 +42,14 @@ intellectual-property status, or commercial viability without attributed data.
 | **Research** | Compare papers and export an auditable research artifact | Evidence Mission, Research Workspace, PRISMA-ScR guided pack | Living review updates, clearer coverage limits, and pilot templates |
 | **Translate** | Move from findings to a testable deep-tech project question | Evidence matrices, Thailand-to-world transfer checks, and the Research Path `Project brief` outcome | Validate the brief with a named university or lab cohort and one bounded partner problem |
 
-All four layers use one evidence contract. Global metadata can broaden discovery,
+All five layers use one evidence contract. Global metadata can broaden discovery,
 but only rights-reviewed, page-linked Seedy Research packets can support a
 Seedy Research citation.
 
 ## The database is the product advantage
 
 The defensible asset is not a model or chat interface. It is a governed research
-graph assembled from seven connected records:
+graph assembled from eight connected records:
 
 1. **Source and rights ledger** — provider identity, canonical record, access,
    license or permission, evidence status, hashes, freshness, and takedown state.
@@ -139,7 +139,7 @@ These references guide prioritization; they do not prove demand or endorsement.
   citation evaluation.
 - Discovery records must remain visibly non-citable. OpenAlex and Crossref are
   enrichment bridges, not page-level evidence providers by default.
-- Restricted user uploads, if introduced, must remain private to their workspace
+- Restricted user uploads must remain private to their owner
   and must not train or enrich the public corpus without separate authorization.
 - Takedown must quarantine or remove affected evidence without deleting unrelated
   catalog metadata or breaking the audit history.

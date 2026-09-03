@@ -11,8 +11,8 @@ run a cohort audit on the request path. Candidate identities require a separate
 review decision in `civil_visibility_review_decisions`. Provider failures remain
 `audit_unavailable`, never `not_found_in_audit`.
 
-The initial page load starts Thai discovery after session identity resolves; it
-does not wait for chat-history hydration. Feed facets and visibility summary run
+The initial page load starts Thai discovery independently of session and
+chat-history hydration. Feed facets and visibility summary run
 in parallel with the bounded card query, and Thai-to-English translation begins
 only after an explicit language or paper action.
 
@@ -182,12 +182,16 @@ When a server-only `OPENALEX_API_KEY` is configured, Research Path adds up to fo
 - Account deletion rejects active subscriptions, removes all first-party account rows through one service-role-only transactional RPC, and only then removes Supabase Auth access.
 - Privacy, Terms, and Support are public static routes. They do not imply professional engineering approval or full-text redistribution rights.
 
-## Shared MCP Consumers
-- CivilMCP Research (`web/app/api/chat/route.ts`) uses the MCP server as the retrieval tool layer behind the bounded Agentic Context Engine.
-- CityMCP Ops (`citymcp/ops-dashboard/lib/mcp.ts`) uses the same MCP server as a read-only evidence service, primarily through `search_civil_chunks`.
-- Keep the `collection`, `discipline`, and read-only tool contracts backward compatible. CityMCP currently relies on `discipline="transport"` with `collection=""` for civil evidence gating.
-- Data-quality cleanup can change source text, titles, summaries, pages, hashes, and embeddings, but must not rename existing tool names or remove v2 fields used by either consumer.
-- CityMCP application code, harnesses, CI, release, and operations docs live under `citymcp/` and are excluded from CivilMCP competition scoring.
+## MCP compatibility
+
+Seedy Research (`web/app/api/chat/route.ts`) uses the MCP server as its bounded
+retrieval layer. Existing clients retain the `collection`, `discipline`, tool
+names, and v2 response fields. Source-quality work may improve titles, pages,
+hashes, and embeddings without renaming that protocol.
+
+CityMCP application code and workflows are archived outside the active tree.
+See [compatibility and recovery](LEGACY_COMPATIBILITY.md) before changing
+historical database objects or client contracts.
 
 ## Boundary Rules
 - Browser never receives service-role Supabase key, OpenAI key, DeepSeek key, OpenAlex key, or MCP server key.

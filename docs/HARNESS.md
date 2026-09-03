@@ -1,6 +1,63 @@
-# CivilMCP Harness
+# Seedy Research Verification
 
 The harness is the engineering feedback loop for agentic development. It verifies architecture invariants, live retrieval health, answer/evidence behavior, and product quality score without changing user-facing behavior.
+
+## Start from a fresh clone
+
+Use Python 3.10, Node.js 20, and the committed npm lockfile. No provider or
+database credentials are required for the fixture gate:
+
+```bash
+python3.10 -m venv .venv310
+. .venv310/bin/activate
+python -m pip install 'beautifulsoup4>=4.12,<5' 'requests>=2.32,<3'
+npm ci --prefix web
+make fixture-check
+cd web && npx playwright install chromium && cd ..
+make fixture-browser
+```
+
+On Linux, `npx playwright install --with-deps chromium` installs browser system
+dependencies as well. The browser gate starts a dedicated local server on port
+3210, clears inherited credentials, refuses web-local env files, and never
+loads the root `.env`. Run it in a fresh clone instead of removing working
+credentials. These are tests of the application, not a fake research backend.
+
+| Verification | What it establishes | What it does not establish |
+| --- | --- | --- |
+| `fixture-check` | Source invariants, rights/page integrity, migration contracts, bounded retrieval/state, and unit behavior | An applied database migration or live model quality |
+| `fixture-browser` | Tool calls, visible review/export gates, reader behavior, and OpenAlex identity failure paths | Real host support, authenticated isolation, provider availability, or load capacity |
+| Live smoke, eval, and memory suites | Observed deployed behavior for the exact target and source fingerprint | General capacity or national completeness |
+| Actual-host pass | Tool discovery and human-agent interaction in the recorded browser/account/model | Other browser configurations |
+
+The browser fixtures mock session, discovery, relationship, and generation
+boundaries. The reader-control WebMCP scenario uses the real committed LEARN
+pack and reader route; synthetic scenarios are not presented as research.
+Notebook server/state contracts run in `fixture-check`; the broader frontend
+suite includes tests requiring live services and is deliberately separate.
+
+## Reading release evidence
+
+GitHub [CI runs](https://github.com/LeChiffreVol2/Seedy_Research/actions/workflows/ci.yml)
+are source/fixture evidence tied to their displayed commit SHA. A green source
+gate is not a production deployment receipt. Verify the deployment's commit
+and alias separately before calling a public URL current.
+
+The Notebook application revision introduced at `0381065`, with security
+contract alignment at `ada8036`, is the baseline for the September 4 repository
+cleanup. Earlier scores and host recordings do not verify that newer Notebook.
+Do not publish a current numeric quality score until all required live reports
+share a fresh fingerprint. Historical receipts remain accessible through the
+[archive reference](LEGACY_COMPATIBILITY.md).
+
+September 4 repository verification used a tracked-source-only copy, newly
+installed dependencies, and no local env files: 21 security contracts, 74
+Python unit contracts, 27 web unit tests, 21 Chromium fixture scenarios, and
+the production build passed. The local runtime was Python 3.10 / Node 22;
+GitHub CI repeats the gate on the documented Node 20 runtime. A public guest
+Explore inspection confirmed the separate Workspace/Notebook navigation and
+dated cohort counts. This did not exercise authenticated Notebook persistence
+or perform a new model-quality, load, or native-host WebMCP evaluation.
 
 ## Commands
 ```bash
@@ -219,14 +276,8 @@ slow retrieval layer visible even when model generation still fits inside the
 end-to-end budget. Set `HARNESS_ENFORCE_SLO=true` to make latency violations
 fail eval.
 
-## CityMCP boundary
+## Archived-project boundary
 
-CityMCP has a separate harness and release surface under `citymcp/`:
-
-```bash
-cd citymcp
-make local-gate
-make release-gate
-```
-
-These gates do not contribute to the CivilMCP quality score or Build Week release.
+The active gates verify Seedy only. CityMCP source and its manual workflows
+are recoverable through [the archive tag](LEGACY_COMPATIBILITY.md), not active
+dependencies of this repository.
