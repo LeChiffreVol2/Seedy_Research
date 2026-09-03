@@ -121,6 +121,16 @@ function cleanBlock(value: unknown, maximum: number): string {
     : "";
 }
 
+function validateNotebookCitations(content: string, declaredIds: string[], byId: Map<string, unknown>, limit: number) {
+  const inlineIds = [...content.matchAll(/\[(N\d+)\]/g)].map((match) => match[1]);
+  const ids = [...new Set([...inlineIds, ...declaredIds])].filter((id) => byId.has(id)).slice(0, limit);
+  const retained = new Set(ids);
+  return {
+    content: content.replace(/\[(N\d+)\]/g, (marker, id: string) => retained.has(id) ? marker : "[citation removed]"),
+    ids,
+  };
+}
+
 function pageLabel(item: Pick<EvidencePacket, "pageStart" | "pageEnd">): string {
   return item.pageStart === item.pageEnd ? `p.${item.pageStart}` : `p.${item.pageStart}-${item.pageEnd}`;
 }
@@ -291,9 +301,7 @@ async function generateNotebookAnswer(input: z.infer<typeof askSchema>, ownerId:
     ...providerOptions(input.model),
   });
   const byId = new Map(packets.map((packet) => [packet.id, packet]));
-  const answer = cleanBlock(generated.object.answer, 3_600).replace(/\[(N\d{1,3})\]/g, (marker, id: string) => byId.has(id) ? marker : "[citation removed]");
-  const inlineIds = [...answer.matchAll(/\[(N\d{1,3})\]/g)].map((match) => match[1]);
-  const ids = [...new Set([...inlineIds, ...generated.object.citationIds])].filter((id) => byId.has(id)).slice(0, 8);
+  const { content: answer, ids } = validateNotebookCitations(cleanBlock(generated.object.answer, 3_600), generated.object.citationIds, byId, 8);
   const citations = ids.map((id): NotebookCitation => {
     const packet = byId.get(id)!;
     return {
@@ -354,14 +362,15 @@ async function generateStudioArtifact(input: z.infer<typeof artifactSchema>, own
     ...providerOptions(input.model),
   });
   const byId = new Map(packets.map((packet) => [packet.id, packet]));
-  const ids = [...new Set(generated.object.citationIds)].filter((id) => byId.has(id)).slice(0, 12);
+  const { content, ids } = validateNotebookCitations(cleanBlock(generated.object.content, 12_000), generated.object.citationIds, byId, 12);
+  if (!ids.length) throw new Error("No verifiable citations are available for this Studio artifact. Refine the sources and try again.");
   const citations = ids.map((id) => {
     const packet = byId.get(id)!;
     return { id, evidenceId: packet.evidenceId, source: packet.source, pageStart: packet.pageStart, pageEnd: packet.pageEnd, sectionTitle: packet.sectionTitle };
   });
   return {
     title: cleanInline(generated.object.title, 160) || specification.title,
-    content: cleanBlock(generated.object.content, 12_000),
+    content,
     citations,
   };
 }
