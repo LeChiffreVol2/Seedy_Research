@@ -8197,13 +8197,95 @@ body {
 }
 
 /*
- * Performance contract: backdrop blur forces full-page repainting while the
- * research feed scrolls. Keep the same hierarchy, translucency, borders, and
- * shadows, but render those surfaces without the live pixel-sampling pass.
+ * Performance contract: keep live backdrop sampling on one bounded focal
+ * surface and transient menus only. Repeated/feed surfaces stay static so
+ * scrolling never invalidates dozens of blurred layers at once.
  */
-body * {
+.appSidebar,
+.mobileBottomNav,
+.researchWorkspaceHeader,
+.workspaceToolbar,
+.pathBuilder,
+.accountCard,
+.authBenefitCard,
+.researchCard,
+.conversationCard,
+.historyCard,
+.shareCard,
+.missionArtifact,
+.prismaWorkspace,
+.workspaceToolbar > button,
+.workspaceProNotice,
+.glassButton,
+.modeSegment {
   backdrop-filter: none !important;
   -webkit-backdrop-filter: none !important;
+}
+
+.searchComposer {
+  position: relative;
+  isolation: isolate;
+  overflow: hidden;
+}
+
+@supports ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
+  .searchComposer {
+    transform: translateZ(0);
+    backdrop-filter: blur(18px) saturate(142%) !important;
+    -webkit-backdrop-filter: blur(18px) saturate(142%) !important;
+  }
+
+  .dropdownSurface {
+    backdrop-filter: blur(24px) saturate(150%) !important;
+    -webkit-backdrop-filter: blur(24px) saturate(150%) !important;
+  }
+}
+
+.searchComposer::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  pointer-events: none;
+  border-radius: inherit;
+  background:
+    radial-gradient(120% 85% at 8% 0%, rgba(255,255,255,.68), transparent 48%),
+    linear-gradient(112deg, transparent 30%, rgba(255,255,255,.26) 48%, transparent 66%);
+}
+
+.searchComposer > * {
+  position: relative;
+  z-index: 1;
+}
+
+.researchWorkspace.notebookFocused > .researchNotebook {
+  order: -1;
+  border-color: rgba(92, 118, 159, .24);
+  background:
+    radial-gradient(circle at 92% 0%, rgba(0, 122, 255, .09), transparent 32%),
+    rgba(255, 255, 255, .94);
+  box-shadow: 0 16px 42px rgba(31, 42, 64, .08), inset 0 1px 0 rgba(255, 255, 255, .96);
+}
+
+@media (max-width: 900px) {
+  .mobileBottomNav {
+    grid-template-columns: repeat(7, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 350px) {
+  .mobileBottomNav > button > span:last-child {
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .searchComposer,
+  .dropdownSurface {
+    backdrop-filter: none !important;
+    -webkit-backdrop-filter: none !important;
+  }
 }
 
 .appSidebar {

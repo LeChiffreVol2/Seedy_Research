@@ -9,7 +9,7 @@ export const CIVILMCP_OPEN_ACCESS = (process.env.CIVILMCP_OPEN_ACCESS ?? process
 
 export const CIVILMCP_OPEN_ACCESS_LABEL = "Open Access";
 
-export type CivilMcpFeature = "explore" | "chat" | "workspace" | "path" | "history" | "shared" | "settings";
+export type CivilMcpFeature = "explore" | "chat" | "workspace" | "notebook" | "path" | "history" | "shared" | "settings";
 
 export type CivilMcpFeatureAccess = {
   enabled: boolean;
@@ -47,6 +47,11 @@ export const CIVILMCP_FEATURE_ACCESS: Record<CivilMcpFeature, CivilMcpFeatureAcc
     label: "Research Workspace",
     enabled: enabledFlag(process.env.CIVILMCP_FEATURE_WORKSPACE_ENABLED ?? process.env.NEXT_PUBLIC_CIVILMCP_FEATURE_WORKSPACE_ENABLED),
     requiresAuth: requiresAuthFlag(process.env.CIVILMCP_FEATURE_WORKSPACE_REQUIRES_AUTH ?? process.env.NEXT_PUBLIC_CIVILMCP_FEATURE_WORKSPACE_REQUIRES_AUTH),
+  },
+  notebook: {
+    label: "Research Notebook",
+    enabled: enabledFlag(process.env.CIVILMCP_FEATURE_NOTEBOOK_ENABLED ?? process.env.NEXT_PUBLIC_CIVILMCP_FEATURE_NOTEBOOK_ENABLED),
+    requiresAuth: requiresAuthFlag(process.env.CIVILMCP_FEATURE_NOTEBOOK_REQUIRES_AUTH ?? process.env.NEXT_PUBLIC_CIVILMCP_FEATURE_NOTEBOOK_REQUIRES_AUTH),
   },
   path: {
     label: "Research Path",

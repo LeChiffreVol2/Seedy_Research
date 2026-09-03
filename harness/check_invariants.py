@@ -702,16 +702,17 @@ def check_product_contract() -> Check:
                 "id.startsWith(prefix)",
                 'scope: "research_workspace_run"',
             )
-        ) and all(
+        ) and "Open Access Research Workspace" in research_workspace_ui
+        and "Research Notebook Workspace" in research_workspace_ui
+        and all(
             marker in research_workspace_ui
             for marker in (
-                'aria-label="Open Access Research Workspace"',
                 "Run selected",
                 "Exact-page evidence",
                 "Export CSV",
                 "Verified",
             )
-        ) and all(marker in page for marker in ('label: "Workspace"', "ResearchWorkspacePanel")),
+        ) and all(marker in page for marker in ('label: "Workspace"', 'label: "Notebook"', "ResearchWorkspacePanel")),
     }
     missing = [name for name, present in required.items() if not present]
     if missing:

@@ -471,7 +471,7 @@ test("navigation resets rail scroll and account explains open access without ren
   await expect(page.getByLabel("SEEDY Open Access")).toBeVisible();
   await expect(page.getByText("Every research workflow is included after sign in.")).toBeVisible();
   await expect(page.getByText(/No answer credits, model paywalls, or Pro-only research modes/)).toBeVisible();
-  await expect(page.getByLabel("Research tools included with your account").locator(":scope > span")).toHaveCount(6);
+  await expect(page.getByLabel("Research tools included with your account").locator(":scope > span")).toHaveCount(7);
   await expect(page.locator("svg.lucide-lock-keyhole")).toHaveCount(0);
 
   await page.getByRole("button", { name: "Forgot password?" }).click();
@@ -680,6 +680,39 @@ test("Research Workspace is a separate open-access surface", async ({ page }) =>
   await expectNoPageOverflow(page);
 });
 
+test("sidebar exposes Research Notebook as a first-class surface", async ({ page }) => {
+  await page.setViewportSize({ width: 1440, height: 1000 });
+  await page.goto("/");
+
+  const primaryNavigation = page.getByRole("navigation", { name: "Primary" });
+  await expect(primaryNavigation.getByRole("button", { name: "Notebook" })).toBeVisible();
+  await primaryNavigation.getByRole("button", { name: "Notebook" }).click();
+
+  const notebookWorkspace = page.getByLabel("Research Notebook Workspace");
+  await expect(notebookWorkspace).toBeVisible();
+  await expect(notebookWorkspace.getByRole("heading", { name: "Ask this Workspace" })).toBeVisible();
+  await expect(notebookWorkspace).toContainText("Seedy bounded retrieval active");
+});
+
+test("live glass is bounded away from the scrolling paper feed", async ({ page }) => {
+  await page.setViewportSize({ width: 1440, height: 1000 });
+  await page.goto("/");
+  await page.getByRole("button", { name: "Explore" }).click();
+  await expect.poll(() => page.locator(".researchCard").count()).toBeGreaterThan(0);
+
+  const materialContract = await page.evaluate(() => {
+    const composer = document.querySelector<HTMLElement>(".searchComposer");
+    const card = document.querySelector<HTMLElement>(".researchCard");
+    return {
+      composer: composer ? getComputedStyle(composer).backdropFilter : "missing",
+      card: card ? getComputedStyle(card).backdropFilter : "missing",
+    };
+  });
+
+  expect(materialContract.composer).toContain("blur(");
+  expect(materialContract.card).toBe("none");
+});
+
 test("Open Access can batch-run, inspect, review, and export workspace cells", async ({ page }) => {
   const sessionId = "00000000-0000-4000-8000-000000000099";
   const user = { userId: "user-workspace", displayName: "Workspace Researcher", email: "researcher@example.com", isGuest: false };
@@ -828,7 +861,7 @@ test("Open Access can batch-run, inspect, review, and export workspace cells", a
   const workspace = page.getByLabel("Open Access Research Workspace");
   await expect(workspace.locator("tbody tr")).toHaveCount(2);
   const notebook = workspace.getByLabel("Research Notebook", { exact: true });
-  await expect(notebook).toContainText("OpenRAG-compatible · Seedy evidence authority");
+  await expect(notebook).toContainText("Seedy bounded retrieval active · OpenRAG adapter staged");
   await notebook.getByRole("button", { name: "Ask selected sources" }).click();
   await expect(notebook).toContainText("Both selected studies report a page-linked road-safety finding");
   await expect(notebook.getByLabel("Research Notebook exact-page citations").getByRole("button")).toHaveCount(2);
@@ -1260,6 +1293,6 @@ test("reduced motion uses the stable CSS glass fallback", async ({ page }) => {
   await page.emulateMedia({ reducedMotion: "reduce" });
   await page.setViewportSize({ width: 390, height: 844 });
   await page.goto("/");
-  await expect(page.locator(".liquidEffect").first()).toHaveCSS("display", "none");
+  await expect(page.locator(".searchComposer")).toHaveCSS("backdrop-filter", "none");
   await expectNoPageOverflow(page);
 });

@@ -36,6 +36,7 @@ import {
   LogOut,
   Mail,
   MessageCircle,
+  NotebookTabs,
   Plus,
   Search,
   Settings,
@@ -78,7 +79,7 @@ type CollectionFilter = "" | "ce_project" | "ncce";
 type SyncState = "loading" | "saving" | "saved" | "error";
 type OpenDropdown = "experience" | "model" | "collection" | "actions" | "examples" | null;
 type FeedFilter = "hot" | "for_you" | "recent" | "evidence" | "saved" | "thai" | "tci" | "ncce" | "ce_project";
-type MobileNavItem = "explore" | "workspace" | "path" | "chat" | "history" | "shared" | "settings";
+type MobileNavItem = "explore" | "workspace" | "notebook" | "path" | "chat" | "history" | "shared" | "settings";
 type FeedStatus = "loading" | "ready" | "error";
 type SessionsStatus = "idle" | "loading" | "ready" | "error";
 type AuthMode = "signin" | "signup" | "forgot-password" | "recovery";
@@ -841,6 +842,7 @@ const MAIN_NAV_ITEMS: NavItem[] = ([
   { id: "explore", label: "Explore", icon: Compass },
   { id: "chat", label: "Chat", icon: MessageCircle },
   { id: "workspace", label: "Workspace", icon: TableProperties },
+  { id: "notebook", label: "Notebook", icon: NotebookTabs },
   { id: "history", label: "History", icon: History },
   { id: "shared", label: "Share & export", icon: Share2 },
   { id: "settings", label: "Settings", icon: Settings },
@@ -2744,8 +2746,18 @@ function SearchComposer({
       ? "Typing previews relevant papers. Submit starts one persistent Research Case."
       : "Ask a cited research question.";
 
+  const submitComposer = (event: FormEvent<HTMLFormElement>) => {
+    if (draftCommitTimerRef.current) {
+      clearTimeout(draftCommitTimerRef.current);
+      draftCommitTimerRef.current = null;
+    }
+    const submittedDraft = localDraft;
+    setLocalDraft("");
+    onSubmit(event, submittedDraft);
+  };
+
   return (
-    <form onSubmit={(event) => onSubmit(event, localDraft)} className="searchComposer">
+    <form onSubmit={submitComposer} className="searchComposer">
       <textarea
         value={localDraft}
         onChange={(event) => updateDraft(event.target.value)}
@@ -6372,7 +6384,7 @@ export default function Home() {
   }, [activeMobileNav, draft]);
 
   useEffect(() => {
-    if (activeMobileNav !== "explore" && activeMobileNav !== "workspace") return;
+    if (activeMobileNav !== "explore" && activeMobileNav !== "workspace" && activeMobileNav !== "notebook") return;
     if (activeFeedFilter === "saved") {
       setFeedStatus("ready");
       setFeedError("");
@@ -9085,6 +9097,8 @@ export default function Home() {
       setStatusText("");
     } else if (item === "workspace") {
       setStatusText("");
+    } else if (item === "notebook") {
+      setStatusText("");
     } else if (item === "history") {
       void refreshChatSessions(true);
       setStatusText("");
@@ -9231,8 +9245,9 @@ export default function Home() {
           </p>
         ) : null}
 
-        {activeMobileNav === "workspace" ? (
+        {activeMobileNav === "workspace" || activeMobileNav === "notebook" ? (
           <ResearchWorkspacePanel
+            focus={activeMobileNav === "notebook" ? "notebook" : "workspace"}
             papers={workspacePapers}
             seedSources={workspaceSeedSources}
             authenticated={isAuthenticated}

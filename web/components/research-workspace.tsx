@@ -307,6 +307,7 @@ function trackWorkspaceEvent(event: "workspace_started" | "workspace_run_complet
 }
 
 export function ResearchWorkspacePanel({
+  focus = "workspace",
   papers,
   seedSources = [],
   authenticated,
@@ -316,6 +317,7 @@ export function ResearchWorkspacePanel({
   onPromoteNotebookFinding,
   onContinueNotebookPath,
 }: {
+  focus?: "workspace" | "notebook";
   papers: ResearchWorkspacePaper[];
   seedSources?: string[];
   authenticated: boolean;
@@ -875,7 +877,10 @@ export function ResearchWorkspacePanel({
   ];
 
   return (
-    <section className="researchWorkspace" aria-label="Open Access Research Workspace">
+    <section
+      className={`researchWorkspace ${focus === "notebook" ? "notebookFocused" : ""}`}
+      aria-label={focus === "notebook" ? "Research Notebook Workspace" : "Open Access Research Workspace"}
+    >
       <div className="workspaceCommandSurface">
         <header className="researchWorkspaceHeader">
           <div>
@@ -1009,7 +1014,7 @@ export function ResearchWorkspacePanel({
             <h2>Ask this Workspace</h2>
             <p>Answers stay inside the selected source set and must resolve to exact pages. Metadata-only records return insufficient evidence.</p>
           </div>
-          <span className="notebookAuthority"><ShieldCheck size={14} aria-hidden /> OpenRAG-compatible · Seedy evidence authority</span>
+          <span className="notebookAuthority"><ShieldCheck size={14} aria-hidden /> Seedy bounded retrieval active · OpenRAG adapter staged</span>
         </header>
         <div className="notebookComposer">
           <textarea
