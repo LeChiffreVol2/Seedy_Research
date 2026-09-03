@@ -109,27 +109,37 @@ Evidence actions pass the packet identity rather than only the paper source. `/a
 
 `/api/research-workspaces` is an open-access bounded batch-research boundary. Each server request accepts at most six selected papers and six AI columns, loads at most six page-linked packets per paper, and generates a typed matrix with the selected model. The browser may sequence up to 50 project papers through those bounded requests and saves the owner-scoped project after every completed batch when signed in. Evidence IDs use per-paper allow lists (`P1E1`, `P1E2`, and so on); the server removes any ID that belongs to another row or was not supplied. Unsupported cells are marked for review instead of receiving fabricated citations.
 
-The same route exposes a separate `ask` action for the Research Notebook. The
-browser exposes Notebook as its own navigation surface while reusing the same
-Workspace aggregate, source membership, and review state. The
-server reloads the owner-scoped saved workspace, intersects requested sources
-with its saved membership, resolves public sources through the citable paper
-boundary and private sources through owner-scoped library reads, then supplies
-at most 18 exact-page packets to the selected model. Returned `N#` citations
-are filtered against that allow list. Private-source answers are `shareable:
-false`; answers are returned with `Cache-Control: no-store` and are never
-written into the workspace notes field. A public answer may be promoted only by
-reopening and revalidating its exact evidence IDs as a Research Passport draft;
-it still requires human page review before export.
+`/api/research-notebooks` is the separate owner-scoped Notebook Light Mode
+boundary. One normalized Notebook belongs to one Research Case and may contain
+up to eight active threads, eighty messages per thread, forty notes, forty
+Studio artifact versions, and twelve Workspace Evidence Pack versions. A
+request selects at most twelve admitted Case Sources; the server resolves public
+sources through the citable paper boundary and private sources through
+owner-scoped library reads, ranks at most twelve exact-page packets, then calls
+the selected OpenAI or DeepSeek model. Recent thread messages provide question
+context but never enter the evidence allow list. Returned `N#` citations are
+filtered against the exact packets supplied to the model.
 
-`web/lib/openrag-adapter.ts` is an optional adapter boundary, not a Challenge
-runtime dependency. `OPENRAG_ADAPTER_ENABLED=false` is the production default.
-Even when a later sidecar is enabled, it may return candidate locators only;
+Notebook is a Sources–Chat–Studio surface rather than a reordered Workspace.
+Workspace remains the Paradigm-inspired spreadsheet and PRISMA review surface;
+its explicit `Send reviewed to Notebook` action publishes only human-verified,
+page-linked cells as a versioned Workspace Evidence Pack. That action also
+admits the pack's works to the Research Case. Source-set changes mark dependent
+notes and Studio artifacts stale instead of rewriting history. A public answer
+may be promoted only by reopening and revalidating its exact evidence IDs as a
+Research Passport draft; it still requires human page review before export.
+
+`web/lib/openrag-adapter.ts` is a dormant adapter port, not a production runtime
+dependency. `OPENRAG_ADAPTER_ENABLED=false` is the production default and the UI
+labels the active engine `Seedy Light Retrieval · OpenRAG-ready`. The release
+reuses canonical Supabase records and embeddings; it does not duplicate the
+corpus or run OpenSearch, Langflow, or Docling in Vercel. Even when a later
+persistent sidecar is enabled, it may return candidate locators only;
 Supabase identities, access decisions, page locators, owner isolation, and
 Passport promotion remain authoritative in Seedy Research. The sidecar must
 fail closed and pass the ADR benchmark gates before activation.
 
-Distributed abuse limits and fixed paper/column/evidence budgets are server-enforced; weighted credit reservation becomes a no-op while Open Access is active. Explore can hand off two to six saved paper sources into Workspace; the merge preserves existing rows and reviewed cells instead of reseeding an unrelated feed set. The demo requires authentication for product features, and workspaces serialize into the existing `civil_paper_workspaces.notes` field with every database read, write, and delete scoped to the authenticated owner. CSV export includes the generated value, exact-page source list, and human-review state for each AI column.
+Distributed abuse limits and fixed paper/column/evidence budgets are server-enforced; weighted credit reservation becomes a no-op while Open Access is active. Explore can hand off two to six saved paper sources into Workspace; the merge preserves existing rows and reviewed cells instead of reseeding an unrelated feed set. The demo requires authentication for product features, and workspaces serialize into the existing `civil_paper_workspaces.notes` field with every database read, write, and delete scoped to the authenticated owner. CSV export includes the generated value, exact-page source list, and human-review state for each AI column. Migration `20260903164320_notebook_light_mode.sql` adds only compact owner-scoped Notebook state and source references; no paper body, chunk, or embedding is copied.
 
 Feature access is centralized in `web/lib/product-access.ts`. Explore, Chat, Research Workspace, Research Notebook, Research Path, Chat History, and Share/Export each expose independent `enabled` and `requiresAuth` flags. Client navigation redirects unauthenticated intent to Account and resumes the requested feature after sign-in; the corresponding API routes repeat the feature and authentication check server-side. Research Path browser persistence is namespaced by authenticated user id.
 

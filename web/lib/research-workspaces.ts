@@ -18,6 +18,7 @@ function getSupabaseAdmin(): any {
 export type SavedResearchWorkspace = {
   workspaceId: string;
   ownerId: string;
+  caseId: string | null;
   title: string;
   collection: CollectionFilter;
   paperSources: string[];
@@ -29,6 +30,7 @@ export type SavedResearchWorkspace = {
 type WorkspaceRow = {
   workspace_id: string;
   owner_id: string;
+  case_id?: string | null;
   title?: string | null;
   collection?: string | null;
   paper_sources?: unknown;
@@ -51,6 +53,7 @@ function normalizeRow(row: WorkspaceRow): SavedResearchWorkspace {
   return {
     workspaceId: row.workspace_id,
     ownerId: row.owner_id,
+    caseId: row.case_id?.trim() || null,
     title: row.title?.trim() || "Research workspace",
     collection: normalizeCollectionFilter(row.collection),
     paperSources: Array.isArray(row.paper_sources) ? row.paper_sources.map(String).slice(0, 50) : [],
@@ -63,7 +66,7 @@ function normalizeRow(row: WorkspaceRow): SavedResearchWorkspace {
 export async function listResearchWorkspaces(ownerId: string, limit = 20): Promise<SavedResearchWorkspace[]> {
   const { data, error } = await getSupabaseAdmin()
     .from("civil_paper_workspaces")
-    .select("workspace_id, owner_id, title, collection, paper_sources, notes, created_at, updated_at")
+    .select("workspace_id, owner_id, case_id, title, collection, paper_sources, notes, created_at, updated_at")
     .eq("owner_id", ownerId)
     .order("updated_at", { ascending: false })
     .limit(Math.max(1, Math.min(limit, 50)));
@@ -74,7 +77,7 @@ export async function listResearchWorkspaces(ownerId: string, limit = 20): Promi
 export async function getResearchWorkspace(ownerId: string, workspaceId: string): Promise<SavedResearchWorkspace | null> {
   const { data, error } = await getSupabaseAdmin()
     .from("civil_paper_workspaces")
-    .select("workspace_id, owner_id, title, collection, paper_sources, notes, created_at, updated_at")
+    .select("workspace_id, owner_id, case_id, title, collection, paper_sources, notes, created_at, updated_at")
     .eq("owner_id", ownerId)
     .eq("workspace_id", workspaceId.trim().slice(0, 96))
     .maybeSingle();
@@ -85,6 +88,7 @@ export async function getResearchWorkspace(ownerId: string, workspaceId: string)
 export async function upsertResearchWorkspace(input: {
   workspaceId: string;
   ownerId: string;
+  caseId?: string | null;
   title: string;
   collection?: string | null;
   paperSources: string[];
@@ -105,6 +109,7 @@ export async function upsertResearchWorkspace(input: {
 
   const values = {
     title: input.title.trim().slice(0, 160) || "Research workspace",
+    case_id: input.caseId?.trim().slice(0, 96) || null,
     collection: normalizeCollectionFilter(input.collection),
     paper_sources: [...new Set(input.paperSources.map((source) => source.trim()).filter(Boolean))].slice(0, 50),
     notes,
@@ -114,7 +119,7 @@ export async function upsertResearchWorkspace(input: {
     ? client.from("civil_paper_workspaces").update(values).eq("workspace_id", workspaceId).eq("owner_id", input.ownerId)
     : client.from("civil_paper_workspaces").insert({ ...values, workspace_id: workspaceId, owner_id: input.ownerId });
   const { data, error } = await query
-    .select("workspace_id, owner_id, title, collection, paper_sources, notes, created_at, updated_at")
+    .select("workspace_id, owner_id, case_id, title, collection, paper_sources, notes, created_at, updated_at")
     .single();
   if (error) throw new Error(`Failed to save research workspace: ${error.message}`);
   return normalizeRow(data as WorkspaceRow);

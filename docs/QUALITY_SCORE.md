@@ -17,6 +17,11 @@
   history hydration, and translation must not run until the person explicitly requests
   it. These browser regressions are release-blocking because they add both
   latency and unnecessary provider work to the primary judge path.
+- Notebook continuity: Workspace and Notebook must remain distinct surfaces;
+  only verified exact-page Workspace cells may enter a versioned Evidence Pack;
+  Chat and Studio must use admitted Case Sources, persist bounded owner-scoped
+  state, mark source-dependent artifacts stale, and keep OpenRAG visibly
+  inactive while Seedy Light Retrieval is the runtime.
 - CityMCP reports are excluded; CityMCP has its own readiness score under `citymcp/harness/`.
 
 ## Status Meaning

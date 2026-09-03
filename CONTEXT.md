@@ -84,16 +84,44 @@ A proposed research question, data or method, and next validation step derived f
 _Avoid_: completed study, validated experiment
 
 **Manuscript Support**:
-A secondary workflow that helps organize reviewed evidence, systematic-review scaffolding, and bounded draft components without claiming that a comprehensive review or completed manuscript exists.
+A secondary workflow that helps organize reviewed evidence, user-supplied results, systematic-review scaffolding, references, submission checks, and bounded manuscript components without claiming that a comprehensive review, executed experiment, validated result, or accepted paper exists.
 _Avoid_: autonomous paper writing, generated scientific conclusions
 
 **Research Notebook**:
-A source-scoped workspace for public papers and private uploads in which a researcher can run agentic search, inspect exact-page citations, keep notes and evidence matrices, and promote reviewed findings into a Research Passport and Research Path.
-_Avoid_: generic chat with PDFs, autonomous manuscript factory
+A persistent, source-scoped workbench paired one-to-one with a Research Case that synchronizes selected works, source-grounded conversation threads, notes, review decisions, and derived research artifacts across discovery, reading, global comparison, synthesis, next-study design, manuscript support, and Passport review. It is the researcher's continuous working surface, while the Research Case remains the authoritative lifecycle aggregate.
+_Avoid_: a renamed evidence matrix, a second Research Case, generic chat with PDFs, autonomous manuscript factory
+
+**Research Case Source**:
+A public or private work explicitly admitted to a Research Case and therefore available to its Notebook threads and artifacts subject to its access and evidence state. A discovery result or global lead is not a Case Source until a person or authorized agent adds it.
+_Avoid_: every search result, implicit source copying between features
+
+**Notebook Thread**:
+A persistent source-grounded conversation within one Research Notebook whose selected Case Sources and outputs remain attributable to that thread without creating another Research Case.
+_Avoid_: transient one-shot answer, unrelated chat session, hidden autonomous agent run
+
+**Notebook Studio Artifact**:
+A versioned, refreshable output derived from the Notebook's selected sources and review state, such as an Evidence Brief, Evidence Matrix, Literature Synthesis, Candidate Gap, or Next-Study Protocol. A relevant source or review change makes the current version stale; regeneration creates a new version rather than silently rewriting history. It remains linked to its inputs and does not become reviewed evidence merely because it was generated.
+_Avoid_: independent feature page, proven conclusion, detached AI output
+
+**Evidence Review Workspace**:
+The Paradigm-inspired, spreadsheet-oriented review workbench in which selected Research Case Sources are rows and structured extraction or review questions are columns, extended with PRISMA-guided screening and literature-review relationships. It remains a distinct product surface and publishes selected reviewed outputs to a Research Notebook through a provenance-preserving Workspace Evidence Pack.
+_Avoid_: second Notebook, disconnected batch table, duplicating its matrix UI inside Notebook
+
+**Workspace Evidence Pack**:
+A versioned handoff from an Evidence Review Workspace to a Research Notebook containing selected sources, screening decisions, reviewed matrix findings, exact-page anchors, exclusions, and unresolved limitations. Notebook may use the pack for synthesis and downstream artifacts without silently changing the originating Workspace record.
+_Avoid_: raw Workspace copy, automatic promotion of unreviewed cells, bidirectional state mirroring
+
+**Submission-Ready Research Package**:
+The end-to-end collection of reviewed sources, synthesis, candidate gap, protocol, user-supplied results, bounded manuscript components, references, validation warnings, and export checks that a researcher can continue toward submission. It does not claim that Seedy Research performed the study, validated the findings, or secured publication.
+_Avoid_: completed research, automatically validated manuscript, publication guarantee
 
 **OpenRAG Adapter**:
-An optional integration boundary that lets a Research Notebook use OpenRAG-compatible ingestion or agentic retrieval while Seedy Research retains canonical identity, rights, access, and evidence-promotion authority.
-_Avoid_: replacing the Seedy Research system of record, treating OpenRAG citations as automatically citable evidence
+The dormant, fail-closed integration port through which a future separately funded OpenRAG sidecar may return candidate locators while Seedy Research retains canonical identity, rights, access, exact-page resolution, and evidence-promotion authority. The free production release does not run or claim an active OpenRAG stack.
+_Avoid_: an active-in-name-only adapter, forcing OpenSearch/Langflow/Docling into serverless functions, replacing the Seedy Research system of record
+
+**Seedy Notebook Light Mode**:
+The production retrieval mode that reuses the existing Seedy exact-page corpus and Supabase indexes, performs bounded retrieval, and calls the configured model API for grounded synthesis. It persists compact Notebook threads, notes, reviewed Workspace handoffs, and Studio artifacts without duplicating source text or embeddings, keeping the human workflow complete while the heavy OpenRAG runtime remains optional.
+_Avoid_: OpenRAG Light, lower-quality ungrounded chat, duplicated vector stores, unlimited conversation retention
 
 ## Evidence boundaries
 

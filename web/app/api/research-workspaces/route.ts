@@ -67,6 +67,7 @@ const workspaceColumnSchema = z.object({
 const saveSchema = z.object({
   action: z.literal("save"),
   workspaceId: z.string().trim().min(8).max(96),
+  caseId: z.string().trim().regex(/^case_[a-z0-9_-]{8,80}$/).optional().nullable(),
   title: z.string().trim().min(1).max(160),
   collection: z.enum(["", "ce_project", "ncce"]).default(""),
   paperSources: z.array(z.string().trim().min(1).max(320)).max(50),
@@ -498,6 +499,7 @@ export async function POST(request: NextRequest) {
       const workspace = await upsertResearchWorkspace({
         workspaceId: parsed.data.workspaceId,
         ownerId: identity.userId,
+        caseId: parsed.data.caseId,
         title: parsed.data.title,
         collection: parsed.data.collection,
         paperSources: parsed.data.paperSources,

@@ -481,7 +481,13 @@ def supabase_quality_check() -> Check:
             },
         )
     except Exception as exc:  # noqa: BLE001
-        return Check("supabase_index_quality", "warn", f"DB data-quality check skipped: {exc}")
+        # A subprocess exception can include every argv value, including the
+        # database URL. Never persist credentials in reports or CI annotations.
+        return Check(
+            "supabase_index_quality",
+            "warn",
+            f"DB data-quality check skipped ({type(exc).__name__}). Check database connectivity and the psql/psycopg runtime.",
+        )
 
 
 def main() -> None:

@@ -5,6 +5,7 @@ import { startTransition, useCallback, useEffect, useMemo, useRef, useState } fr
 import { useChat } from "ai/react";
 import type { UIMessage } from "ai";
 import type { LucideIcon } from "lucide-react";
+import dynamic from "next/dynamic";
 import {
   ArrowUp,
   ArrowRight,
@@ -65,13 +66,23 @@ import {
   type ChatModel,
 } from "@/lib/chat-models";
 import { CIVILMCP_FEATURE_ACCESS, CIVILMCP_OPEN_ACCESS, CIVILMCP_OPEN_ACCESS_LABEL, type CivilMcpFeature } from "@/lib/product-access";
-import { ResearchWorkspacePanel, type ResearchNotebookFinding, type ResearchWorkspacePaper, type ResearchWorkspaceEvidenceTarget } from "@/components/research-workspace";
+import type { ResearchNotebookFinding } from "@/components/research-notebook";
+import type { ResearchWorkspacePaper, ResearchWorkspaceEvidenceTarget } from "@/components/research-workspace";
 import { GlassMenuSelect, type GlassMenuOption } from "@/components/glass-menu-select";
 import {
   registerSeedResearchWebMcpTools,
   type SeedResearchWebMcpHandlers,
   type WebMcpGapLens,
 } from "@/lib/webmcp";
+
+const ResearchWorkspacePanel = dynamic(
+  () => import("@/components/research-workspace").then((module) => module.ResearchWorkspacePanel),
+  { loading: () => <section className="featureLoadingShell" aria-label="Loading Research Workspace"><LoaderCircle className="workspaceSpinner" aria-hidden /><span>Loading Research Workspace…</span></section> },
+);
+const ResearchNotebookPanel = dynamic(
+  () => import("@/components/research-notebook").then((module) => module.ResearchNotebookPanel),
+  { loading: () => <section className="featureLoadingShell" aria-label="Loading Research Notebook"><LoaderCircle className="workspaceSpinner" aria-hidden /><span>Loading Research Notebook…</span></section> },
+);
 
 type Mode = "baseline" | "mcp";
 type ChatExperience = "answer" | "mission" | "learn" | "research" | "automated";
@@ -9245,11 +9256,11 @@ export default function Home() {
           </p>
         ) : null}
 
-        {activeMobileNav === "workspace" || activeMobileNav === "notebook" ? (
+        {activeMobileNav === "workspace" ? (
           <ResearchWorkspacePanel
-            focus={activeMobileNav === "notebook" ? "notebook" : "workspace"}
             papers={workspacePapers}
             seedSources={workspaceSeedSources}
+            caseId={activeResearchCase?.caseId ?? null}
             authenticated={isAuthenticated}
             accessEnabled={billing.openAccess || (billing.plan === "founder_pro" && billing.premiumModels)}
             onUpgrade={(message) => {
@@ -9265,8 +9276,30 @@ export default function Home() {
               pageEnd: target.pageEnd ?? undefined,
               sectionTitle: target.sectionTitle ?? undefined,
             } : null)}
-            onPromoteNotebookFinding={(finding) => void promoteNotebookFinding(finding)}
-            onContinueNotebookPath={(finding) => {
+          />
+        ) : activeMobileNav === "notebook" ? (
+          <ResearchNotebookPanel
+            researchCase={activeResearchCase}
+            papers={workspacePapers}
+            authenticated={isAuthenticated}
+            accessEnabled={billing.openAccess || (billing.plan === "founder_pro" && billing.premiumModels)}
+            onUpgrade={(message) => {
+              setStatusText(message);
+              setAppView("settings");
+            }}
+            onExplore={() => setAppView("explore")}
+            onOpenWorkspace={() => setAppView("workspace")}
+            onOpenPaper={(source, target?: ResearchWorkspaceEvidenceTarget) => void openPaperDetailBySource(source, undefined, target ? {
+              evidenceId: target.id,
+              citation: `${source} · ${target.pageStart == null ? "page unavailable" : `p.${target.pageStart}${target.pageEnd != null && target.pageEnd !== target.pageStart ? `-${target.pageEnd}` : ""}`}`,
+              source,
+              id: target.id,
+              pageStart: target.pageStart ?? undefined,
+              pageEnd: target.pageEnd ?? undefined,
+              sectionTitle: target.sectionTitle ?? undefined,
+            } : null)}
+            onPromoteFinding={(finding) => void promoteNotebookFinding(finding)}
+            onContinuePath={(finding) => {
               setPathGoal(finding.question);
               setPathLevel("research");
               setPathOutcome("study_plan");

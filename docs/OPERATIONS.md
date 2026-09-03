@@ -98,6 +98,21 @@ Thai-published cohort, and keep request p95 at or below five seconds. Treat a
 missing `civil_research_cases` table or v3 RPC as an incomplete rollout, not an
 application-level success.
 
+## Research Notebook Light Mode
+
+Apply `20260903164320_notebook_light_mode.sql` after the Research Case migration
+and before deploying the separate Notebook surface. The migration adds compact
+owner-scoped Notebook, thread, message, note, artifact, and Workspace Evidence
+Pack tables plus an optional Workspace-to-Case link. It does not copy canonical
+paper text, chunks, or embeddings.
+
+Keep `OPENRAG_ADAPTER_ENABLED=false`. Light Mode uses the configured
+`OPENAI_API_KEY` or `DEEPSEEK_API_KEY`, the existing Seedy exact-page corpus,
+and server-enforced budgets. `NOTEBOOK_MAX_CONTEXT_PACKETS` defaults to 12,
+`NOTEBOOK_GENERATION_TIMEOUT_MS` to 35 seconds, and
+`MAX_ACTIVE_NOTEBOOK_ASKS` to 6 for the new route. Do not raise these limits on
+Vercel Hobby without a measured concurrency and latency test.
+
 ## Rollback
 - Return to the legacy section-then-chunk recipe: `FAST_RETRIEVAL_ENABLED=false`.
 - Restore model-based routing for otherwise-unclassified prompts: `LLM_ROUTER_ENABLED=true`.
@@ -158,14 +173,14 @@ be converted into an immediate client retry loop. Sparse but relevant coverage
 is returned with `coverage.status=limited`; zero relevant evidence remains a
 recoverable `422 insufficient_path_evidence` response.
 
-Research Notebook asks use the separate `research_notebook_ask` distributed
-quota and `MAX_ACTIVE_NOTEBOOK_ASKS` per-instance cap (8 by default). A `429`
+Legacy Workspace-bound Notebook asks use `research_notebook_ask`; the separate
+Notebook Light Mode route uses `research_notebook_light` and
+`MAX_ACTIVE_NOTEBOOK_ASKS` per-instance cap (6 by default). A `429`
 or `503` is deliberate backpressure and must not trigger an immediate retry
-loop. Confirm that the authenticated owner still owns the saved workspace and
-that every requested source is a current workspace member before investigating
-provider output. Private-source responses must be `Cache-Control: no-store`,
-`shareable: false`, absent from workspace persistence, and excluded from
-Passport promotion. Keep `OPENRAG_ADAPTER_ENABLED=false` during the Challenge;
+loop. Confirm that the authenticated owner owns the Research Case, Notebook,
+thread, and every selected Case Source before investigating provider output.
+Private-source responses must be `Cache-Control: no-store`, `shareable: false`,
+and excluded from Passport promotion. Keep `OPENRAG_ADAPTER_ENABLED=false`;
 no OpenSearch/Langflow/Docling service is required by this release.
 
 The current OpenAI `429 credit_balance_exhausted` response is billing/quota

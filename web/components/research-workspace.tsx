@@ -12,6 +12,7 @@ import {
   LayoutTemplate,
   LoaderCircle,
   Library,
+  NotebookTabs,
   Plus,
   RefreshCw,
   Save,
@@ -115,42 +116,6 @@ type RunResponse = {
     }>;
   }>;
   generatedAt: string;
-};
-
-type ResearchNotebookCitation = {
-  id: string;
-  evidenceId: string;
-  source: string;
-  pageStart: number;
-  pageEnd: number;
-  sectionTitle: string | null;
-  snippet: string;
-  shareable: boolean;
-};
-
-type ResearchNotebookAnswer = {
-  version: "seed-research-notebook-answer-v1";
-  workspaceId: string;
-  model: ChatModel;
-  answer: string;
-  citations: ResearchNotebookCitation[];
-  insufficient: boolean;
-  shareable: boolean;
-  adapter: {
-    requested: "openrag";
-    active: false;
-    status: string;
-    retrievalAuthority: "seedy_bounded_retrieval";
-    evidenceAuthority: "seedy_rights_and_exact_page_contract";
-  };
-  generatedAt: string;
-};
-
-export type ResearchNotebookFinding = {
-  question: string;
-  answer: string;
-  citations: ResearchNotebookCitation[];
-  insufficient: boolean;
 };
 
 type PrivateLibraryItem = {
@@ -307,25 +272,21 @@ function trackWorkspaceEvent(event: "workspace_started" | "workspace_run_complet
 }
 
 export function ResearchWorkspacePanel({
-  focus = "workspace",
   papers,
   seedSources = [],
+  caseId = null,
   authenticated,
   accessEnabled,
   onUpgrade,
   onOpenPaper,
-  onPromoteNotebookFinding,
-  onContinueNotebookPath,
 }: {
-  focus?: "workspace" | "notebook";
   papers: ResearchWorkspacePaper[];
   seedSources?: string[];
+  caseId?: string | null;
   authenticated: boolean;
   accessEnabled: boolean;
   onUpgrade: (message: string) => void;
   onOpenPaper: (source: string, evidenceTarget?: ResearchWorkspaceEvidenceTarget) => void;
-  onPromoteNotebookFinding: (finding: ResearchNotebookFinding) => void;
-  onContinueNotebookPath: (finding: ResearchNotebookFinding) => void;
 }) {
   const defaultColumns = TEMPLATE_COLUMNS.literature_matrix;
   const [workspaceId, setWorkspaceId] = useState("workspace-local");
@@ -352,9 +313,7 @@ export function ResearchWorkspacePanel({
   const [status, setStatus] = useState<"idle" | "running" | "paused" | "saving" | "saved" | "error">("idle");
   const [statusText, setStatusText] = useState("Saved locally");
   const [runProgress, setRunProgress] = useState({ completed: 0, total: 0 });
-  const [notebookQuestion, setNotebookQuestion] = useState(DEFAULT_REVIEW_PROTOCOL.question);
-  const [notebookAnswer, setNotebookAnswer] = useState<ResearchNotebookAnswer | null>(null);
-  const [notebookBusy, setNotebookBusy] = useState(false);
+  const [notebookPackBusy, setNotebookPackBusy] = useState(false);
   const appliedSeedRef = useRef("");
   const stopRunRef = useRef(false);
 
@@ -505,13 +464,6 @@ export function ResearchWorkspacePanel({
   const activeRow = activeCell ? rows.find((row) => row.source === activeCell.source) : null;
   const activeColumn = activeCell ? columns.find((column) => column.id === activeCell.columnId) : null;
   const activeCellValue = activeRow && activeColumn ? activeRow.cells.find((cell) => cell.columnId === activeColumn.id) : null;
-  const selectedPrivateSourceCount = selectedSources.filter((source) => source.startsWith("private:")).length;
-  const notebookFinding: ResearchNotebookFinding | null = notebookAnswer ? {
-    question: notebookQuestion.trim(),
-    answer: notebookAnswer.answer,
-    citations: notebookAnswer.citations,
-    insufficient: notebookAnswer.insufficient,
-  } : null;
   const importCitation = async () => {
     if (!importValue.trim() || importBusy) return;
     setImportBusy(true);
@@ -678,7 +630,7 @@ export function ResearchWorkspacePanel({
           };
           await fetchWorkspaceJson("/api/research-workspaces", {
             method: "POST",
-            body: JSON.stringify({ action: "save", workspaceId, title, collection: "", paperSources: workingRows.map((row) => row.source), state }),
+          body: JSON.stringify({ action: "save", workspaceId, caseId, title, collection: "", paperSources: workingRows.map((row) => row.source), state }),
           });
         }
       }
@@ -728,6 +680,7 @@ export function ResearchWorkspacePanel({
         body: JSON.stringify({
           action: "save",
           workspaceId,
+          caseId,
           title,
           collection: "",
           paperSources: rows.map((row) => row.source),
@@ -741,34 +694,6 @@ export function ResearchWorkspacePanel({
       setStatus("error");
       setStatusText(error instanceof Error ? error.message : "Workspace could not be synced.");
       return false;
-    }
-  };
-
-  const askNotebook = async () => {
-    const question = notebookQuestion.trim();
-    const sources = selectedSources.filter((source) => rows.some((row) => row.source === source)).slice(0, 10);
-    if (!authenticated) {
-      onUpgrade("Sign in to bind Research Notebook to an owner-scoped Workspace and use private sources safely.");
-      return;
-    }
-    if (question.length < 8 || !sources.length || notebookBusy) return;
-    setNotebookBusy(true);
-    setNotebookAnswer(null);
-    try {
-      const saved = await saveWorkspace();
-      if (!saved) return;
-      const answer = await fetchWorkspaceJson<ResearchNotebookAnswer>("/api/research-workspaces", {
-        method: "POST",
-        body: JSON.stringify({ action: "ask", workspaceId, question, model, sources }),
-      });
-      setNotebookAnswer(answer);
-      setStatusText(answer.insufficient
-        ? "Research Notebook needs more page-citable evidence"
-        : `Research Notebook answered from ${answer.citations.length} exact-page source${answer.citations.length === 1 ? "" : "s"}`);
-    } catch (error) {
-      setStatusText(error instanceof Error ? error.message : "Research Notebook could not answer this question.");
-    } finally {
-      setNotebookBusy(false);
     }
   };
 
@@ -867,6 +792,37 @@ export function ResearchWorkspacePanel({
 
   const extractedPapers = rows.filter((row) => row.cells.some((cell) => cell.status === "ready" || cell.status === "needs_review")).length;
   const reviewedPapers = rows.filter((row) => row.cells.length > 0 && row.cells.every((cell) => cell.review === "verified")).length;
+  const verifiedEvidenceCells = rows.flatMap((row) => row.cells).filter((cell) => cell.review === "verified" && cell.evidence.some((item) => item.pageStart != null)).length;
+
+  const sendReviewedToNotebook = async () => {
+    if (!authenticated) {
+      onUpgrade("Sign in to send reviewed Workspace evidence to Notebook.");
+      return;
+    }
+    if (!caseId) {
+      setStatusText("Start or resume a Research Case before sending reviewed evidence to Notebook.");
+      return;
+    }
+    if (!verifiedEvidenceCells || notebookPackBusy) return;
+    setNotebookPackBusy(true);
+    setStatus("saving");
+    setStatusText("Preparing reviewed evidence for Notebook…");
+    try {
+      const saved = await saveWorkspace();
+      if (!saved) return;
+      const payload = await fetchWorkspaceJson<{ pack: { version: number; sourceSnapshot: string[] } }>("/api/research-notebooks", {
+        method: "POST",
+        body: JSON.stringify({ action: "workspace_pack", caseId, workspaceId }),
+      });
+      setStatus("saved");
+      setStatusText(`Workspace Evidence Pack v${payload.pack.version} sent to Notebook · ${payload.pack.sourceSnapshot.length} reviewed sources`);
+    } catch (error) {
+      setStatus("error");
+      setStatusText(error instanceof Error ? error.message : "Reviewed evidence could not be sent to Notebook.");
+    } finally {
+      setNotebookPackBusy(false);
+    }
+  };
   const workflowStages = [
     { label: "Scope", complete: protocolReady },
     { label: "Find", complete: rows.length > 0 },
@@ -878,8 +834,8 @@ export function ResearchWorkspacePanel({
 
   return (
     <section
-      className={`researchWorkspace ${focus === "notebook" ? "notebookFocused" : ""}`}
-      aria-label={focus === "notebook" ? "Research Notebook Workspace" : "Open Access Research Workspace"}
+      className="researchWorkspace"
+      aria-label="Open Access Research Workspace"
     >
       <div className="workspaceCommandSurface">
         <header className="researchWorkspaceHeader">
@@ -932,6 +888,11 @@ export function ResearchWorkspacePanel({
           <button type="button" onClick={() => void saveWorkspace()}>
             <Save size={16} aria-hidden />
             <span>Save</span>
+          </button>
+          <button type="button" onClick={() => void sendReviewedToNotebook()} disabled={notebookPackBusy || !verifiedEvidenceCells} title={!caseId ? "Start a Research Case first" : "Send only human-verified exact-page cells"}>
+            {notebookPackBusy ? <LoaderCircle size={16} className="workspaceSpinner" aria-hidden /> : <NotebookTabs size={16} aria-hidden />}
+            <span>{notebookPackBusy ? "Sending…" : "Send reviewed to Notebook"}</span>
+            {verifiedEvidenceCells ? <strong>{verifiedEvidenceCells}</strong> : null}
           </button>
           <button type="button" onClick={prismaEnabled ? exportPrismaReview : exportWorkspace} disabled={!rows.length}>
             <Download size={16} aria-hidden />
@@ -1006,76 +967,6 @@ export function ResearchWorkspacePanel({
           <small>Bounded batches protect reliability · signed-in progress syncs after each batch</small>
         </div>
       ) : null}
-
-      <section className="researchNotebook" aria-label="Research Notebook">
-        <header>
-          <div>
-            <span className="workspaceEyebrow">Research Notebook</span>
-            <h2>Ask this Workspace</h2>
-            <p>Answers stay inside the selected source set and must resolve to exact pages. Metadata-only records return insufficient evidence.</p>
-          </div>
-          <span className="notebookAuthority"><ShieldCheck size={14} aria-hidden /> Seedy bounded retrieval active · OpenRAG adapter staged</span>
-        </header>
-        <div className="notebookComposer">
-          <textarea
-            aria-label="Ask this Workspace"
-            value={notebookQuestion}
-            onChange={(event) => setNotebookQuestion(event.target.value)}
-            rows={3}
-            maxLength={800}
-            placeholder="What do these selected papers show, where do they disagree, and what evidence is still missing?"
-          />
-          <div>
-            <span>{selectedSources.length} selected source{selectedSources.length === 1 ? "" : "s"}{selectedPrivateSourceCount ? ` · ${selectedPrivateSourceCount} private` : ""}</span>
-            <button type="button" onClick={() => void askNotebook()} disabled={notebookBusy || notebookQuestion.trim().length < 8 || !selectedSources.length}>
-              {notebookBusy ? <LoaderCircle size={15} className="workspaceSpinner" aria-hidden /> : <Sparkles size={15} aria-hidden />}
-              {notebookBusy ? "Reading selected sources…" : authenticated ? "Ask selected sources" : "Sign in to ask"}
-            </button>
-          </div>
-        </div>
-        {selectedPrivateSourceCount ? (
-          <p className="notebookPrivateBoundary" role="note">Private PDF text is sent only to the selected model for this owner-scoped answer. Private citations are marked non-shareable and never enter the public corpus or Passport.</p>
-        ) : !authenticated ? (
-          <p className="notebookPrivateBoundary" role="note">Discovery, screening, extraction, and export stay open. Research Notebook asks require sign-in so generated answers remain bound to one owner-scoped Workspace.</p>
-        ) : null}
-        {notebookAnswer ? (
-          <article className={`notebookAnswer ${notebookAnswer.insufficient ? "insufficient" : ""}`} aria-live="polite">
-            <div className="notebookAnswerBody">
-              <span>{notebookAnswer.insufficient ? "Insufficient evidence" : "Bounded answer"}</span>
-              <p>{notebookAnswer.answer}</p>
-            </div>
-            <div className="notebookCitations" aria-label="Research Notebook exact-page citations">
-              {notebookAnswer.citations.map((citation) => (
-                <button
-                  key={citation.id}
-                  type="button"
-                  onClick={() => onOpenPaper(citation.source, {
-                    id: citation.evidenceId,
-                    pageStart: citation.pageStart,
-                    pageEnd: citation.pageEnd,
-                    sectionTitle: citation.sectionTitle,
-                  })}
-                >
-                  <strong>[{citation.id}] {pageLabel(citation)}</strong>
-                  <span>{citation.sectionTitle || "Evidence packet"}{citation.shareable ? "" : " · private / non-shareable"}</span>
-                  <small>{citation.snippet}</small>
-                </button>
-              ))}
-            </div>
-            <footer>
-              <span>{notebookAnswer.adapter.active ? "OpenRAG adapter active" : "Bounded Seedy retrieval active"} · answer text is not persisted in Workspace state</span>
-              <div>
-                <button
-                  type="button"
-                  disabled={!notebookFinding || notebookFinding.insufficient || !notebookAnswer.shareable}
-                  onClick={() => notebookFinding && onPromoteNotebookFinding(notebookFinding)}
-                >Promote to Passport</button>
-                <button type="button" disabled={!notebookFinding || notebookFinding.insufficient || !notebookAnswer.shareable} onClick={() => notebookFinding && onContinueNotebookPath(notebookFinding)}>Continue to Path</button>
-              </div>
-            </footer>
-          </article>
-        ) : null}
-      </section>
 
       {pickerOpen ? (
         <section className="workspacePaperPicker" aria-label="Add papers to workspace">

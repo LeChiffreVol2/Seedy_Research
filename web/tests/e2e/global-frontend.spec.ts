@@ -675,23 +675,23 @@ test("Research Workspace is a separate open-access surface", async ({ page }) =>
   await expect(workspace.getByText("Verified Review Project")).toBeVisible();
   await expect(workspace.getByText("Open review tools", { exact: true })).toBeVisible();
   await expect(workspace.getByText(/Batch research and every model are unlocked/)).toBeVisible();
-  await expect(workspace.getByText(/Research Notebook asks require sign-in/)).toBeVisible();
+  await expect(workspace.getByRole("button", { name: /Send reviewed to Notebook/ })).toBeVisible();
   await expect(workspace.getByRole("button", { name: /Run selected/ })).toBeVisible();
   await expectNoPageOverflow(page);
 });
 
 test("sidebar exposes Research Notebook as a first-class surface", async ({ page }) => {
   await page.setViewportSize({ width: 1440, height: 1000 });
+  await page.route("**/api/research-cases**", (route) => route.fulfill({ json: { cases: [], summary: { completed: 0 } } }));
   await page.goto("/");
 
   const primaryNavigation = page.getByRole("navigation", { name: "Primary" });
   await expect(primaryNavigation.getByRole("button", { name: "Notebook" })).toBeVisible();
   await primaryNavigation.getByRole("button", { name: "Notebook" }).click();
 
-  const notebookWorkspace = page.getByLabel("Research Notebook Workspace");
-  await expect(notebookWorkspace).toBeVisible();
-  await expect(notebookWorkspace.getByRole("heading", { name: "Ask this Workspace" })).toBeVisible();
-  await expect(notebookWorkspace).toContainText("Seedy bounded retrieval active");
+  const notebook = page.getByRole("region", { name: "Research Notebook", exact: true });
+  await expect(notebook).toBeVisible();
+  await expect(notebook.getByRole("heading", { name: "Start with one Research Case." })).toBeVisible();
 });
 
 test("live glass is bounded away from the scrolling paper feed", async ({ page }) => {
@@ -735,6 +735,36 @@ test("Open Access can batch-run, inspect, review, and export workspace cells", a
     preview: "traffic",
     prompt: "Compare road safety evidence.",
   }));
+  const researchCase = {
+    caseId: "case_workspace01",
+    ownerId: user.userId,
+    question: "Which Thai road-safety findings should be validated next?",
+    status: "active",
+    selectedSources: cards.map((card) => card.source),
+    state: {},
+    reviews: [],
+    createdAt: "2026-09-04T00:00:00.000Z",
+    updatedAt: "2026-09-04T00:00:00.000Z",
+    completedAt: null,
+  };
+  const notebookThreadId = "00000000-0000-4000-8000-000000000123";
+  const notebookMessages: Array<Record<string, unknown>> = [];
+  const workspacePacks: Array<Record<string, unknown>> = [];
+  const notebookSnapshot = () => ({
+    notebookId: "notebook_workspace01",
+    caseId: researchCase.caseId,
+    title: researchCase.question,
+    caseQuestion: researchCase.question,
+    caseSources: researchCase.selectedSources,
+    sourceFingerprint: "test",
+    threads: [{ threadId: notebookThreadId, title: "Research question", archived: false, createdAt: researchCase.createdAt, updatedAt: researchCase.updatedAt }],
+    activeThreadId: notebookThreadId,
+    messages: notebookMessages,
+    notes: [],
+    artifacts: [],
+    workspacePacks,
+    updatedAt: researchCase.updatedAt,
+  });
 
   await page.route("**/api/session", (route) => route.fulfill({ json: { sessionId } }));
   await page.route("**/api/history", (route) => route.fulfill({ json: {
@@ -767,6 +797,40 @@ test("Open Access can batch-run, inspect, review, and export workspace cells", a
     nextCursor: null,
     generatedAt: "2026-07-21T00:00:00.000Z",
   } }));
+  await page.route("**/api/research-cases**", async (route) => {
+    await route.fulfill({ json: route.request().method() === "GET" ? { cases: [researchCase], summary: { completed: 0 } } : { researchCase } });
+  });
+  await page.route("**/api/research-notebooks**", async (route) => {
+    if (route.request().method() === "GET") {
+      await route.fulfill({ json: { notebook: notebookSnapshot(), adapter: { active: false } } });
+      return;
+    }
+    const request = route.request().postDataJSON() as { action: string; question?: string; sources?: string[]; workspaceId?: string };
+    if (request.action === "workspace_pack") {
+      const pack = { packId: "pack-workspace-1", workspaceId: request.workspaceId, version: 1, sourceSnapshot: cards.map((card) => card.source), payload: { workspaceTitle: "Thai research evidence matrix", rows: [] }, createdAt: new Date().toISOString() };
+      workspacePacks.unshift(pack);
+      await route.fulfill({ json: { pack, researchCase } });
+      return;
+    }
+    if (request.action === "ask") {
+      const now = new Date().toISOString();
+      const userMessage = { messageId: "00000000-0000-4000-8000-000000000201", threadId: notebookThreadId, role: "user", content: request.question, citations: [], sourceSnapshot: request.sources, insufficient: false, createdAt: now };
+      const message = {
+        messageId: "00000000-0000-4000-8000-000000000202",
+        threadId: notebookThreadId,
+        role: "assistant",
+        content: "Both selected studies report a page-linked road-safety finding [N1], while cross-context validation remains missing [N2].",
+        citations: (request.sources ?? []).slice(0, 2).map((source, index) => ({ id: `N${index + 1}`, evidenceId: `evidence-${index + 1}`, source, pageStart: 3 + index, pageEnd: 3 + index, sectionTitle: "Results", snippet: "Mocked exact-page Notebook evidence.", shareable: true })),
+        sourceSnapshot: request.sources,
+        insufficient: false,
+        createdAt: now,
+      };
+      notebookMessages.push(userMessage, message);
+      await route.fulfill({ json: { userMessage, message, shareable: true, adapter: { active: false } } });
+      return;
+    }
+    await route.fulfill({ json: { notebook: notebookSnapshot(), adapter: { active: false } } });
+  });
   await page.route("**/api/research-workspaces**", async (route) => {
     if (route.request().method() === "GET") {
       await route.fulfill({ json: { workspaces: [] } });
@@ -860,20 +924,6 @@ test("Open Access can batch-run, inspect, review, and export workspace cells", a
   await page.getByRole("button", { name: "Compare in Workspace" }).click();
   const workspace = page.getByLabel("Open Access Research Workspace");
   await expect(workspace.locator("tbody tr")).toHaveCount(2);
-  const notebook = workspace.getByLabel("Research Notebook", { exact: true });
-  await expect(notebook).toContainText("Seedy bounded retrieval active · OpenRAG adapter staged");
-  await notebook.getByRole("button", { name: "Ask selected sources" }).click();
-  await expect(notebook).toContainText("Both selected studies report a page-linked road-safety finding");
-  await expect(notebook.getByLabel("Research Notebook exact-page citations").getByRole("button")).toHaveCount(2);
-  const exactEvidenceRequest = page.waitForRequest((request) => {
-    const url = new URL(request.url());
-    return url.pathname.includes("/api/papers/") && url.searchParams.get("evidence") === "evidence-1" && url.searchParams.get("page") === "3";
-  });
-  await notebook.getByLabel("Research Notebook exact-page citations").getByRole("button").first().click();
-  await exactEvidenceRequest;
-  await page.getByRole("button", { name: "Close paper detail" }).click();
-  await expect(notebook.getByRole("button", { name: "Promote to Passport" })).toBeEnabled();
-  await expect(notebook.getByRole("button", { name: "Continue to Path" })).toBeEnabled();
   await workspace.getByRole("button", { name: /Run selected/ }).click();
   await expect(workspace.getByText(/Review run complete · verify generated cells/)).toBeVisible();
   await workspace.getByRole("button", { name: /Method for Thai road safety evidence 1/ }).click();
@@ -882,10 +932,24 @@ test("Open Access can batch-run, inspect, review, and export workspace cells", a
   await expect(inspector).toContainText("p.3");
   await inspector.getByRole("button", { name: /Verified/ }).click();
   await expect(inspector.getByText("Review · verified")).toBeVisible();
+  await workspace.getByRole("button", { name: /Send reviewed to Notebook/ }).click();
+  await expect(workspace.getByText(/Workspace Evidence Pack v1 sent to Notebook/)).toBeVisible();
   const download = page.waitForEvent("download");
   await workspace.getByRole("button", { name: "Export CSV" }).click();
   await expect((await download).suggestedFilename()).toMatch(/^seed-research-workspace-\d+\.csv$/);
 
+  await page.getByRole("navigation", { name: "Primary" }).getByRole("button", { name: "Notebook" }).click();
+  const notebook = page.getByRole("region", { name: "Research Notebook", exact: true });
+  await expect(notebook).toContainText("Seedy Light Retrieval active");
+  await expect(notebook.getByLabel("Notebook sources")).toContainText("Thai road safety evidence 1");
+  await notebook.getByLabel("Ask Research Notebook").fill("What road-safety finding should be validated next?");
+  await notebook.getByRole("button", { name: "Ask sources" }).click();
+  await expect(notebook).toContainText("Both selected studies report a page-linked road-safety finding");
+  await expect(notebook.getByLabel("Notebook exact-page citations").getByRole("button")).toHaveCount(2);
+  await expect(notebook.getByRole("button", { name: "Promote to Passport" })).toBeEnabled();
+  await expect(notebook.getByRole("button", { name: /Continue to Research Path/ })).toBeEnabled();
+
+  await page.getByRole("navigation", { name: "Primary" }).getByRole("button", { name: "Workspace" }).click();
   await workspace.getByRole("button", { name: "Template" }).click();
   await workspace.getByRole("menuitemradio", { name: /PRISMA scoping review/ }).click();
   const prisma = workspace.getByLabel("PRISMA-guided scoping review");

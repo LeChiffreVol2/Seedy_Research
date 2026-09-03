@@ -53,12 +53,14 @@ preserve the same boundary.
 The same browser suite verifies Passport-to-Path continuity: reviewed source
 and exact evidence IDs are revalidated server-side and remain visible in the
 path while arbitrary or stale context fails closed. The global frontend suite
-also exercises the Coverage Ledger/provider filter and the selected-source
-Research Notebook, including private non-shareability and public promotion.
+also exercises the Coverage Ledger/provider filter and the separate
+Sources–Chat–Studio Research Notebook, including persistent threads,
+Workspace-to-Notebook reviewed evidence handoff, exact-page citations, private
+non-shareability, and public promotion.
 `pipeline.test_source_registry` pins the deployed provider, record, reader, and
 eight-tool counts so submission copy cannot drift from the machine-readable
-registry. `harness.test_ga_security` pins the Notebook owner/membership,
-non-persistence, citation allow-list, and private-source boundaries.
+registry. `harness.test_ga_security` pins the Notebook owner/membership, bounded
+durable state, citation allow-list, and private-source boundaries.
 
 Before a challenge release, also run one manual pass in ChatGPT's built-in
 browser with Site tools visibly available and one pass in Chrome with native

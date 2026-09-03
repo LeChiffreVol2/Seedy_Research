@@ -523,6 +523,8 @@ def check_product_contract() -> Check:
     research_path = (ROOT / "web" / "app" / "api" / "research-path" / "route.ts").read_text(encoding="utf-8", errors="replace")
     research_workspace = (ROOT / "web" / "app" / "api" / "research-workspaces" / "route.ts").read_text(encoding="utf-8", errors="replace")
     research_workspace_ui = (ROOT / "web" / "components" / "research-workspace.tsx").read_text(encoding="utf-8", errors="replace")
+    research_notebook = (ROOT / "web" / "app" / "api" / "research-notebooks" / "route.ts").read_text(encoding="utf-8", errors="replace")
+    research_notebook_ui = (ROOT / "web" / "components" / "research-notebook.tsx").read_text(encoding="utf-8", errors="replace")
     feed = (ROOT / "web" / "lib" / "research-feed.ts").read_text(encoding="utf-8", errors="replace")
     private_library = (ROOT / "web" / "app" / "api" / "private-library" / "route.ts").read_text(encoding="utf-8", errors="replace")
     living_reviews = (ROOT / "web" / "app" / "api" / "living-reviews" / "route.ts").read_text(encoding="utf-8", errors="replace")
@@ -703,7 +705,6 @@ def check_product_contract() -> Check:
                 'scope: "research_workspace_run"',
             )
         ) and "Open Access Research Workspace" in research_workspace_ui
-        and "Research Notebook Workspace" in research_workspace_ui
         and all(
             marker in research_workspace_ui
             for marker in (
@@ -712,7 +713,12 @@ def check_product_contract() -> Check:
                 "Export CSV",
                 "Verified",
             )
-        ) and all(marker in page for marker in ('label: "Workspace"', 'label: "Notebook"', "ResearchWorkspacePanel")),
+        ) and all(marker in research_notebook for marker in (
+            "MAX_RETRIEVAL_PACKETS", "appendNotebookExchange", "saveNotebookArtifact",
+            'scope: "research_notebook_light"', "Seedy Research Notebook running in resource-bounded Light Mode",
+        )) and all(marker in research_notebook_ui for marker in (
+            "Seedy Light Retrieval active", "Notebook sources", "Notebook Studio", "Workspace Evidence Packs",
+        )) and all(marker in page for marker in ('label: "Workspace"', 'label: "Notebook"', "ResearchWorkspacePanel", "ResearchNotebookPanel")),
     }
     missing = [name for name, present in required.items() if not present]
     if missing:
