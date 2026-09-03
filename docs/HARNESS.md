@@ -23,6 +23,7 @@ python3.10 -m unittest pipeline.test_source_registry harness.test_ga_security
 (cd web && node --test lib/paper-reader.test.mjs)
 (cd web && npx playwright test tests/e2e/paper-reader.spec.ts)
 (cd web && npx playwright test tests/e2e/webmcp.spec.ts)
+(cd web && PERF_BASE_URL=http://127.0.0.1:3210 npm run perf:probe)
 ```
 
 Use the root `Makefile` for normal release work. The direct harness commands remain useful when debugging a specific failing suite.
@@ -128,7 +129,12 @@ python3.10 -m unittest pipeline.test_audit_openalex_visibility harness.test_rese
 
 The performance contract requires the Thai feed request to begin independently
 of session and history hydration, and prevents automatic translation work before a
-person explicitly asks for it.
+person explicitly asks for it. `npm run perf:probe` adds a production-build interaction
+gate over the real feed: feed-visible p95 at or below 3,000 ms, immediate composer and
+filter response at or below 75 ms, scroll-frame p95 at or below 25 ms, no frame above
+80 ms, no long task above 100 ms, and no console errors. The probe records the actual
+scroll container, DOM card count, and viewport height so an empty or non-scrolling page
+cannot produce a false pass.
 
 `harness/run_native_scale.py` is the bounded 5,000-paper capacity smoke. It
 exercises `pmc_oa` by default and derives the total native count from the dated

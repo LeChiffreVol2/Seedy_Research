@@ -1,10 +1,9 @@
 "use client";
 
 import type { ButtonHTMLAttributes, FormEvent, KeyboardEvent, ReactNode, Ref } from "react";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { startTransition, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useChat } from "ai/react";
 import type { UIMessage } from "ai";
-import LiquidGlass from "liquid-glass-react";
 import type { LucideIcon } from "lucide-react";
 import {
   ArrowUp,
@@ -1586,16 +1585,7 @@ function translationCacheEntry(value: unknown): Pick<PaperTranslationState, "seg
   return Object.keys(segments).length ? { segments, updatedAt: candidate.updatedAt } : null;
 }
 
-function ClientLiquidLayer({
-  prominent = false,
-  cornerRadius = 16,
-  displacementScale = 28,
-  blurAmount = 0.04,
-  saturation = 126,
-  aberrationIntensity = 1,
-  elasticity = 0.16,
-  className = "",
-}: {
+function ClientLiquidLayer(_props: {
   prominent?: boolean;
   cornerRadius?: number;
   displacementScale?: number;
@@ -1605,30 +1595,9 @@ function ClientLiquidLayer({
   elasticity?: number;
   className?: string;
 }) {
-  const [mounted, setMounted] = useState(false);
-
-  useEffect(() => {
-    setMounted(true);
-  }, []);
-
-  if (!mounted) return null;
-
-  return (
-    <LiquidGlass
-      className={`liquidEffect ${className}`}
-      mode={prominent ? "prominent" : "standard"}
-      cornerRadius={cornerRadius}
-      displacementScale={displacementScale}
-      blurAmount={blurAmount}
-      saturation={saturation}
-      aberrationIntensity={aberrationIntensity}
-      elasticity={elasticity}
-      padding="0"
-      style={{ position: "absolute", top: "50%", left: "50%", width: "100%", height: "100%" }}
-    >
-      <span className="liquidGhost" aria-hidden />
-    </LiquidGlass>
-  );
+  // Static CSS surfaces preserve the visual hierarchy without mounting a
+  // pointer-reactive SVG filter for every control.
+  return null;
 }
 
 function GlassButton({
@@ -2727,7 +2696,7 @@ function SearchComposer({
   draft: string;
   setDraft: (value: string) => void;
   activeNav: MobileNavItem;
-  onSubmit: (event: FormEvent<HTMLFormElement>) => void;
+  onSubmit: (event: FormEvent<HTMLFormElement>, draft: string) => void;
   onKeyDown: (event: KeyboardEvent<HTMLTextAreaElement>) => void;
   useMcp: boolean;
   experience: ChatExperience;
@@ -2747,16 +2716,39 @@ function SearchComposer({
   isReady: boolean;
   isLoading: boolean;
 }) {
+  // Keep the keystroke on the composer's small subtree. The research feed,
+  // coverage ledger, and evidence panels consume the draft only after the
+  // user pauses, so their large subtree never sits on the keystroke path.
+  const [localDraft, setLocalDraft] = useState(draft);
+  const draftCommitTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  useEffect(() => {
+    if (draftCommitTimerRef.current) clearTimeout(draftCommitTimerRef.current);
+    setLocalDraft(draft);
+  }, [draft]);
+
+  useEffect(() => () => {
+    if (draftCommitTimerRef.current) clearTimeout(draftCommitTimerRef.current);
+  }, []);
+
+  const updateDraft = (value: string) => {
+    setLocalDraft(value);
+    if (draftCommitTimerRef.current) clearTimeout(draftCommitTimerRef.current);
+    draftCommitTimerRef.current = setTimeout(() => {
+      startTransition(() => setDraft(value));
+    }, 250);
+  };
+
   const composerHint =
     activeNav === "explore"
       ? "Typing previews relevant papers. Submit starts one persistent Research Case."
       : "Ask a cited research question.";
 
   return (
-    <form onSubmit={onSubmit} className="searchComposer">
+    <form onSubmit={(event) => onSubmit(event, localDraft)} className="searchComposer">
       <textarea
-        value={draft}
-        onChange={(event) => setDraft(event.target.value)}
+        value={localDraft}
+        onChange={(event) => updateDraft(event.target.value)}
         onKeyDown={onKeyDown}
         placeholder={activeNav === "explore" ? "What do you want to understand from research published in Thailand?" : "Ask about the evidence"}
         aria-label={activeNav === "explore" ? "Start a Thai-to-global Research Case" : "Ask about research evidence"}
@@ -2818,7 +2810,7 @@ function SearchComposer({
         <GlassButton
           type="submit"
           className="sendButtonWrap"
-          disabled={!isReady || isLoading || !draft.trim()}
+          disabled={!isReady || isLoading || !localDraft.trim()}
           aria-label={isLoading ? "Seedy Research is answering" : activeNav === "explore" ? "Start Research Case" : "Send message"}
         >
           <ArrowUp size={22} strokeWidth={2.5} aria-hidden />
@@ -6375,7 +6367,7 @@ export default function Home() {
     if (activeMobileNav !== "explore") return;
     const timer = setTimeout(() => {
       setFeedQuery(draft.trim());
-    }, 350);
+    }, 100);
     return () => clearTimeout(timer);
   }, [activeMobileNav, draft]);
 
@@ -7806,8 +7798,8 @@ export default function Home() {
     }
   };
 
-  const startResearchCaseFromComposer = async () => {
-    const question = draft.trim();
+  const startResearchCaseFromComposer = async (submittedDraft = draft) => {
+    const question = submittedDraft.trim();
     if (question.length < 8 || researchCaseStatus === "saving") return;
     const handler = webMcpHandlersRef.current?.startResearchCase;
     if (!handler) {
@@ -7831,13 +7823,13 @@ export default function Home() {
     }
   };
 
-  const onSubmit = (event: FormEvent<HTMLFormElement>) => {
+  const onSubmit = (event: FormEvent<HTMLFormElement>, submittedDraft: string) => {
     event.preventDefault();
     if (activeMobileNav === "explore") {
-      void startResearchCaseFromComposer();
+      void startResearchCaseFromComposer(submittedDraft);
       return;
     }
-    void submitPrompt(draft);
+    void submitPrompt(submittedDraft);
   };
 
   const onComposerKeyDown = (event: KeyboardEvent<HTMLTextAreaElement>) => {
