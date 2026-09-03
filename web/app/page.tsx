@@ -1,10 +1,9 @@
 "use client";
 
 import type { ButtonHTMLAttributes, FormEvent, KeyboardEvent, ReactNode, Ref } from "react";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { startTransition, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useChat } from "ai/react";
 import type { UIMessage } from "ai";
-import LiquidGlass from "liquid-glass-react";
 import type { LucideIcon } from "lucide-react";
 import {
   ArrowUp,
@@ -37,6 +36,7 @@ import {
   LogOut,
   Mail,
   MessageCircle,
+  NotebookTabs,
   Plus,
   Search,
   Settings,
@@ -79,7 +79,7 @@ type CollectionFilter = "" | "ce_project" | "ncce";
 type SyncState = "loading" | "saving" | "saved" | "error";
 type OpenDropdown = "experience" | "model" | "collection" | "actions" | "examples" | null;
 type FeedFilter = "hot" | "for_you" | "recent" | "evidence" | "saved" | "thai" | "tci" | "ncce" | "ce_project";
-type MobileNavItem = "explore" | "workspace" | "path" | "chat" | "history" | "shared" | "settings";
+type MobileNavItem = "explore" | "workspace" | "notebook" | "path" | "chat" | "history" | "shared" | "settings";
 type FeedStatus = "loading" | "ready" | "error";
 type SessionsStatus = "idle" | "loading" | "ready" | "error";
 type AuthMode = "signin" | "signup" | "forgot-password" | "recovery";
@@ -303,6 +303,11 @@ type ResearchCardData = {
   licenseExpression?: string | null;
   licenseUrl?: string | null;
   discoveryLayer?: "evidence" | "thai_discovery";
+  publicationCountry?: string | null;
+  thaiPublished?: boolean | null;
+  thailandContext?: boolean | null;
+  thaiLanguage?: boolean | null;
+  thaiAffiliated?: boolean | null;
   visibility?: VisibilityReceipt;
 };
 
@@ -371,7 +376,7 @@ type ResearchFeedResponse = {
 type ResearchCoverageProvider = {
   provider: string;
   label: string;
-  state: "live_bounded" | "pilot_internal" | "not_connected";
+  state: "connected" | "import_validated" | "partner_required" | "planned" | "blocked";
   records: number;
   metadataOnly: number;
   pageCitable: number;
@@ -541,6 +546,26 @@ type ResearchPassportEvidence = PaperDetailData["evidence"][number] & {
   englishSnippet: string | null;
 };
 
+type ResearchCaseReviewDecision = {
+  evidenceId: string;
+  source: string;
+  pageAnchor: string;
+  decision: "accepted" | "rejected";
+  note: string;
+  updatedAt: string;
+};
+
+type ActiveResearchCase = {
+  caseId: string;
+  question: string;
+  status: "active" | "completed" | "archived";
+  selectedSources: string[];
+  state: Record<string, unknown>;
+  reviews: ResearchCaseReviewDecision[];
+  createdAt: string;
+  updatedAt: string;
+};
+
 type WebMcpActivity = {
   tool: string;
   detail: string;
@@ -554,6 +579,7 @@ type ResearchPassportArtifact = {
   reviewedAt: string | null;
   stale: boolean;
   openedEvidenceIds: string[];
+  reviewDecisions: Record<string, ResearchCaseReviewDecision>;
   runSteps: WebMcpActivity[];
   translationStatus: "ready" | "not_needed" | "unavailable";
   focus: string;
@@ -816,6 +842,7 @@ const MAIN_NAV_ITEMS: NavItem[] = ([
   { id: "explore", label: "Explore", icon: Compass },
   { id: "chat", label: "Chat", icon: MessageCircle },
   { id: "workspace", label: "Workspace", icon: TableProperties },
+  { id: "notebook", label: "Notebook", icon: NotebookTabs },
   { id: "history", label: "History", icon: History },
   { id: "shared", label: "Share & export", icon: Share2 },
   { id: "settings", label: "Settings", icon: Settings },
@@ -823,7 +850,7 @@ const MAIN_NAV_ITEMS: NavItem[] = ([
 
 const MOBILE_NAV_ITEMS = MAIN_NAV_ITEMS.filter((item) => item.id !== "shared");
 const AUTH_RETURN_FEATURE_KEY = "seedy-auth-return-feature-v1";
-const DEFAULT_AUTHENTICATED_FEATURE: MobileNavItem = CIVILMCP_FEATURE_ACCESS.path.enabled ? "path" : MAIN_NAV_ITEMS.find((item) => item.id !== "settings")?.id ?? "settings";
+const DEFAULT_AUTHENTICATED_FEATURE: MobileNavItem = CIVILMCP_FEATURE_ACCESS.explore.enabled ? "explore" : MAIN_NAV_ITEMS.find((item) => item.id !== "settings")?.id ?? "settings";
 
 function isMobileNavItem(value: string | null | undefined): value is MobileNavItem {
   return Boolean(value && MAIN_NAV_ITEMS.some((item) => item.id === value));
@@ -841,7 +868,6 @@ const TRANSLATION_CACHE_KEY = "civilmcp-paper-translations-v1";
 const PAPER_LANGUAGE_KEY = "civilmcp-paper-language-v1";
 const RESEARCH_PATH_KEY = "civilmcp-research-path-v3";
 const READER_REVIEW_RECEIPT_KEY = "seed-research-reader-review-receipt-v1";
-const RESEARCH_PATH_DEMO_GOAL = "Urban road safety";
 const RESEARCH_PATH_DEMO_LEVEL: PathLevel = "foundation";
 const RESEARCH_PATH_DEMO_OUTCOME: PathOutcome = "study_plan";
 const ACTIVATION_KEY = "civilmcp-activation-v1";
@@ -1076,23 +1102,25 @@ function passportGlobalStatusCopy(status: GlobalDiscoveryStatus, hasWorks: boole
 }
 
 function researchPassportMarkdown(artifact: ResearchPassportArtifact): string {
+  const acceptedEvidence = artifact.evidence.filter((item) => artifact.reviewDecisions[item.id]?.decision === "accepted");
   const lines = [
     `# Thai → Global Research Passport — ${boundedToolText(artifact.paper.title, 180)}`,
     "",
     `- Passport: ${artifact.passportId}`,
-    `- Status: ${artifact.reviewedAt ? `Page anchors reviewed ${artifact.reviewedAt}; candidate inference unvalidated` : "Draft · exact-page review required"}`,
+    `- Status: ${artifact.reviewedAt ? `Claim-level evidence reviewed ${artifact.reviewedAt}; candidate inference unvalidated` : "Draft · claim-level evidence review required"}`,
     `- Focus: ${artifact.focus}`,
     `- Thai source: ${artifact.paper.paperCode || artifact.paper.source}`,
     `- Collection: ${artifact.paper.collection || "all"}`,
     `- Page coverage: ${artifact.paper.pageLabel}`,
-    `- Opened page anchors: ${artifact.openedEvidenceIds.length}/${artifact.evidence.length}`,
+    `- Accepted evidence: ${acceptedEvidence.length}/${artifact.evidence.length}`,
     `- English bridge: ${artifact.translationStatus === "ready" ? "bounded rendering included" : artifact.translationStatus === "not_needed" ? "source excerpts already English" : "unavailable; original source excerpts retained"}`,
     "",
-    "## Page-reviewed Thai evidence",
+    "## Accepted page-reviewed Thai evidence",
     "",
-    ...artifact.evidence.flatMap((item) => [
+    ...acceptedEvidence.flatMap((item) => [
       `### ${item.id} · ${passportEvidencePage(item)}`,
       item.sectionTitle ? `Section: ${boundedToolText(item.sectionTitle, 100)}` : "",
+      artifact.reviewDecisions[item.id]?.note ? `Reviewer note: ${boundedToolText(artifact.reviewDecisions[item.id].note, 300)}` : "",
       `Source excerpt: ${boundedToolText(item.snippet, 360)}`,
       item.englishSnippet ? `English rendering: ${boundedToolText(item.englishSnippet, 360)}` : "",
       "",
@@ -1343,6 +1371,48 @@ function isResearchCardData(value: unknown): value is ResearchCardData {
   return Boolean(card && typeof card === "object" && typeof card.id === "string" && typeof card.title === "string" && typeof card.source === "string");
 }
 
+function normalizeActiveResearchCase(value: unknown): ActiveResearchCase | null {
+  if (!value || typeof value !== "object") return null;
+  const candidate = value as Record<string, unknown>;
+  if (
+    typeof candidate.caseId !== "string"
+    || typeof candidate.question !== "string"
+    || !["active", "completed", "archived"].includes(String(candidate.status))
+  ) return null;
+  const reviews = Array.isArray(candidate.reviews)
+    ? candidate.reviews.flatMap((value) => {
+        if (!value || typeof value !== "object") return [];
+        const review = value as Record<string, unknown>;
+        if (
+          typeof review.evidenceId !== "string"
+          || typeof review.source !== "string"
+          || typeof review.pageAnchor !== "string"
+          || !["accepted", "rejected"].includes(String(review.decision))
+        ) return [];
+        return [{
+          evidenceId: review.evidenceId,
+          source: review.source,
+          pageAnchor: review.pageAnchor,
+          decision: review.decision as "accepted" | "rejected",
+          note: typeof review.note === "string" ? review.note : "",
+          updatedAt: typeof review.updatedAt === "string" ? review.updatedAt : new Date(0).toISOString(),
+        }];
+      })
+    : [];
+  return {
+    caseId: candidate.caseId,
+    question: candidate.question,
+    status: candidate.status as ActiveResearchCase["status"],
+    selectedSources: Array.isArray(candidate.selectedSources) ? candidate.selectedSources.map(String).slice(0, 50) : [],
+    state: candidate.state && typeof candidate.state === "object" && !Array.isArray(candidate.state)
+      ? candidate.state as Record<string, unknown>
+      : {},
+    reviews,
+    createdAt: typeof candidate.createdAt === "string" ? candidate.createdAt : new Date().toISOString(),
+    updatedAt: typeof candidate.updatedAt === "string" ? candidate.updatedAt : new Date().toISOString(),
+  };
+}
+
 function isResearchPath(value: unknown): value is ResearchPath {
   if (!value || typeof value !== "object") return false;
   const candidate = value as Partial<ResearchPath>;
@@ -1517,16 +1587,7 @@ function translationCacheEntry(value: unknown): Pick<PaperTranslationState, "seg
   return Object.keys(segments).length ? { segments, updatedAt: candidate.updatedAt } : null;
 }
 
-function ClientLiquidLayer({
-  prominent = false,
-  cornerRadius = 16,
-  displacementScale = 28,
-  blurAmount = 0.04,
-  saturation = 126,
-  aberrationIntensity = 1,
-  elasticity = 0.16,
-  className = "",
-}: {
+function ClientLiquidLayer(_props: {
   prominent?: boolean;
   cornerRadius?: number;
   displacementScale?: number;
@@ -1536,30 +1597,9 @@ function ClientLiquidLayer({
   elasticity?: number;
   className?: string;
 }) {
-  const [mounted, setMounted] = useState(false);
-
-  useEffect(() => {
-    setMounted(true);
-  }, []);
-
-  if (!mounted) return null;
-
-  return (
-    <LiquidGlass
-      className={`liquidEffect ${className}`}
-      mode={prominent ? "prominent" : "standard"}
-      cornerRadius={cornerRadius}
-      displacementScale={displacementScale}
-      blurAmount={blurAmount}
-      saturation={saturation}
-      aberrationIntensity={aberrationIntensity}
-      elasticity={elasticity}
-      padding="0"
-      style={{ position: "absolute", top: "50%", left: "50%", width: "100%", height: "100%" }}
-    >
-      <span className="liquidGhost" aria-hidden />
-    </LiquidGlass>
-  );
+  // Static CSS surfaces preserve the visual hierarchy without mounting a
+  // pointer-reactive SVG filter for every control.
+  return null;
 }
 
 function GlassButton({
@@ -2658,7 +2698,7 @@ function SearchComposer({
   draft: string;
   setDraft: (value: string) => void;
   activeNav: MobileNavItem;
-  onSubmit: (event: FormEvent<HTMLFormElement>) => void;
+  onSubmit: (event: FormEvent<HTMLFormElement>, draft: string) => void;
   onKeyDown: (event: KeyboardEvent<HTMLTextAreaElement>) => void;
   useMcp: boolean;
   experience: ChatExperience;
@@ -2678,19 +2718,52 @@ function SearchComposer({
   isReady: boolean;
   isLoading: boolean;
 }) {
+  // Keep the keystroke on the composer's small subtree. The research feed,
+  // coverage ledger, and evidence panels consume the draft only after the
+  // user pauses, so their large subtree never sits on the keystroke path.
+  const [localDraft, setLocalDraft] = useState(draft);
+  const draftCommitTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  useEffect(() => {
+    if (draftCommitTimerRef.current) clearTimeout(draftCommitTimerRef.current);
+    setLocalDraft(draft);
+  }, [draft]);
+
+  useEffect(() => () => {
+    if (draftCommitTimerRef.current) clearTimeout(draftCommitTimerRef.current);
+  }, []);
+
+  const updateDraft = (value: string) => {
+    setLocalDraft(value);
+    if (draftCommitTimerRef.current) clearTimeout(draftCommitTimerRef.current);
+    draftCommitTimerRef.current = setTimeout(() => {
+      startTransition(() => setDraft(value));
+    }, 250);
+  };
+
   const composerHint =
     activeNav === "explore"
-      ? "Search filters papers. Enter asks a cited question."
+      ? "Typing previews relevant papers. Submit starts one persistent Research Case."
       : "Ask a cited research question.";
 
+  const submitComposer = (event: FormEvent<HTMLFormElement>) => {
+    if (draftCommitTimerRef.current) {
+      clearTimeout(draftCommitTimerRef.current);
+      draftCommitTimerRef.current = null;
+    }
+    const submittedDraft = localDraft;
+    setLocalDraft("");
+    onSubmit(event, submittedDraft);
+  };
+
   return (
-    <form onSubmit={onSubmit} className="searchComposer">
+    <form onSubmit={submitComposer} className="searchComposer">
       <textarea
-        value={draft}
-        onChange={(event) => setDraft(event.target.value)}
+        value={localDraft}
+        onChange={(event) => updateDraft(event.target.value)}
         onKeyDown={onKeyDown}
-        placeholder={activeNav === "explore" ? "Search papers or ask a question" : "Ask about the evidence"}
-        aria-label="Ask or search Thai research papers"
+        placeholder={activeNav === "explore" ? "What do you want to understand from research published in Thailand?" : "Ask about the evidence"}
+        aria-label={activeNav === "explore" ? "Start a Thai-to-global Research Case" : "Ask about research evidence"}
         aria-describedby="composer-intent"
         rows={3}
       />
@@ -2745,12 +2818,12 @@ function SearchComposer({
           isReady={isReady}
           isLoading={isLoading}
         />
-        <span className="keyHint">⌘↵ to send</span>
+        <span className="keyHint">{activeNav === "explore" ? "⌘↵ to start case" : "⌘↵ to send"}</span>
         <GlassButton
           type="submit"
           className="sendButtonWrap"
-          disabled={!isReady || isLoading || !draft.trim()}
-          aria-label={isLoading ? "Seedy Research is answering" : "Send message"}
+          disabled={!isReady || isLoading || !localDraft.trim()}
+          aria-label={isLoading ? "Seedy Research is answering" : activeNav === "explore" ? "Start Research Case" : "Send message"}
         >
           <ArrowUp size={22} strokeWidth={2.5} aria-hidden />
         </GlassButton>
@@ -2900,6 +2973,52 @@ function VisibilityReceiptBadge({ receipt }: { receipt?: VisibilityReceipt }) {
   );
 }
 
+function VisibilityCorrectionControl({ card }: { card: ResearchCardData }) {
+  const [candidate, setCandidate] = useState("");
+  const [note, setNote] = useState("");
+  const [status, setStatus] = useState<"idle" | "saving" | "saved" | "error">("idle");
+  const receipt = card.visibility;
+  if (!receipt || receipt.state === "globally_indexed" || receipt.state === "not_audited") return null;
+  const submit = async (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    if (status === "saving" || status === "saved") return;
+    const normalized = candidate.trim();
+    const openAlexMatch = normalized.match(/(?:https?:\/\/openalex\.org\/)?(W\d+)/i);
+    const doi = normalized.replace(/^https?:\/\/(?:dx\.)?doi\.org\//i, "");
+    setStatus("saving");
+    try {
+      await fetchJson("/api/visibility-corrections", {
+        method: "POST",
+        body: JSON.stringify({
+          source: card.source,
+          kind: openAlexMatch ? "match" : normalized ? "metadata_correction" : "review_request",
+          proposedExternalWorkId: openAlexMatch ? `https://openalex.org/${openAlexMatch[1].toUpperCase()}` : null,
+          proposedDoi: !openAlexMatch && normalized ? doi : null,
+          note,
+        }),
+      });
+      setStatus("saved");
+    } catch {
+      setStatus("error");
+    }
+  };
+  return (
+    <details className="visibilityCorrectionControl">
+      <summary>{status === "saved" ? "Sent for steward review" : "Suggest match/correction"}</summary>
+      {status === "saved" ? (
+        <p>Stored in Seedy’s steward queue. No external index was modified.</p>
+      ) : (
+        <form onSubmit={submit}>
+          <label><span>OpenAlex ID or DOI (optional)</span><input value={candidate} onChange={(event) => setCandidate(event.target.value)} maxLength={180} placeholder="W… or 10.…" /></label>
+          <label><span>Why should this be reviewed? (optional)</span><textarea value={note} onChange={(event) => setNote(event.target.value)} maxLength={1500} rows={2} /></label>
+          {status === "error" ? <p role="alert">Could not save this suggestion. Retry shortly.</p> : null}
+          <button type="submit" disabled={status === "saving"}>{status === "saving" ? "Saving…" : "Send to Seedy steward"}</button>
+        </form>
+      )}
+    </details>
+  );
+}
+
 function VisibilityAuditPanel({ summary }: { summary: VisibilitySummary | null }) {
   if (!summary) return null;
   const dated = summary.snapshotDate
@@ -2946,8 +3065,9 @@ function CoverageLedger({
   onClearProvider: () => void;
 }) {
   if (!providers.length) return null;
-  const connected = providers.filter((provider) => provider.state !== "not_connected" && provider.records > 0);
-  const planned = providers.filter((provider) => provider.state === "not_connected");
+  const connected = providers.filter((provider) => (provider.state === "connected" || provider.state === "import_validated") && provider.records > 0);
+  const partnerRequired = providers.filter((provider) => provider.state === "partner_required");
+  const planned = providers.filter((provider) => provider.state === "planned" || provider.state === "blocked");
   return (
     <section className="coverageLedger" aria-label="Thai research coverage ledger">
       <header>
@@ -2965,7 +3085,7 @@ function CoverageLedger({
               <strong>{provider.label}</strong>
               <span>{provider.provider === "pmc_oa"
                 ? "global comparison corpus · excluded from Thai-local totals"
-                : provider.state === "pilot_internal" ? "bounded internal Thai corpus" : "bounded live Thai source"}</span>
+                : provider.state === "import_validated" ? "validated bounded import" : "connected Thai-published source"}</span>
             </div>
             <dl>
               <div><dt>Records</dt><dd>{provider.records.toLocaleString("en-US")}</dd></div>
@@ -2985,12 +3105,73 @@ function CoverageLedger({
           </article>
         ))}
       </div>
-      {planned.length ? (
+      {partnerRequired.length ? (
         <details>
-          <summary>{planned.length} national providers tracked, not yet connected</summary>
-          <p>{planned.map((provider) => provider.label).join(" · ")}. Rights or repeatable access must be agreed before ingestion.</p>
+          <summary>{partnerRequired.length} national providers require formal access</summary>
+          <p>{partnerRequired.map((provider) => provider.label).join(" · ")}. Seedy will not bypass access controls or imply ingestion before an agreement or lawful export exists.</p>
         </details>
       ) : null}
+      {planned.length ? (
+        <details>
+          <summary>{planned.length} provider classes planned, not yet connected</summary>
+          <p>{planned.map((provider) => provider.label).join(" · ")}. A repeatable access method and rights review are required before promotion.</p>
+        </details>
+      ) : null}
+    </section>
+  );
+}
+
+function ResearchCasePanel({
+  researchCase,
+  status,
+  error,
+  onOpenSource,
+  onStartNew,
+}: {
+  researchCase: ActiveResearchCase | null;
+  status: "idle" | "loading" | "saving" | "ready" | "error";
+  error: string;
+  onOpenSource: (source: string) => void;
+  onStartNew: () => void;
+}) {
+  if (!researchCase && status === "idle" && !error) return null;
+  if (!researchCase && status === "loading") {
+    return <section className="researchCasePanel loading" aria-label="Research Case" role="status"><LoaderCircle size={17} className="passportSpinner" aria-hidden /><span>Resuming your latest Research Case…</span></section>;
+  }
+  if (!researchCase) {
+    return <section className="researchCasePanel error" aria-label="Research Case"><TriangleAlert size={17} aria-hidden /><span>{error || "Research Case could not be loaded."}</span><button type="button" onClick={onStartNew}>Start locally</button></section>;
+  }
+  const accepted = researchCase.reviews.filter((review) => review.decision === "accepted").length;
+  const visibilityState = typeof researchCase.state.visibilityState === "string" ? researchCase.state.visibilityState : "pending";
+  const hasEvidence = Number(researchCase.state.evidenceCount ?? 0) > 0;
+  const hasProtocol = researchCase.state.pathReady === true;
+  const stages = [
+    { label: "Discover", complete: researchCase.selectedSources.length > 0 },
+    { label: "Visibility", complete: visibilityState !== "pending" },
+    { label: "Evidence", complete: hasEvidence },
+    { label: "Review", complete: accepted > 0 },
+    { label: "Next study", complete: hasProtocol },
+  ];
+  return (
+    <section className="researchCasePanel" aria-label="Research Case" data-testid="research-case-panel">
+      <header>
+        <div>
+          <span className="workspaceEyebrow">Active Research Case · {researchCase.caseId.slice(-8)}</span>
+          <h2>{researchCase.question}</h2>
+          <p>One resumable trail from research published in Thailand to a reviewed next-study decision.</p>
+        </div>
+        <span className={`caseSaveState ${status}`}>{status === "saving" ? "Saving…" : "Saved"}</span>
+      </header>
+      <ol className="researchCaseStages" aria-label="Research Case progress">
+        {stages.map((stage, index) => <li key={stage.label} className={stage.complete ? "complete" : "pending"}><span>{stage.complete ? <Check size={13} aria-hidden /> : index + 1}</span>{stage.label}</li>)}
+      </ol>
+      <footer>
+        <span>{researchCase.selectedSources.length} selected sources · {accepted} accepted evidence items</span>
+        <div>
+          {researchCase.selectedSources[0] ? <button type="button" className="cardAction primary" onClick={() => onOpenSource(researchCase.selectedSources[0])}>Continue with evidence</button> : null}
+          <button type="button" className="cardAction" onClick={onStartNew}>Start a new case</button>
+        </div>
+      </footer>
     </section>
   );
 }
@@ -3104,6 +3285,7 @@ function ResearchPassportPanel({
   enabled,
   state,
   onOpenEvidence,
+  onReviewEvidence,
   onMarkReviewed,
   onExport,
   onClear,
@@ -3112,6 +3294,7 @@ function ResearchPassportPanel({
   enabled: boolean;
   state: ResearchPassportState;
   onOpenEvidence: (item: ResearchPassportEvidence) => void;
+  onReviewEvidence: (item: ResearchPassportEvidence, decision: "accepted" | "rejected") => void;
   onMarkReviewed: () => void;
   onExport: () => void;
   onClear: () => void;
@@ -3123,6 +3306,12 @@ function ResearchPassportPanel({
   const reviewed = Boolean(artifact?.reviewedAt);
   const allEvidenceOpened = artifact
     ? artifact.evidence.length > 0 && artifact.evidence.every((item) => artifact.openedEvidenceIds.includes(item.id))
+    : false;
+  const acceptedEvidenceCount = artifact
+    ? artifact.evidence.filter((item) => artifact.reviewDecisions[item.id]?.decision === "accepted").length
+    : 0;
+  const allEvidenceDecided = artifact
+    ? artifact.evidence.length > 0 && artifact.evidence.every((item) => Boolean(artifact.reviewDecisions[item.id]))
     : false;
 
   return (
@@ -3139,10 +3328,10 @@ function ResearchPassportPanel({
           {artifact?.stale
             ? "Out of date · redraft required"
             : reviewed
-              ? "Page anchors reviewed · inference remains candidate"
+              ? `${acceptedEvidenceCount} evidence claims accepted · inference remains candidate`
               : artifact
-                ? allEvidenceOpened ? "Ready for page-review acknowledgment" : `Open exact pages · ${artifact.openedEvidenceIds.length}/${artifact.evidence.length}`
-                : "7 site tools ready"}
+                ? allEvidenceDecided ? "Ready to complete claim review" : allEvidenceOpened ? "Accept or reject each evidence claim" : `Open exact pages · ${artifact.openedEvidenceIds.length}/${artifact.evidence.length}`
+                : "8 site tools ready"}
         </span>
       </header>
 
@@ -3176,20 +3365,30 @@ function ResearchPassportPanel({
               <h3>{artifact.paper.title}</h3>
               <p>{artifact.paper.paperCode || artifact.paper.source} · {artifact.paper.pageLabel}</p>
               <div className="passportEvidenceList">
-                {artifact.evidence.map((item) => (
-                  <button
-                    key={item.id}
-                    type="button"
-                    onClick={() => onOpenEvidence(item)}
-                    aria-pressed={artifact.openedEvidenceIds.includes(item.id)}
-                    aria-label={`Open evidence ${item.id} at ${passportEvidencePage(item)}`}
-                  >
-                    <span><strong>{item.id}</strong><em>{passportEvidencePage(item)}{artifact.openedEvidenceIds.includes(item.id) ? " · opened" : ""}</em></span>
-                    <small>{item.sectionTitle || "Evidence packet"}</small>
-                    <span className="passportEvidenceExcerpt" lang={contentLanguage(item.snippet)}>{boundedToolText(item.snippet, 180)}</span>
-                    {item.englishSnippet ? <span className="passportEvidenceTranslation" lang="en"><em>English</em>{boundedToolText(item.englishSnippet, 180)}</span> : null}
-                  </button>
-                ))}
+                {artifact.evidence.map((item) => {
+                  const opened = artifact.openedEvidenceIds.includes(item.id);
+                  const decision = artifact.reviewDecisions[item.id]?.decision;
+                  return (
+                    <div key={item.id} className={`passportEvidenceItem ${decision ?? "pending"}`}>
+                      <button
+                        type="button"
+                        className="passportEvidenceOpen"
+                        onClick={() => onOpenEvidence(item)}
+                        aria-pressed={opened}
+                        aria-label={`Open evidence ${item.id} at ${passportEvidencePage(item)}`}
+                      >
+                        <span><strong>{item.id}</strong><em>{passportEvidencePage(item)}{opened ? " · opened" : ""}</em></span>
+                        <small>{item.sectionTitle || "Evidence packet"}</small>
+                        <span className="passportEvidenceExcerpt" lang={contentLanguage(item.snippet)}>{boundedToolText(item.snippet, 180)}</span>
+                        {item.englishSnippet ? <span className="passportEvidenceTranslation" lang="en"><em>English</em>{boundedToolText(item.englishSnippet, 180)}</span> : null}
+                      </button>
+                      <div className="evidenceDecisionActions" aria-label={`Review ${item.id}`}>
+                        <button type="button" disabled={!opened || reviewed} aria-pressed={decision === "accepted"} onClick={() => onReviewEvidence(item, "accepted")}><Check size={13} aria-hidden /> Accept</button>
+                        <button type="button" disabled={!opened || reviewed} aria-pressed={decision === "rejected"} onClick={() => onReviewEvidence(item, "rejected")}><X size={13} aria-hidden /> Reject</button>
+                      </div>
+                    </div>
+                  );
+                })}
               </div>
             </section>
 
@@ -3253,9 +3452,9 @@ function ResearchPassportPanel({
           </div>
 
           <div className="passportActions">
-            <button type="button" className="cardAction primary" disabled={reviewed || artifact.stale || !allEvidenceOpened} onClick={onMarkReviewed}>
+            <button type="button" className="cardAction primary" disabled={reviewed || artifact.stale || !allEvidenceOpened || !allEvidenceDecided || acceptedEvidenceCount < 1} onClick={onMarkReviewed}>
               {reviewed ? <Check size={16} aria-hidden /> : <Eye size={16} aria-hidden />}
-              <span>{reviewed ? "Pages reviewed" : allEvidenceOpened ? "Mark pages reviewed" : "Open every exact page first"}</span>
+              <span>{reviewed ? "Evidence reviewed" : !allEvidenceOpened ? "Open every exact page first" : !allEvidenceDecided ? "Accept or reject each claim" : acceptedEvidenceCount < 1 ? "Accept at least one claim" : "Complete evidence review"}</span>
             </button>
             <button type="button" className="cardAction" disabled={!reviewed || artifact.stale} onClick={onExport}>
               <Download size={16} aria-hidden />
@@ -3508,6 +3707,7 @@ function ResearchCard({
           {translated ? <span className="translatedMeta">EN translation</span> : null}
           <VisibilityReceiptBadge receipt={card.visibility} />
         </div>
+        <VisibilityCorrectionControl card={card} />
         <p className="paperSummary" lang={contentLanguage(summary)}>{summary}</p>
         <div className="tagRow" aria-label="Research tags">
           {card.tags.map((tag, index) => {
@@ -5506,7 +5706,7 @@ export default function Home() {
   const [pendingFeature, setPendingFeature] = useState<MobileNavItem | null>(null);
   const [currentSessionId, setCurrentSessionId] = useState("");
   const [currentSessionTitle, setCurrentSessionTitle] = useState("Untitled chat");
-  const [pathGoal, setPathGoal] = useState(RESEARCH_PATH_DEMO_GOAL);
+  const [pathGoal, setPathGoal] = useState("");
   const [pathLevel, setPathLevel] = useState<PathLevel>(RESEARCH_PATH_DEMO_LEVEL);
   const [pathOutcome, setPathOutcome] = useState<PathOutcome>(RESEARCH_PATH_DEMO_OUTCOME);
   const [researchPath, setResearchPath] = useState<ResearchPath | null>(null);
@@ -5561,12 +5761,25 @@ export default function Home() {
     (sum, provider) => sum + (provider.provider === "pmc_oa" ? 0 : provider.nativeFullPaper),
     0,
   );
+  const feedThaiPublishedDiscoveryTotal = feedCoverage.reduce(
+    (sum, provider) => sum + (provider.provider === "pmc_oa" || (provider.state !== "connected" && provider.state !== "import_validated") ? 0 : provider.records),
+    0,
+  );
+  const feedThaiPublishedPageCitableTotal = feedCoverage.reduce(
+    (sum, provider) => sum + (provider.provider === "pmc_oa" ? 0 : provider.pageCitable),
+    0,
+  );
+  const feedGlobalComparisonTotal = feedCoverage.find((provider) => provider.provider === "pmc_oa")?.records ?? 0;
   const [feedVisibility, setFeedVisibility] = useState<VisibilitySummary | null>(null);
   const [activeFeedProvider, setActiveFeedProvider] = useState("");
   const [feedGeneratedAt, setFeedGeneratedAt] = useState("");
   const [feedNextCursor, setFeedNextCursor] = useState<string | null>(null);
   const [isFeedLoadingMore, setIsFeedLoadingMore] = useState(false);
   const [feedRefreshNonce, setFeedRefreshNonce] = useState(0);
+  const [activeResearchCase, setActiveResearchCase] = useState<ActiveResearchCase | null>(null);
+  const [researchCaseStatus, setResearchCaseStatus] = useState<"idle" | "loading" | "saving" | "ready" | "error">("idle");
+  const [researchCaseError, setResearchCaseError] = useState("");
+  const [completedResearchCaseCount, setCompletedResearchCaseCount] = useState(0);
   const [globalDiscovery, setGlobalDiscovery] = useState<GlobalDiscoveryState>({
     phase: "idle",
     query: "",
@@ -6074,6 +6287,28 @@ export default function Home() {
   }, [refreshBilling, refreshChatSessions, setAppView, setMessages]);
 
   useEffect(() => {
+    if (!isReady || isSharedView) return;
+    let cancelled = false;
+    setResearchCaseStatus("loading");
+    void fetchJson<{ cases?: unknown[]; summary?: { completed?: number } }>("/api/research-cases")
+      .then((payload) => {
+        if (cancelled) return;
+        const latest = normalizeActiveResearchCase(payload.cases?.[0]);
+        setActiveResearchCase(latest);
+        setResearchCaseStatus(latest ? "ready" : "idle");
+        setResearchCaseError("");
+        setCompletedResearchCaseCount(Math.max(0, Number(payload.summary?.completed ?? 0)));
+      })
+      .catch(() => {
+        if (cancelled) return;
+        // Research discovery remains usable during a rolling migration or a
+        // temporary case-store outage; writes report their own explicit error.
+        setResearchCaseStatus("idle");
+      });
+    return () => { cancelled = true; };
+  }, [isReady, isSharedView]);
+
+  useEffect(() => {
     if (!isReady || !currentSessionId || isSharedView) return;
 
     if (saveTimerRef.current) {
@@ -6144,12 +6379,12 @@ export default function Home() {
     if (activeMobileNav !== "explore") return;
     const timer = setTimeout(() => {
       setFeedQuery(draft.trim());
-    }, 350);
+    }, 100);
     return () => clearTimeout(timer);
   }, [activeMobileNav, draft]);
 
   useEffect(() => {
-    if (activeMobileNav !== "explore" && activeMobileNav !== "workspace") return;
+    if (activeMobileNav !== "explore" && activeMobileNav !== "workspace" && activeMobileNav !== "notebook") return;
     if (activeFeedFilter === "saved") {
       setFeedStatus("ready");
       setFeedError("");
@@ -7169,13 +7404,101 @@ export default function Home() {
     setStatusText("Research Passport cleared.");
   }, []);
 
+  const reviewResearchPassportEvidence = useCallback(async (
+    item: ResearchPassportEvidence,
+    decision: "accepted" | "rejected",
+  ) => {
+    const current = researchPassportRef.current;
+    const artifact = current.artifact;
+    if (current.phase !== "ready" || !artifact || artifact.stale || artifact.reviewedAt) return;
+    if (!artifact.openedEvidenceIds.includes(item.id)) {
+      setStatusText("Open the exact source page before accepting or rejecting this evidence claim.");
+      return;
+    }
+    const pageAnchor = item.readerAnchor
+      || (item.pageStart != null ? `${artifact.paper.source}:page:${item.pageStart}` : "");
+    if (!pageAnchor) {
+      setStatusText("This evidence has no stable page anchor and cannot be reviewed.");
+      return;
+    }
+    setResearchCaseStatus("saving");
+    setResearchCaseError("");
+    try {
+      let researchCase = activeResearchCase;
+      if (!researchCase || !researchCase.selectedSources.includes(artifact.paper.source)) {
+        const created = await fetchJson<{ researchCase?: unknown }>("/api/research-cases", {
+          method: "POST",
+          body: JSON.stringify({
+            action: "upsert",
+            caseId: researchCase?.caseId,
+            question: researchCase?.question || artifact.focus,
+            selectedSources: [...new Set([...(researchCase?.selectedSources ?? []), artifact.paper.source])],
+            state: {
+              ...(researchCase?.state ?? {}),
+              stage: "evidence",
+              evidenceCount: artifact.evidence.length,
+              passportId: artifact.passportId,
+            },
+          }),
+        });
+        researchCase = normalizeActiveResearchCase(created.researchCase);
+      }
+      if (!researchCase) throw new Error("Research Case could not be prepared for review.");
+      const reviewed = await fetchJson<{ researchCase?: unknown }>("/api/research-cases", {
+        method: "POST",
+        body: JSON.stringify({
+          action: "review",
+          caseId: researchCase.caseId,
+          source: artifact.paper.source,
+          evidenceId: item.id,
+          pageAnchor,
+          decision,
+          note: "",
+        }),
+      });
+      const saved = normalizeActiveResearchCase(reviewed.researchCase);
+      if (!saved) throw new Error("Evidence review persistence returned an invalid Research Case.");
+      const reviewDecision: ResearchCaseReviewDecision = {
+        evidenceId: item.id,
+        source: artifact.paper.source,
+        pageAnchor,
+        decision,
+        note: "",
+        updatedAt: new Date().toISOString(),
+      };
+      const next: ResearchPassportState = {
+        ...current,
+        artifact: {
+          ...artifact,
+          reviewDecisions: { ...artifact.reviewDecisions, [item.id]: reviewDecision },
+        },
+      };
+      researchPassportRef.current = next;
+      setResearchPassport(next);
+      setActiveResearchCase(saved);
+      setResearchCaseStatus("ready");
+      setStatusText(`${item.id} ${decision}. The candidate inference remains unvalidated.`);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Evidence review could not be saved.";
+      setResearchCaseStatus("error");
+      setResearchCaseError(message);
+      setStatusText(message);
+    }
+  }, [activeResearchCase]);
+
   const markResearchPassportReviewed = useCallback(() => {
     const current = researchPassportRef.current;
     const artifact = current.artifact;
     if (current.phase !== "ready" || !artifact || artifact.stale || artifact.reviewedAt) return;
     const allEvidenceOpened = artifact.evidence.every((item) => artifact.openedEvidenceIds.includes(item.id));
     if (!allEvidenceOpened) {
-      setStatusText("Open every exact-page anchor before acknowledging page review.");
+      setStatusText("Open every exact-page anchor before completing evidence review.");
+      return;
+    }
+    const allEvidenceDecided = artifact.evidence.every((item) => Boolean(artifact.reviewDecisions[item.id]));
+    const acceptedEvidence = artifact.evidence.filter((item) => artifact.reviewDecisions[item.id]?.decision === "accepted");
+    if (!allEvidenceDecided || acceptedEvidence.length < 1) {
+      setStatusText("Accept or reject every evidence claim and accept at least one before completing review.");
       return;
     }
     const next: ResearchPassportState = {
@@ -7184,13 +7507,38 @@ export default function Home() {
     };
     researchPassportRef.current = next;
     setResearchPassport(next);
-    setStatusText("Research Passport page anchors marked as reviewed. Export is now available; the candidate inference remains unvalidated.");
-  }, []);
+    setStatusText("Claim-level evidence review completed. Export is now available; the candidate inference remains unvalidated.");
+    const researchCase = activeResearchCase;
+    if (researchCase) {
+      setResearchCaseStatus("saving");
+      void fetchJson<{ researchCase?: unknown }>("/api/research-cases", {
+        method: "POST",
+        body: JSON.stringify({
+          action: "upsert",
+          caseId: researchCase.caseId,
+          question: researchCase.question,
+          selectedSources: researchCase.selectedSources,
+          state: {
+            ...researchCase.state,
+            stage: "review",
+            evidenceCount: artifact.evidence.length,
+            acceptedEvidenceCount: acceptedEvidence.length,
+            passportId: artifact.passportId,
+          },
+        }),
+      }).then((payload) => {
+        const saved = normalizeActiveResearchCase(payload.researchCase);
+        if (saved) setActiveResearchCase(saved);
+        setResearchCaseStatus(saved ? "ready" : "error");
+      }).catch(() => setResearchCaseStatus("error"));
+    }
+  }, [activeResearchCase]);
 
   const exportResearchPassport = useCallback(() => {
     const artifact = researchPassport.artifact;
     const allEvidenceOpened = artifact?.evidence.every((item) => artifact.openedEvidenceIds.includes(item.id)) ?? false;
-    if (researchPassport.phase !== "ready" || !artifact?.reviewedAt || artifact.stale || !allEvidenceOpened) {
+    const acceptedEvidence = artifact?.evidence.filter((item) => artifact.reviewDecisions[item.id]?.decision === "accepted") ?? [];
+    if (researchPassport.phase !== "ready" || !artifact?.reviewedAt || artifact.stale || !allEvidenceOpened || acceptedEvidence.length < 1) {
       setStatusText("Review the current Research Passport before exporting it.");
       return;
     }
@@ -7211,7 +7559,7 @@ export default function Home() {
       surface: "research_passport_export",
       passportId: artifact.passportId,
       source: artifact.paper.source,
-      evidenceCount: artifact.evidence.length,
+      evidenceCount: acceptedEvidence.length,
       globalLeadCount: artifact.globalWorks.length,
     });
     recordActivationStep("outcome");
@@ -7264,7 +7612,7 @@ export default function Home() {
     };
     researchPassportRef.current = next;
     setResearchPassport(next);
-    setStatusText(`${evidence.id} loaded in the verified full-paper reader at ${passportEvidencePage(evidence)}. Return to acknowledge page review.`);
+    setStatusText(`${evidence.id} loaded in the verified full-paper reader at ${passportEvidencePage(evidence)}. Return to accept or reject this evidence claim.`);
   }, []);
 
   useEffect(() => {
@@ -7371,7 +7719,8 @@ export default function Home() {
       reviewedAt: null,
       stale: false,
       openedEvidenceIds: [],
-      runSteps: [{ tool: "research_notebook", detail: `${evidence.length} exact-page citations promoted · page review pending`, completedAt: new Date().toISOString() }],
+      reviewDecisions: {},
+      runSteps: [{ tool: "research_notebook", detail: `${evidence.length} exact-page citations promoted · claim review pending`, completedAt: new Date().toISOString() }],
       translationStatus: evidence.some((item) => THAI_TEXT_PATTERN.test(item.snippet)) ? "unavailable" : "not_needed",
       focus: finding.question,
       gapLens: "validation",
@@ -7387,7 +7736,7 @@ export default function Home() {
     setResearchPassport(ready);
     closePaperDetail();
     setAppView("explore");
-    setStatusText("Notebook evidence promoted to a Research Passport. Open every exact page in the reader before acknowledging review.");
+    setStatusText("Notebook evidence promoted to a Research Passport. Open every exact page, then accept or reject each evidence claim.");
   }, [closePaperDetail, openPaperDetailBySource]);
 
   const createLivingReview = async () => {
@@ -7461,9 +7810,38 @@ export default function Home() {
     }
   };
 
-  const onSubmit = (event: FormEvent<HTMLFormElement>) => {
+  const startResearchCaseFromComposer = async (submittedDraft = draft) => {
+    const question = submittedDraft.trim();
+    if (question.length < 8 || researchCaseStatus === "saving") return;
+    const handler = webMcpHandlersRef.current?.startResearchCase;
+    if (!handler) {
+      setResearchCaseError("Research Case tools are still preparing.");
+      setResearchCaseStatus("error");
+      return;
+    }
+    const controller = new AbortController();
+    try {
+      await handler({
+        query: question,
+        collection: selectedCollection || "all",
+        scope: "thai",
+        outcome: "study_plan",
+      }, controller.signal);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Research Case could not be started.";
+      setResearchCaseError(message);
+      setResearchCaseStatus("error");
+      setStatusText(message);
+    }
+  };
+
+  const onSubmit = (event: FormEvent<HTMLFormElement>, submittedDraft: string) => {
     event.preventDefault();
-    void submitPrompt(draft);
+    if (activeMobileNav === "explore") {
+      void startResearchCaseFromComposer(submittedDraft);
+      return;
+    }
+    void submitPrompt(submittedDraft);
   };
 
   const onComposerKeyDown = (event: KeyboardEvent<HTMLTextAreaElement>) => {
@@ -7601,6 +7979,42 @@ export default function Home() {
     setStatusText("");
   };
 
+  const persistResearchCasePathReady = useCallback((path: ResearchPath, complete: boolean) => {
+    const researchCase = activeResearchCase;
+    if (!researchCase) return;
+    setResearchCaseStatus("saving");
+    void fetchJson<{ researchCase?: unknown }>("/api/research-cases", {
+      method: "POST",
+      body: JSON.stringify({
+        action: "upsert",
+        caseId: researchCase.caseId,
+        question: researchCase.question,
+        status: complete ? "completed" : researchCase.status,
+        selectedSources: researchCase.selectedSources,
+        state: {
+          ...researchCase.state,
+          stage: "next_study",
+          pathReady: true,
+          pathGoal: path.goal,
+          candidateGapStatus: path.candidateGap?.status ?? "unsupported_candidate",
+          nextStudyProtocolReady: Boolean(path.nextStudyProtocol),
+        },
+      }),
+    }).then((payload) => {
+      const saved = normalizeActiveResearchCase(payload.researchCase);
+      if (!saved) throw new Error("Research Case path state was not returned.");
+      setActiveResearchCase(saved);
+      if (researchCase.status !== "completed" && saved.status === "completed") {
+        setCompletedResearchCaseCount((count) => count + 1);
+      }
+      setResearchCaseStatus("ready");
+      setResearchCaseError("");
+    }).catch((error) => {
+      setResearchCaseStatus("error");
+      setResearchCaseError(error instanceof Error ? error.message : "Research Case path state could not be saved.");
+    });
+  }, [activeResearchCase]);
+
   const buildResearchPath = async (
     knowledgeGaps: string[] = [],
     preserveMastered = false,
@@ -7685,6 +8099,7 @@ export default function Home() {
         collection: selectedCollection || "all",
         passportId: path.passportContext?.passportId ?? null,
       });
+      persistResearchCasePathReady(path, Boolean(passportArtifact?.reviewedAt));
     } catch (error) {
       if (pathBuildRequestIdRef.current !== requestId) return;
       setResearchPathStatus("error");
@@ -7703,7 +8118,7 @@ export default function Home() {
     setPathAssessingStageId("");
     setResearchPathError("");
     setResearchPathStatus("idle");
-    setPathGoal(RESEARCH_PATH_DEMO_GOAL);
+    setPathGoal("");
     setPathLevel(RESEARCH_PATH_DEMO_LEVEL);
     setPathOutcome(RESEARCH_PATH_DEMO_OUTCOME);
   };
@@ -7864,6 +8279,74 @@ export default function Home() {
 
   useEffect(() => {
     webMcpHandlersRef.current = {
+      startResearchCase: async (input, signal) => {
+        const discoveryHandler = webMcpHandlersRef.current?.discoverResearch;
+        if (!discoveryHandler) throw new Error("Research discovery is still preparing.");
+        setResearchCaseStatus("saving");
+        setResearchCaseError("");
+        try {
+          const discovery = await discoveryHandler({
+          query: input.query,
+          collection: input.collection,
+          scope: input.scope,
+        }, signal) as {
+          thaiEvidence?: Array<{ source?: string; evidencePackets?: number; visibilityState?: string }>;
+          thaiDiscoveryRecords?: Array<{ source?: string; visibilityState?: string }>;
+          discoveryOnlyReturned?: number;
+        };
+        const firstEvidence = discovery.thaiEvidence?.find((item) => item.source);
+        const firstDiscovery = discovery.thaiDiscoveryRecords?.find((item) => item.source);
+        const selected = firstEvidence ?? firstDiscovery;
+        const selectedSource = selected?.source ?? "";
+        const response = await fetchJson<{ researchCase?: unknown }>("/api/research-cases", {
+          method: "POST",
+          signal,
+          body: JSON.stringify({
+            action: "upsert",
+            question: input.query,
+            selectedSources: selectedSource ? [selectedSource] : [],
+            state: {
+              stage: selectedSource ? "discovery" : "sparse",
+              outcome: input.outcome,
+              visibilityState: selected?.visibilityState ?? "pending",
+              evidenceCount: firstEvidence?.evidencePackets ?? 0,
+              discoveryOnlyReturned: discovery.discoveryOnlyReturned ?? 0,
+              startedBy: "webmcp",
+            },
+          }),
+        });
+        if (signal.aborted) throw new DOMException("The Research Case was cancelled.", "AbortError");
+        const saved = normalizeActiveResearchCase(response.researchCase);
+        if (!saved) throw new Error("Research Case persistence returned an invalid record.");
+        setActiveResearchCase(saved);
+        setResearchCaseStatus("ready");
+        recordWebMcpActivity("start_research_case", `${saved.caseId} · ${selectedSource ? "source selected" : "sparse result"}`);
+        setStatusText(selectedSource
+          ? "Research Case saved. Inspect the selected paper and make claim-level review decisions next."
+          : "Research Case saved with sparse coverage. Refine the question without adding unrelated filler.");
+          return {
+          ok: true,
+          caseId: saved.caseId,
+          visibleView: "explore",
+          question: saved.question,
+          selectedSource: selectedSource || null,
+          visibilityState: selected?.visibilityState ?? "pending",
+          citableEvidenceAvailable: Boolean(firstEvidence),
+          sparse: !selectedSource,
+          nextStep: firstEvidence
+            ? "Use inspect_paper_evidence on selectedSource, then accept or reject the claim-level evidence in the shared page."
+            : firstDiscovery
+              ? "Read audit_global_visibility for selectedSource, then verify lawful full-paper access at the source."
+              : "Refine the question; Seedy intentionally returned no unrelated filler.",
+          evidenceBoundary: "Thai-published membership and topical relevance are separate. Global metadata and discovery-only records are not citable evidence.",
+          };
+        } catch (error) {
+          const message = error instanceof Error ? error.message : "Research Case could not be started.";
+          setResearchCaseStatus("error");
+          setResearchCaseError(message);
+          throw error;
+        }
+      },
       discoverResearch: async (input, signal) => {
         const requestId = ++webMcpDiscoveryRequestIdRef.current;
         invalidateResearchContext();
@@ -7947,6 +8430,9 @@ export default function Home() {
             pages: card.pageLabel,
             evidencePackets: card.evidenceCount,
             nativeReaderVerified: card.accessLevel === "full_text_licensed",
+            thaiPublished: card.thaiPublished ?? card.provider !== "pmc_oa",
+            thailandContext: card.thailandContext ?? null,
+            visibilityState: card.visibility?.state ?? "not_audited",
           })),
           thaiDiscoveryRecords: metadataOnly.slice(0, 4).map((card) => ({
             source: card.source,
@@ -7956,6 +8442,8 @@ export default function Home() {
             sourceUrl: boundedToolText(card.canonicalUrl, 220) || null,
             visibilityState: card.visibility?.state ?? "not_audited",
             visibilitySnapshotDate: card.visibility?.snapshotDate ?? null,
+            thaiPublished: card.thaiPublished ?? card.provider !== "pmc_oa",
+            thailandContext: card.thailandContext ?? null,
             citable: false,
           })),
           discoveryOnlyReturned: metadataOnly.length,
@@ -8258,7 +8746,7 @@ export default function Home() {
           const latestConnectionTrace = [...priorRunSteps].reverse().find((item) => item.tool === "trace_research_connections");
           const draftStep = recordWebMcpActivity(
             "draft_research_passport",
-            `${exactEvidence.length} exact-page anchors · ${globalWorks.length} metadata-only leads · page review pending`,
+            `${exactEvidence.length} exact-page anchors · ${globalWorks.length} metadata-only leads · claim review pending`,
           );
           const artifact: ResearchPassportArtifact = {
             version: "seed-research-passport-v1",
@@ -8267,6 +8755,7 @@ export default function Home() {
             reviewedAt: null,
             stale: false,
             openedEvidenceIds: [],
+            reviewDecisions: {},
             runSteps: [latestDiscover, latestVisibilityAudit, latestInspect, latestConnectionTrace, draftStep].filter((item): item is WebMcpActivity => Boolean(item)),
             translationStatus,
             focus: input.focus,
@@ -8285,7 +8774,7 @@ export default function Home() {
           const readyPassport: ResearchPassportState = { phase: "ready", artifact, error: "" };
           researchPassportRef.current = readyPassport;
           setResearchPassport(readyPassport);
-          setStatusText("WebMCP drafted a Research Passport. Open every exact page before acknowledging page review and exporting.");
+          setStatusText("WebMCP drafted a Research Passport. Open every exact page, then accept or reject each evidence claim before exporting.");
 
           return {
             ok: true,
@@ -8323,7 +8812,7 @@ export default function Home() {
               nextVerificationQuery: candidateGapCopy.nextVerificationQuery,
             },
             boundary: "Thai page-linked packets are evidence. Only OpenAlex nodes from the active exact-DOI relationship trace are carried as metadata-only leads. Topical search results are excluded. Novelty and transferability are not established.",
-            nextHumanStep: "Open every exact page, acknowledge the page review, then export the bounded artifact. The candidate inference remains unvalidated.",
+            nextHumanStep: "Open every exact page, accept or reject each evidence claim, then export the accepted evidence. The candidate inference remains unvalidated.",
           };
         } catch (error) {
           if (researchPassportRequestIdRef.current === requestId) {
@@ -8436,6 +8925,7 @@ export default function Home() {
             paperCount: enrichedPath.stages.reduce((count, stage) => count + stage.papers.length, 0),
             collection: collection || "all",
           });
+          persistResearchCasePathReady(enrichedPath, Boolean(passportRequested && activePassport?.reviewedAt));
           if (input.knowledgeGaps.length) trackProductEvent("path_adapted", { gapCount: input.knowledgeGaps.length, completedStages: 0 });
           recordWebMcpActivity("build_research_path", `${enrichedPath.stages.length} stages · ${enrichedPath.coverage?.paperCount ?? 0} matching papers · ${selectedGlobalLeads.length} global leads`);
 
@@ -8521,6 +9011,10 @@ export default function Home() {
     let registration: AbortController | null = null;
     setWebMcpStatus("checking");
     const proxy: SeedResearchWebMcpHandlers = {
+      startResearchCase: (input, signal) => {
+        if (!webMcpHandlersRef.current) throw new Error("Seedy Research is still preparing its site tools.");
+        return webMcpHandlersRef.current.startResearchCase(input, signal);
+      },
       discoverResearch: (input, signal) => {
         if (!webMcpHandlersRef.current) throw new Error("Seedy Research is still preparing its site tools.");
         return webMcpHandlersRef.current.discoverResearch(input, signal);
@@ -8603,6 +9097,8 @@ export default function Home() {
       setStatusText("");
     } else if (item === "workspace") {
       setStatusText("");
+    } else if (item === "notebook") {
+      setStatusText("");
     } else if (item === "history") {
       void refreshChatSessions(true);
       setStatusText("");
@@ -8634,29 +9130,29 @@ export default function Home() {
           <section className="searchStage">
             <h1>
               {activeMobileNav === "explore"
-                ? "Connect Thai evidence to global research."
+                ? "Start a Thai-to-global Research Case."
                 : "Research with sources."}
             </h1>
             {activeMobileNav === "explore" ? (
               <>
                 <p className="searchLead">
                   {feedCitableTotal
-                    ? `Uncover Thai research global indexes may overlook, verify it on exact pages, connect it to global work, and carry the reviewed evidence into a Passport and testable next study.`
-                    : "Uncover Thai research global indexes may overlook, verify exact pages, and connect the reviewed evidence into a bounded Thai-to-global research path."}
+                    ? `Turn research published in Thailand—especially work global indexes represent incompletely—into page-verifiable evidence, global connections, and a reviewable next study.`
+                    : "Start with a real question, preserve sparse results honestly, and carry reviewed exact-page evidence into a bounded next-study decision."}
                 </p>
-                <div className="corpusProof" aria-label="Seedy Research corpus coverage">
-                  <span><strong>{feedCitableTotal ? feedCitableTotal.toLocaleString("en-US") : "—"}</strong> citable papers</span>
-                  <span><strong>{feedThaiNativeFullPaperTotal ? feedThaiNativeFullPaperTotal.toLocaleString("en-US") : "—"}</strong> Thai-local native full papers</span>
-                  <span><strong>{feedTotalSections ? feedTotalSections.toLocaleString("en-US") : "—"}</strong> page-linked sections</span>
-                  <span><strong>{feedTotalChunks ? feedTotalChunks.toLocaleString("en-US") : "—"}</strong> cited passages</span>
-                  {feedMetadataOnlyTotal ? <span><strong>{feedMetadataOnlyTotal.toLocaleString("en-US")}</strong> discovery records</span> : null}
-                  <span>Exact-page citations</span>
+                <div className="corpusProof" aria-label="Non-overlapping Seedy Research corpus scoreboard">
+                  <span><strong>{feedThaiPublishedDiscoveryTotal ? feedThaiPublishedDiscoveryTotal.toLocaleString("en-US") : "—"}</strong> Thai-published discovery records</span>
+                  <span><strong>{feedThaiNativeFullPaperTotal ? feedThaiNativeFullPaperTotal.toLocaleString("en-US") : "—"}</strong> Thai-published native full papers</span>
+                  <span><strong>{feedThaiPublishedPageCitableTotal ? feedThaiPublishedPageCitableTotal.toLocaleString("en-US") : "—"}</strong> Thai-published page-citable papers</span>
+                  <span><strong>{feedGlobalComparisonTotal ? feedGlobalComparisonTotal.toLocaleString("en-US") : "—"}</strong> Thai-affiliated global comparisons</span>
+                  <span><strong>{feedVisibility?.audited ? feedVisibility.audited.toLocaleString("en-US") : "—"}</strong> visibility-audited works</span>
+                  <span><strong>{completedResearchCaseCount.toLocaleString("en-US")}</strong> completed Research Cases</span>
                 </div>
-                <p className="corpusContext">Thai-first corpus · Multidisciplinary discovery · Page-linked sources</p>
+                <p className="corpusContext">Published in Thailand · Context, language, and affiliation remain separate facets</p>
                 {webMcpStatus === "ready" ? (
                   <p className="webMcpStatus" role="status" aria-label="WebMCP site tools ready">
                     <span aria-hidden />
-                    SeedyMCP active · 7 site tools · shared human-agent view
+                    SeedyMCP active · 8 site tools · shared human-agent case
                   </p>
                 ) : null}
               </>
@@ -8685,12 +9181,39 @@ export default function Home() {
               isReady={isReady}
               isLoading={isLoading}
             />
+            {activeMobileNav === "explore" ? (
+              <div className="caseExamples" aria-label="Research Case examples">
+                <span>Try an unscripted question</span>
+                {[
+                  "How should Thai universities test AI learning outcomes beyond novelty effects?",
+                  "Which road-system factors should a Thai city validate before reducing severe crashes?",
+                  "What validation gaps recur in biomedical research published in Thailand?",
+                ].map((example) => <button type="button" key={example} onClick={() => setDraft(example)}>{example}</button>)}
+              </div>
+            ) : null}
             <p className="researchDisclaimer">For research use. Not professional advice.</p>
           </section>
         ) : null}
 
         {activeMobileNav === "explore" ? (
           <>
+            <ResearchCasePanel
+              researchCase={activeResearchCase}
+              status={researchCaseStatus}
+              error={researchCaseError}
+              onOpenSource={(source) => {
+                const card = [...feedCards, ...Object.values(bookmarkedCards)].find((item) => item.source === source);
+                void openPaperDetailBySource(source, card);
+              }}
+              onStartNew={() => {
+                setActiveResearchCase(null);
+                setResearchCaseStatus("idle");
+                setResearchCaseError("");
+                setDraft("");
+                setFeedQuery("");
+                closePaperDetail();
+              }}
+            />
             <FilterBar
               activeFilter={activeFeedFilter}
               setActiveFilter={(filter) => {
@@ -8707,49 +9230,7 @@ export default function Home() {
               isRefreshing={feedStatus === "loading"}
               onRefresh={() => setFeedRefreshNonce((value) => value + 1)}
             />
-            <DiscoveryTrustBar citableTotal={feedCitableTotal} metadataOnlyTotal={feedMetadataOnlyTotal} />
-            <VisibilityAuditPanel summary={feedVisibility} />
-            <CoverageLedger
-              providers={feedCoverage}
-              activeProvider={activeFeedProvider}
-              onClearProvider={() => setActiveFeedProvider("")}
-              onViewProvider={(provider) => {
-                if (provider.filter === "tci_thaijo") {
-                  setActiveFeedProvider(provider.provider);
-                  setActiveFeedFilter("thai");
-                } else if (provider.filter === "ncce" || provider.filter === "ce_project") {
-                  setActiveFeedProvider("");
-                  setActiveFeedFilter(provider.filter);
-                }
-              }}
-            />
-            <ResearchPassportPanel
-              enabled={webMcpStatus === "ready"}
-              state={researchPassport}
-              onOpenEvidence={openResearchPassportEvidence}
-              onMarkReviewed={markResearchPassportReviewed}
-              onExport={exportResearchPassport}
-              onClear={clearResearchPassport}
-              onContinueToPath={(artifact) => {
-                setPathGoal(artifact.focus);
-                setPathLevel("research");
-                setPathOutcome("study_plan");
-                setSelectedCollection(artifact.paper.collection);
-                setAppView("path");
-                void buildResearchPath([artifact.candidateGap.missingValidation], false, artifact);
-              }}
-            />
-            <LivingReviewPanel
-              authenticated={isAuthenticated}
-              query={activeFeedFilter === "saved" ? "" : feedQuery}
-              collection={selectedCollection}
-              watches={livingReviewWatches}
-              busyId={livingReviewBusyId}
-              onWatch={() => void createLivingReview()}
-              onCheck={(watchId) => void checkLivingReview(watchId)}
-              onDelete={(watchId) => void deleteLivingReview(watchId)}
-              onSignIn={() => setAppView("settings")}
-            />
+            <DiscoveryTrustBar citableTotal={feedThaiPublishedPageCitableTotal} metadataOnlyTotal={feedMetadataOnlyTotal} />
           </>
         ) : null}
 
@@ -8764,8 +9245,9 @@ export default function Home() {
           </p>
         ) : null}
 
-        {activeMobileNav === "workspace" ? (
+        {activeMobileNav === "workspace" || activeMobileNav === "notebook" ? (
           <ResearchWorkspacePanel
+            focus={activeMobileNav === "notebook" ? "notebook" : "workspace"}
             papers={workspacePapers}
             seedSources={workspaceSeedSources}
             authenticated={isAuthenticated}
@@ -8890,6 +9372,53 @@ export default function Home() {
               onRetry={() => setFeedRefreshNonce((value) => value + 1)}
               onLoadMore={() => void loadMoreFeed()}
               disabled={!isReady || !bookmarksReady || isLoading}
+            />
+            <ResearchPassportPanel
+              enabled={webMcpStatus === "ready"}
+              state={researchPassport}
+              onOpenEvidence={openResearchPassportEvidence}
+              onReviewEvidence={(item, decision) => void reviewResearchPassportEvidence(item, decision)}
+              onMarkReviewed={markResearchPassportReviewed}
+              onExport={exportResearchPassport}
+              onClear={clearResearchPassport}
+              onContinueToPath={(artifact) => {
+                const reviewedArtifact = {
+                  ...artifact,
+                  evidence: artifact.evidence.filter((item) => artifact.reviewDecisions[item.id]?.decision === "accepted"),
+                };
+                setPathGoal(reviewedArtifact.focus);
+                setPathLevel("research");
+                setPathOutcome("study_plan");
+                setSelectedCollection(reviewedArtifact.paper.collection);
+                setAppView("path");
+                void buildResearchPath([reviewedArtifact.candidateGap.missingValidation], false, reviewedArtifact);
+              }}
+            />
+            <VisibilityAuditPanel summary={feedVisibility} />
+            <CoverageLedger
+              providers={feedCoverage}
+              activeProvider={activeFeedProvider}
+              onClearProvider={() => setActiveFeedProvider("")}
+              onViewProvider={(provider) => {
+                if (provider.filter === "tci_thaijo") {
+                  setActiveFeedProvider(provider.provider);
+                  setActiveFeedFilter("thai");
+                } else if (provider.filter === "ncce" || provider.filter === "ce_project") {
+                  setActiveFeedProvider("");
+                  setActiveFeedFilter(provider.filter);
+                }
+              }}
+            />
+            <LivingReviewPanel
+              authenticated={isAuthenticated}
+              query={activeFeedFilter === "saved" ? "" : feedQuery}
+              collection={selectedCollection}
+              watches={livingReviewWatches}
+              busyId={livingReviewBusyId}
+              onWatch={() => void createLivingReview()}
+              onCheck={(watchId) => void checkLivingReview(watchId)}
+              onDelete={(watchId) => void deleteLivingReview(watchId)}
+              onSignIn={() => setAppView("settings")}
             />
             {researchPassport.phase === "ready" ? null : (
               <GlobalDiscoveryPanel

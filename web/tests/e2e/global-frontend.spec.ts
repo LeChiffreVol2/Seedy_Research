@@ -59,12 +59,14 @@ test("desktop feed keeps the approved research hierarchy", async ({ page }) => {
   await page.setViewportSize({ width: 1440, height: 1000 });
   await page.goto("/");
   await page.getByRole("button", { name: "Explore" }).click();
-  await expect(page.getByRole("heading", { name: "Connect Thai evidence to global research." })).toBeVisible();
-  await expect(page.getByLabel("Seedy Research corpus coverage")).toContainText("papers");
-  await expect(page.getByLabel("Seedy Research corpus coverage")).toContainText("native full papers");
-  await expect(page.getByLabel("Seedy Research corpus coverage")).toContainText("page-linked sections");
-  await expect(page.getByLabel("Seedy Research corpus coverage")).toContainText("Exact-page citations");
-  await expect(page.getByText("Thai-first corpus · Multidisciplinary discovery · Page-linked sources")).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Start a Thai-to-global Research Case." })).toBeVisible();
+  const scoreboard = page.getByLabel("Non-overlapping Seedy Research corpus scoreboard");
+  await expect(scoreboard).toContainText("Thai-published discovery records");
+  await expect(scoreboard).toContainText("Thai-published native full papers");
+  await expect(scoreboard).toContainText("Thai-published page-citable papers");
+  await expect(scoreboard).toContainText("Thai-affiliated global comparisons");
+  await expect(scoreboard).toContainText("visibility-audited works");
+  await expect(page.getByText("Published in Thailand · Context, language, and affiliation remain separate facets")).toBeVisible();
   await expect(page.getByLabel("Thai-to-global research passport")).toHaveCount(0);
   const runControl = page.getByRole("button", { name: /Quick Answer/ });
   await expect(runControl).toContainText("Quick Answer");
@@ -193,7 +195,7 @@ test("Coverage Ledger separates access classes and filters the connected provide
         coverage: [{
           provider: "tci_thaijo",
           label: "ThaiJO",
-          state: "live_bounded",
+          state: "connected",
           records: 2681,
           metadataOnly: 2578,
           pageCitable: 103,
@@ -265,7 +267,7 @@ test("global discovery is explicit, metadata-only, and recoverable", async ({ pa
 
   await page.goto("/");
   await page.getByRole("button", { name: "Explore" }).click();
-  await page.getByLabel("Ask or search Thai research papers").fill("flood resilience");
+  await page.getByLabel("Start a Thai-to-global Research Case").fill("flood resilience");
   const expand = page.getByRole("button", { name: "Expand globally" });
   await expect(expand).toBeVisible();
   expect(requestCount).toBe(0);
@@ -288,7 +290,7 @@ test("global discovery is explicit, metadata-only, and recoverable", async ({ pa
   await expectNoPageOverflow(page);
   await expectNoInteractiveOverlap(page);
 
-  await page.getByLabel("Ask or search Thai research papers").fill("seismic retrofit");
+  await page.getByLabel("Start a Thai-to-global Research Case").fill("seismic retrofit");
   await expect(page.getByRole("button", { name: "Expand globally" })).toBeVisible();
   await expect(panel.getByRole("link", { name: /Open global metadata:/ })).toHaveCount(0);
   expect(requestCount).toBe(1);
@@ -415,7 +417,7 @@ test("intermediate responsive widths stay collision-free", async ({ page }) => {
     await page.setViewportSize(viewport);
     await page.goto("/");
     await page.getByRole("button", { name: "Explore" }).click();
-    await expect(page.getByRole("heading", { name: "Connect Thai evidence to global research." })).toBeVisible();
+    await expect(page.getByRole("heading", { name: "Start a Thai-to-global Research Case." })).toBeVisible();
     await expectNoPageOverflow(page);
     await expectNoInteractiveOverlap(page);
   }
@@ -469,7 +471,7 @@ test("navigation resets rail scroll and account explains open access without ren
   await expect(page.getByLabel("SEEDY Open Access")).toBeVisible();
   await expect(page.getByText("Every research workflow is included after sign in.")).toBeVisible();
   await expect(page.getByText(/No answer credits, model paywalls, or Pro-only research modes/)).toBeVisible();
-  await expect(page.getByLabel("Research tools included with your account").locator(":scope > span")).toHaveCount(6);
+  await expect(page.getByLabel("Research tools included with your account").locator(":scope > span")).toHaveCount(7);
   await expect(page.locator("svg.lucide-lock-keyhole")).toHaveCount(0);
 
   await page.getByRole("button", { name: "Forgot password?" }).click();
@@ -604,7 +606,7 @@ test("Research Path turns an explicit goal into a four-stage learning sequence",
   await page.goto("/");
   await page.getByRole("button", { name: "Research Path" }).click();
   await expect(page.getByRole("heading", { name: "Turn a topic into a research plan" })).toBeVisible();
-  await expect(page.getByLabel("What do you want to understand?")).toHaveValue("Urban road safety");
+  await expect(page.getByLabel("What do you want to understand?")).toHaveValue("");
   await expect(page.getByRole("button", { name: "Starting point" })).toContainText("New to the topic");
   await expect(page.getByRole("button", { name: "Target outcome" })).toContainText("Study plan");
   await page.getByLabel("What do you want to understand?").fill("Urban road safety in Thailand");
@@ -676,6 +678,39 @@ test("Research Workspace is a separate open-access surface", async ({ page }) =>
   await expect(workspace.getByText(/Research Notebook asks require sign-in/)).toBeVisible();
   await expect(workspace.getByRole("button", { name: /Run selected/ })).toBeVisible();
   await expectNoPageOverflow(page);
+});
+
+test("sidebar exposes Research Notebook as a first-class surface", async ({ page }) => {
+  await page.setViewportSize({ width: 1440, height: 1000 });
+  await page.goto("/");
+
+  const primaryNavigation = page.getByRole("navigation", { name: "Primary" });
+  await expect(primaryNavigation.getByRole("button", { name: "Notebook" })).toBeVisible();
+  await primaryNavigation.getByRole("button", { name: "Notebook" }).click();
+
+  const notebookWorkspace = page.getByLabel("Research Notebook Workspace");
+  await expect(notebookWorkspace).toBeVisible();
+  await expect(notebookWorkspace.getByRole("heading", { name: "Ask this Workspace" })).toBeVisible();
+  await expect(notebookWorkspace).toContainText("Seedy bounded retrieval active");
+});
+
+test("live glass is bounded away from the scrolling paper feed", async ({ page }) => {
+  await page.setViewportSize({ width: 1440, height: 1000 });
+  await page.goto("/");
+  await page.getByRole("button", { name: "Explore" }).click();
+  await expect.poll(() => page.locator(".researchCard").count()).toBeGreaterThan(0);
+
+  const materialContract = await page.evaluate(() => {
+    const composer = document.querySelector<HTMLElement>(".searchComposer");
+    const card = document.querySelector<HTMLElement>(".researchCard");
+    return {
+      composer: composer ? getComputedStyle(composer).backdropFilter : "missing",
+      card: card ? getComputedStyle(card).backdropFilter : "missing",
+    };
+  });
+
+  expect(materialContract.composer).toContain("blur(");
+  expect(materialContract.card).toBe("none");
 });
 
 test("Open Access can batch-run, inspect, review, and export workspace cells", async ({ page }) => {
@@ -826,7 +861,7 @@ test("Open Access can batch-run, inspect, review, and export workspace cells", a
   const workspace = page.getByLabel("Open Access Research Workspace");
   await expect(workspace.locator("tbody tr")).toHaveCount(2);
   const notebook = workspace.getByLabel("Research Notebook", { exact: true });
-  await expect(notebook).toContainText("OpenRAG-compatible · Seedy evidence authority");
+  await expect(notebook).toContainText("Seedy bounded retrieval active · OpenRAG adapter staged");
   await notebook.getByRole("button", { name: "Ask selected sources" }).click();
   await expect(notebook).toContainText("Both selected studies report a page-linked road-safety finding");
   await expect(notebook.getByLabel("Research Notebook exact-page citations").getByRole("button")).toHaveCount(2);
@@ -924,7 +959,7 @@ test("chat batches a dense response stream without a React update loop", async (
   });
 
   await page.goto("/?view=chat");
-  await page.getByLabel("Ask or search Thai research papers").fill("Verify the dense stream");
+  await page.getByLabel("Ask about research evidence").fill("Verify the dense stream");
   await page.getByRole("button", { name: "Send message" }).click();
   await expect(page.getByText(/Streamed answer part-1/)).toBeVisible();
   await expect(page.getByRole("button", { name: "Send message" })).toBeDisabled();
@@ -1092,7 +1127,7 @@ test("Evidence Mission renders a linked brief and exports Markdown", async ({ pa
   await page.setViewportSize({ width: 1440, height: 1000 });
   await page.goto("/");
   await page.getByRole("button", { name: "Chat" }).click();
-  const composer = page.getByLabel("Ask or search Thai research papers");
+  const composer = page.getByLabel("Ask about research evidence");
   await composer.fill("Compare safety factors");
   const send = page.getByRole("button", { name: "Send message" });
   await expect(send).toBeEnabled();
@@ -1258,6 +1293,6 @@ test("reduced motion uses the stable CSS glass fallback", async ({ page }) => {
   await page.emulateMedia({ reducedMotion: "reduce" });
   await page.setViewportSize({ width: 390, height: 844 });
   await page.goto("/");
-  await expect(page.locator(".liquidEffect").first()).toHaveCSS("display", "none");
+  await expect(page.locator(".searchComposer")).toHaveCSS("backdrop-filter", "none");
   await expectNoPageOverflow(page);
 });

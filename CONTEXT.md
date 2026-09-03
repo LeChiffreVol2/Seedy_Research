@@ -12,8 +12,21 @@ _Avoid_: CivilMCP, SeedyMCP when referring to the whole user-facing product
 The human-agent collaboration layer through which a research agent and a person work on the same visible research state.
 _Avoid_: CivilMCP, generic AI wrapper
 
+**Thai-Published Research**:
+A work published through a Thailand-based scholarly venue or provider, including
+Thai journals, Thai conferences, Thai theses and dissertations, and Thai
+institutional or national research repositories. This provider/venue membership
+is the product's primary meaning of “Thai research”; it does not imply that the
+work studies Thailand, is written in Thai, or has Thai-affiliated authors.
+Thailand-context, Thai-language, and Thai-affiliation are separate searchable
+facets that may overlap with this corpus. A formally deposited journal article,
+conference paper, thesis, dissertation, or research report from TNRR, TDC, or a
+Thai institutional repository qualifies when it has a stable provider record;
+its document type remains explicit.
+_Avoid_: using Thai-hosted as a claim about topic, language, affiliation, or national relevance
+
 **Thai Research Graph**:
-The canonical network of Thai works, source records, full-paper assets, people, institutions, versions, and scholarly relationships, with provider provenance preserved.
+The canonical network of Thai-published works, source records, full-paper assets, people, institutions, versions, and scholarly relationships, with provider provenance preserved. Thai-affiliated international works remain a separately labelled comparison cohort.
 _Avoid_: paper database, scraped corpus
 
 **Civil Research Pack**:
@@ -29,7 +42,7 @@ A publicly runnable, monitored candidate whose bounded workflows and rollback pa
 _Avoid_: production-ready when implying national coverage, institutional procurement readiness, or unlimited traffic
 
 **Primary Researcher**:
-A Thai researcher or Thai–global research team seeking to turn under-indexed local evidence into a visible, reusable, and testable contribution to global research.
+A Thai researcher or Thai–global research team seeking to turn under-indexed Thai-published evidence into a visible, reusable, and testable contribution to global research.
 _Avoid_: every paper reader, a university administrator as the primary user
 
 **Research Impact**:
@@ -45,6 +58,18 @@ A university, library, research office, or research institute that funds governe
 _Avoid_: the individual researcher as the initial primary payer
 
 ## Research journey
+
+**Research Case**:
+The persistent, resumable primary unit of researcher work that carries one question through Thai-published discovery, a dated visibility audit, lawful exact-page review, bounded global connections, a candidate gap, a Next-Study Protocol, and an attributed Research Passport review. One stable case identity owns the question, selected works, visibility receipts, page evidence, global leads, review decisions, candidate gap, and protocol. Explore, Reader, Visibility Audit, Research Passport, Research Path, and Workspace are stages or views over the same case rather than independent product promises.
+_Avoid_: a folder containing unrelated feature outputs, an autonomous claim of novelty, putting every feature on one screen
+
+**Research Case Entry**:
+The default product entry in which a researcher starts from a real question and reaches useful Thai-published evidence without a prefilled civil-engineering path. Cross-disciplinary examples may seed a case, but never substitute for unscripted search quality.
+_Avoid_: opening on a prebuilt Urban road safety plan, requiring users to understand the feature map first
+
+**Research Case WebMCP Orchestration**:
+A bounded task-level site tool that starts or resumes a Research Case, performs discovery and visibility triage, and moves the shared browser to the resulting evidence state. Atomic site tools remain available for inspection and controlled continuation.
+_Avoid_: a hidden autonomous workflow, forcing the agent to memorize a seven-tool golden choreography
 
 **Thai-to-Global Research Path**:
 A bounded journey from Thai research discovery through source review, literature synthesis, global connection mapping, a candidate gap, and a next-study protocol; this literature-to-study-design outcome is the primary end-to-end promise.
@@ -108,6 +133,10 @@ _Avoid_: match badge without provenance, permanent absence claim
 An attributed accept or reject judgment on a candidate identity match, with its evidence and history preserved. A user suggestion does not become the canonical visibility state until an authorized steward reviews it.
 _Avoid_: silent fuzzy merge, anonymous canonical edit
 
+**Evidence Review Decision**:
+An attributed accept or reject judgment on a claim or evidence item, tied to its stable page anchor and optionally carrying a reviewer note. Opening a paper or acknowledging that a page is visible does not by itself complete evidence review.
+_Avoid_: page-open receipt as proof of validity, unreviewed evidence exported as approved
+
 **Candidate Gap**:
 An unresolved method, context, population, outcome, or validation question suggested by the reviewed literature.
 _Avoid_: proven novelty, validated research gap
@@ -124,6 +153,14 @@ _Avoid_: complete Thai research database, full-paper coverage
 Provider-by-provider growth of canonical metadata and lawful full-paper assets, with discovery and evidence coverage measured separately.
 _Avoid_: scrape everything, record count as proof of quality
 
+**Research Discovery Ranking**:
+The ordering contract that ranks semantic relevance to the researcher's question first, then Thai-published membership, lawful page-citable availability, visibility opportunity, and finally recency or popularity. Provider membership alone never outranks topical relevance.
+_Avoid_: treating every ThaiJO-hosted record as relevant Thai evidence, native-first ordering that suppresses a better topical match
+
+**Corpus Scoreboard**:
+The non-overlapping public metrics for Thai-published discovery records, Thai-published native full papers, Thai-published page-citable papers, Thai-affiliated international comparison works, visibility-audited works, and completed Research Cases.
+_Avoid_: one combined native-paper headline that mixes Thai-published and global comparison cohorts
+
 **Evidence Coverage**:
 The subset of discovered research that has passed rights, provenance, identity, page-mapping, and quality gates and may support bounded claims.
 _Avoid_: searchable records, metadata coverage
@@ -137,9 +174,9 @@ A fixed, denominator-complete set of paper versions promoted together only when 
 _Avoid_: a cherry-picked PDF sample, a raw download count, a national-coverage claim
 
 The current production cohort contains 1,000 rights-verified native full papers
-and 14,485 verified pages: 103 Thai-local/ThaiJO papers (100 BSCM plus three
+and 14,485 verified pages: 103 Thai-published/ThaiJO papers (100 BSCM plus three
 LEARN fixtures) and 897 Thai-affiliated global OA papers from PMC. This is a
-bounded release proof, not a Thai-local or national coverage denominator.
+bounded release proof, not a Thai-published or national coverage denominator.
 
 **5,000-Paper Native Capacity Envelope**:
 The tested storage, bounded-read, and resumable-ingest shape for a future 5,000
@@ -168,3 +205,23 @@ _Avoid_: national repository replacement, uncontrolled institutional mirror, unv
 **Reproducible Impact Benchmark**:
 A public scenario that another person can replay from missed or under-indexed Thai discovery through exact-page review, global connection, and a bounded research outcome.
 _Avoid_: an unconsented pilot testimonial, a private result presented as public validation
+
+**Challenge Research Benchmark**:
+A 30-question Thai/English evaluation spanning at least three disciplines: 20 answerable questions and 10 sparse or negative controls. Its release bar is at least 90% top-three relevance, page-citable evidence for at least 80% of answerable questions, zero false `not_found_in_audit` claims, discovery p95 at or below five seconds, and a useful first Research Case state within fifteen seconds.
+_Avoid_: exact-title prompts as most of the benchmark, excluding empty results, reporting latency from a different release
+
+**Lighthouse Research Case**:
+An end-to-end, independently replayable Research Case in engineering, education, or health/social science that includes a rights-cleared Thai-published full paper, exact-page evidence, a dated visibility receipt, a bounded global connection, a claim-level review decision, and a Next-Study Protocol.
+_Avoid_: a curated card without an end-to-end outcome, global comparison paper presented as Thai-published
+
+**Provider Integration State**:
+The declared operational state of a Thai research source: connected, import validated, partner delivery required, planned, or blocked by rights/access. Only connected records enter current coverage metrics.
+_Avoid_: counting tracked or planned TNRR, TCI, TDC, conference, or institutional sources as live coverage
+
+**Visibility Correction Suggestion**:
+A user-proposed identity match or metadata correction stored in Seedy Research for attributed steward review. It never silently changes canonical identity and is not automatically submitted to OpenAlex or another external index.
+_Avoid_: automatic fuzzy merge, implying Seedy repairs third-party indexes
+
+**Production Evidence Fingerprint**:
+One release-bound manifest joining the Git SHA, Vercel deployment, Supabase migration, corpus fingerprint, Challenge Research Benchmark, WebMCP browser tests, production smoke result, and latency measurements.
+_Avoid_: combining a current deployment with a historic quality score or test report

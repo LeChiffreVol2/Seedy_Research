@@ -8,6 +8,7 @@
     "start": "next start",
     "lint": "next lint",
     "test:e2e": "playwright test",
+    "perf:probe": "node scripts/perf-probe.mjs",
     "harness:web-smoke": "cd .. && python3.10 harness/run_smoke.py --web-only"
   },
   "dependencies": {
@@ -15,7 +16,6 @@
     "@supabase/ssr": "^0.12.0",
     "@supabase/supabase-js": "^2.52.1",
     "ai": "^4.3.19",
-    "liquid-glass-react": "^1.1.1",
     "lucide-react": "^1.17.0",
     "next": "^15.5.21",
     "pdfjs-dist": "^5.4.149",

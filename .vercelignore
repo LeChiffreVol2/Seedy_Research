@@ -1,0 +1,21 @@
+.git/
+.vercel/
+.venv310/
+.artifacts/
+.playwright-cli/
+CE Project Database/
+NCCE Project Database/
+citymcp/
+harness/
+mcp-server/
+output/
+pipeline/
+tmp/
+**/.next/
+**/.next-build/
+**/.vercel/
+**/node_modules/
+**/playwright-report/
+**/test-results/
+**/.env*
+**/tsconfig.tsbuildinfo

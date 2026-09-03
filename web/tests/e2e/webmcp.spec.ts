@@ -116,6 +116,7 @@ const overlookedThaiCard = {
 const readerFullPageText = "FULL VERIFIED PAGE TEXT MUST STAY OUT OF THE WEBMCP TOOL RESULT";
 
 test.beforeEach(async ({ page }) => {
+  let currentResearchCase: Record<string, unknown> | null = null;
   await page.addInitScript(() => {
     type RegisteredTool = {
       name: string;
@@ -193,6 +194,53 @@ test.beforeEach(async ({ page }) => {
   });
   await page.route("**/api/events", async (route) => {
     await route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ ok: true }) });
+  });
+  await page.route("**/api/research-cases**", async (route) => {
+    if (route.request().method() === "GET") {
+      await route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify({ cases: currentResearchCase ? [currentResearchCase] : [], summary: { completed: 0 } }),
+      });
+      return;
+    }
+    const body = route.request().postDataJSON() as Record<string, unknown>;
+    const now = new Date().toISOString();
+    if (body.action === "review" && currentResearchCase) {
+      const reviews = Array.isArray(currentResearchCase.reviews) ? currentResearchCase.reviews as Array<Record<string, unknown>> : [];
+      currentResearchCase = {
+        ...currentResearchCase,
+        reviews: [
+          ...reviews.filter((item) => item.evidenceId !== body.evidenceId),
+          {
+            reviewId: "review-webmcp-1",
+            caseId: currentResearchCase.caseId,
+            source: body.source,
+            evidenceId: body.evidenceId,
+            pageAnchor: body.pageAnchor,
+            decision: body.decision,
+            note: body.note ?? "",
+            createdAt: now,
+            updatedAt: now,
+          },
+        ],
+        updatedAt: now,
+      };
+    } else {
+      currentResearchCase = {
+        caseId: body.caseId ?? currentResearchCase?.caseId ?? "case_webmcp01",
+        ownerId: "guest-webmcp",
+        question: body.question,
+        status: body.status ?? currentResearchCase?.status ?? "active",
+        selectedSources: body.selectedSources ?? currentResearchCase?.selectedSources ?? [],
+        state: body.state ?? currentResearchCase?.state ?? {},
+        reviews: currentResearchCase?.reviews ?? [],
+        createdAt: currentResearchCase?.createdAt ?? now,
+        updatedAt: now,
+        completedAt: body.status === "completed" ? now : null,
+      };
+    }
+    await route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ researchCase: currentResearchCase }) });
   });
   await page.route("**/api/research-feed**", async (route) => {
     await route.fulfill({
@@ -442,6 +490,7 @@ test("registers non-trivial WebMCP tools and keeps agent actions visible to the 
     "draft_research_passport",
     "inspect_learning_progress",
     "inspect_paper_evidence",
+    "start_research_case",
     "trace_research_connections",
   ]);
   expect(definitions.every((tool) => tool.annotations?.untrustedContentHint === true)).toBe(true);
@@ -457,7 +506,7 @@ test("registers non-trivial WebMCP tools and keeps agent actions visible to the 
   }) as { thaiEvidence?: Array<{ source?: string }>; globalMetadata?: unknown[] };
   expect(discovery.thaiEvidence?.[0]?.source).toBe(researchCard.source);
   expect(discovery.globalMetadata).toHaveLength(1);
-  await expect(page.getByRole("heading", { name: "Connect Thai evidence to global research." })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Start a Thai-to-global Research Case." })).toBeVisible();
   await expect(page.getByText(researchCard.title).first()).toBeVisible();
 
   const discoveryOnlyError = await page.evaluate(async () => {
@@ -603,9 +652,10 @@ test("registers non-trivial WebMCP tools and keeps agent actions visible to the 
     }));
     window.dispatchEvent(new Event("focus"));
   }, { passportId: passport.passportId });
-  const markPagesReviewed = passportPanel.getByRole("button", { name: "Mark pages reviewed" });
-  await expect(markPagesReviewed).toBeEnabled();
-  await markPagesReviewed.click();
+  await passportPanel.getByRole("button", { name: "Accept", exact: true }).click();
+  const completeEvidenceReview = passportPanel.getByRole("button", { name: "Complete evidence review" });
+  await expect(completeEvidenceReview).toBeEnabled();
+  await completeEvidenceReview.click();
   await expect(passportPanel.getByText("Human-reviewed page anchors")).toBeVisible();
   await expect(exportPassport).toBeEnabled();
   const downloadPromise = page.waitForEvent("download");
@@ -615,7 +665,7 @@ test("registers non-trivial WebMCP tools and keeps agent actions visible to the 
   const downloadPath = await download.path();
   expect(downloadPath).not.toBeNull();
   const passportMarkdown = await readFile(downloadPath as string, "utf8");
-  expect(passportMarkdown).toContain("## Page-reviewed Thai evidence");
+  expect(passportMarkdown).toContain("## Accepted page-reviewed Thai evidence");
   expect(passportMarkdown).toContain("p.2067");
   expect(passportMarkdown).toContain("## Global discovery leads — metadata only");
   expect(passportMarkdown).toContain("## Candidate inference — human review required");
@@ -697,6 +747,17 @@ test("registers non-trivial WebMCP tools and keeps agent actions visible to the 
   await expect(exportPassport).toBeDisabled();
   await passportPanel.getByText("Inspect WebMCP run").click();
   await expect(passportPanel.getByText("4 completed calls", { exact: true })).toBeVisible();
+});
+
+test("starts one persistent Research Case from a natural question", async ({ page }) => {
+  await page.goto("/?view=explore");
+  await expect(page.getByLabel("WebMCP site tools ready")).toBeVisible({ timeout: 15_000 });
+  const started = await page.evaluate(async () => {
+    const tools = (window as unknown as { __seedResearchWebMcpTools: Map<string, { execute: (input: unknown) => Promise<unknown> }> }).__seedResearchWebMcpTools;
+    return tools.get("start_research_case")?.execute({ query: "Which road-system factors should Thailand validate before reducing severe crashes?", scope: "thai" });
+  }) as { caseId?: string; selectedSource?: string; citableEvidenceAvailable?: boolean };
+  expect(started).toMatchObject({ caseId: "case_webmcp01", selectedSource: researchCard.source, citableEvidenceAvailable: true });
+  await expect(page.getByTestId("research-case-panel")).toContainText("Which road-system factors should Thailand validate");
 });
 
 test("completes the production-seed visibility-gated Passport in exactly four site-tool calls", async ({ page }) => {
@@ -829,9 +890,10 @@ test("completes the production-seed visibility-gated Passport in exactly four si
   await passportPanel.getByRole("button", { name: "Open evidence thaijo-learn-291631-page-2 at p.2" }).click();
   const readerPopup = await readerPopupPromise;
   await expect(readerPopup.getByTestId("paper-reader")).toContainText("Verified native reader", { timeout: 20_000 });
-  await expect.poll(() => passportPanel.getByRole("button", { name: "Mark pages reviewed" }).isEnabled()).toBe(true);
+  await expect.poll(() => passportPanel.getByRole("button", { name: "Accept", exact: true }).isEnabled()).toBe(true);
   await readerPopup.close();
-  await passportPanel.getByRole("button", { name: "Mark pages reviewed" }).click();
+  await passportPanel.getByRole("button", { name: "Accept", exact: true }).click();
+  await passportPanel.getByRole("button", { name: "Complete evidence review" }).click();
   await expect(exportPassport).toBeEnabled();
   const downloadPromise = page.waitForEvent("download");
   await exportPassport.click();
@@ -953,6 +1015,7 @@ test("keeps source-hosted full text outside the bounded WebMCP evidence result",
     "draft_research_passport",
     "inspect_learning_progress",
     "inspect_paper_evidence",
+    "start_research_case",
     "trace_research_connections",
   ]);
   expect(result.evidence?.readerAccess).toMatchObject({
@@ -1081,7 +1144,7 @@ test("cancels a Passport draft when the visible research question changes", asyn
     }
   });
   await translationStarted;
-  await page.getByLabel("Ask or search Thai research papers").fill("a different current research question");
+  await page.getByLabel("Start a Thai-to-global Research Case").fill("a different current research question");
   await expect(page.getByLabel("Thai-to-global research passport").getByText("Research context changed while the Passport was being drafted.", { exact: false })).toBeVisible({ timeout: 3_000 });
   releaseTranslation();
   expect(await draftPromise).toContain("research context changed");

@@ -1,0 +1,27 @@
+{
+  "version": "seedy-lighthouse-research-cases-v1",
+  "cases": [
+    {
+      "id": "engineering-road-safety",
+      "discipline": "engineering",
+      "question": "Which road-system factors should a Thai city validate before reducing severe crashes?",
+      "source": "NCCE29_TRL42.md",
+      "requiredStages": ["discovery", "visibility", "exact_page_evidence", "claim_review", "global_connection", "next_study_protocol"]
+    },
+    {
+      "id": "education-ai-outcomes",
+      "discipline": "education",
+      "question": "How should Thai universities test AI learning outcomes beyond short novelty effects?",
+      "source": "thaijo:learn:291631",
+      "requiredStages": ["discovery", "visibility", "native_full_paper", "claim_review", "global_connection", "next_study_protocol"]
+    },
+    {
+      "id": "health-fatal-road-injuries",
+      "discipline": "health_social_science",
+      "question": "What validation gaps remain in evidence about alcohol and drugs in fatal road injuries in Thailand?",
+      "source": "thaijo:bscm:281327",
+      "requiredStages": ["discovery", "visibility", "native_full_paper", "claim_review", "global_connection", "next_study_protocol"]
+    }
+  ],
+  "boundary": "A Lighthouse case passes only when its source is deployed, rights-cleared for the reader mode shown, page-addressable, visibility-scoped, claim-reviewed, and carried into a candidate—not proven—gap and Next-Study Protocol."
+}

@@ -65,6 +65,11 @@ export type ResearchFeedCard = {
   licenseExpression?: string | null;
   licenseUrl?: string | null;
   discoveryLayer?: "evidence" | "thai_discovery";
+  publicationCountry?: string | null;
+  thaiPublished?: boolean | null;
+  thailandContext?: boolean | null;
+  thaiLanguage?: boolean | null;
+  thaiAffiliated?: boolean | null;
   visibility?: VisibilityReceipt;
 };
 
@@ -109,7 +114,7 @@ const EMPTY_VISIBILITY_SUMMARY: VisibilitySummary = {
 export type ResearchCoverageProvider = {
   provider: string;
   label: string;
-  state: "live_bounded" | "pilot_internal" | "not_connected";
+  state: "connected" | "import_validated" | "partner_required" | "planned" | "blocked";
   records: number;
   metadataOnly: number;
   pageCitable: number;
@@ -241,6 +246,12 @@ type CatalogRow = {
   document_id?: string | null;
   source_updated_at?: string | null;
   updated_at?: string | null;
+  publication_country?: string | null;
+  thai_published?: boolean | null;
+  thailand_context?: boolean | null;
+  thai_language?: boolean | null;
+  thai_affiliated?: boolean | null;
+  research_facets_basis?: unknown;
 };
 
 type ListFeedParams = {
@@ -250,6 +261,9 @@ type ListFeedParams = {
   q?: string | null;
   limit?: string | number | null;
   cursor?: string | null;
+  thailandContext?: boolean | null;
+  thaiLanguage?: boolean | null;
+  thaiAffiliated?: boolean | null;
   includeFacets?: boolean;
 };
 
@@ -259,11 +273,14 @@ const SECTION_SELECT = "id, document_id, source, collection, paper_code, page_st
 const CHUNK_SELECT = "id, document_id, section_id, source, collection, paper_code, page_start, page_end, section_index, section_title, chunk_index, content";
 // Public discovery is deliberately metadata-only. Abstracts may be retained for
 // permitted server-side indexing, but are never selected into a public card.
-const CATALOG_SELECT = "id, provider, provider_record_id, collection, source_type, title_local, title_en, authors, keywords, doi, canonical_url, journal_title, publisher, published_at, language, discipline, license, rights_status, access_level, evidence_status, document_id, source_updated_at, updated_at";
+const CATALOG_SELECT = "id, provider, provider_record_id, collection, source_type, title_local, title_en, authors, keywords, doi, canonical_url, journal_title, publisher, published_at, language, discipline, license, rights_status, access_level, evidence_status, document_id, source_updated_at, updated_at, publication_country, thai_published, thailand_context, thai_language, thai_affiliated, research_facets_basis";
 const MAX_QUERY_MATCHES = 500;
+const FACET_CACHE_TTL_MS = 5 * 60 * 1_000;
+let facetCache: { expiresAt: number; value: ResearchFeedResponse["facets"] } | null = null;
+let facetRequest: Promise<ResearchFeedResponse["facets"]> | null = null;
 const QUERY_STOP_WORDS = new Set([
-  "a", "an", "and", "are", "as", "at", "be", "beyond", "by", "can", "current", "do", "does", "for", "from", "how", "in", "into", "is", "it", "of", "on", "or", "paper", "papers", "research", "should", "studies", "study", "test", "testing", "the", "this", "to", "use", "using", "what", "with",
-  "การ", "ของ", "จาก", "ด้วย", "ที่", "และ", "ใน", "เป็น", "เพื่อ", "ศึกษา", "การศึกษา", "งานวิจัย", "วิจัย", "อย่างไร",
+  "a", "an", "and", "are", "as", "at", "be", "beyond", "by", "can", "conference", "current", "do", "does", "evidence", "for", "from", "how", "in", "into", "is", "it", "journal", "known", "of", "on", "or", "paper", "papers", "published", "report", "reported", "reports", "repository", "research", "should", "show", "shows", "studies", "study", "test", "testing", "thai", "thailand", "the", "this", "to", "use", "using", "what", "which", "with",
+  "การ", "ของ", "จาก", "ด้วย", "ที่", "และ", "ใน", "เป็น", "เพื่อ", "ศึกษา", "การศึกษา", "งานวิจัย", "วิจัย", "ประเทศไทย", "อย่างไร",
 ]);
 const SEARCH_THAI_FRAGMENTS = [
   "ปัญญาประดิษฐ์", "ภาษาอังกฤษ", "การเรียนรู้", "การสอน", "อุบัติเหตุ", "ความปลอดภัย", "ถนน", "จราจร", "ขนส่ง", "น้ำท่วม", "ระบายน้ำ", "ชลศาสตร์", "ก่อสร้าง", "คอนกรีต", "ซีเมนต์", "วัสดุ", "สะพาน", "แผ่นดินไหว", "สิ่งแวดล้อม", "การแพทย์", "สาธารณสุข", "เกษตร", "พลังงาน",
@@ -767,7 +784,10 @@ function hotScore(doc: DocumentRow): number {
 }
 
 function filtersForDoc(doc: DocumentRow): FeedFilter[] {
-  const filters: FeedFilter[] = ["hot"];
+  // The evidence corpus currently consists of Thai conference and Thai
+  // university deposits. Keep this independent from language, topic, and
+  // author affiliation: "thai" means published/deposited in Thailand.
+  const filters: FeedFilter[] = ["hot", "thai"];
   const ageDays = doc.indexed_at ? Math.max(0, (Date.now() - new Date(doc.indexed_at).getTime()) / 86_400_000) : 365;
   if (ageDays <= 45) filters.push("recent");
   if ((doc.chunk_count ?? 0) >= 6) filters.push("evidence");
@@ -840,6 +860,11 @@ function cardFromDocument(doc: DocumentRow, sections: SectionRow[], chunks: Chun
     evidenceStatus: "indexed",
     citable: true,
     discoveryLayer: "evidence",
+    publicationCountry: "TH",
+    thaiPublished: true,
+    thailandContext: null,
+    thaiLanguage: null,
+    thaiAffiliated: null,
   };
   return { ...card, prompt: buildPrompt(card) };
 }
@@ -876,8 +901,17 @@ function cardFromCatalog(row: CatalogRow): ResearchFeedCard {
   const ccByVersion = normalizedLicense.match(/^CC[- ]BY[- ](\d+(?:\.\d+)?)$/i)?.[1] ?? null;
   const licenseLabel = ccByVersion ? `CC BY ${ccByVersion}` : normalizedLicense;
   const isThaiJo = row.provider === "tci_thaijo";
+  const providerIsThaiPublished = [
+    "tci_thaijo", "tci_citation", "tnrr", "thailis_tdc", "thai_conference",
+    "thai_ir", "ncce", "student_transport_projects",
+  ].includes(row.provider);
+  const thaiPublished = row.thai_published ?? providerIsThaiPublished;
   const tags = [
     ...(isNativeCitable ? ["Native reader", licenseLabel] : []),
+    ...(thaiPublished ? ["Published in Thailand"] : []),
+    ...(row.thailand_context === true ? ["Thailand context"] : []),
+    ...(row.thai_language === true ? ["Thai language"] : []),
+    ...(row.thai_affiliated === true ? ["Thai affiliated"] : []),
     disciplineLabel(row.discipline),
     providerLabel(row.provider),
     ...keywordTags,
@@ -933,6 +967,11 @@ function cardFromCatalog(row: CatalogRow): ResearchFeedCard {
     licenseExpression: row.license,
     licenseUrl: ccByVersion ? `https://creativecommons.org/licenses/by/${ccByVersion}/` : null,
     discoveryLayer: isNativeCitable ? "evidence" : "thai_discovery",
+    publicationCountry: row.publication_country ?? (thaiPublished ? "TH" : null),
+    thaiPublished,
+    thailandContext: row.thailand_context ?? null,
+    thaiLanguage: row.thai_language ?? (row.language ? /^th(?:a|ai)?$/i.test(row.language) : null),
+    thaiAffiliated: row.thai_affiliated ?? (row.provider === "pmc_oa" ? true : null),
   };
 }
 
@@ -991,6 +1030,11 @@ function cardFromRightsReviewedReaderPaper(paper: RightsReviewedReaderPaper): Re
     licenseExpression: paper.asset.licenseExpression,
     licenseUrl: paper.asset.licenseUrl,
     discoveryLayer: "evidence",
+    publicationCountry: "TH",
+    thaiPublished: true,
+    thailandContext: null,
+    thaiLanguage: paper.asset.language ? /^th(?:a|ai)?$/i.test(paper.asset.language) : null,
+    thaiAffiliated: null,
   };
   return { ...card, prompt: buildPrompt(card) };
 }
@@ -1081,7 +1125,7 @@ export function buildCoverageLedger(
     {
       provider: "tci_thaijo",
       label: "ThaiJO",
-      state: "live_bounded",
+      state: "connected",
       records: snapshot?.records ?? thaiJo?.records ?? thaiJoMetadataOnly + thaiJoPageCitable,
       metadataOnly: thaiJoMetadataOnly,
       pageCitable: thaiJoPageCitable,
@@ -1096,7 +1140,7 @@ export function buildCoverageLedger(
     ...((pmc || pmcSnapshot) ? [{
       provider: "pmc_oa",
       label: "PMC · Thai-affiliated global OA",
-      state: "live_bounded" as const,
+      state: "connected" as const,
       records: pmcSnapshot?.records ?? pmc?.records ?? 0,
       metadataOnly: pmcSnapshot?.metadataOnly ?? pmc?.metadataOnly ?? 0,
       pageCitable: pmcSnapshot?.pageCitable ?? pmc?.citable ?? 0,
@@ -1114,7 +1158,7 @@ export function buildCoverageLedger(
     {
       provider: "ncce",
       label: "NCCE",
-      state: "live_bounded",
+      state: "connected",
       records: ncceSnapshot?.records ?? facets.filters.ncce,
       metadataOnly: 0,
       pageCitable: facets.filters.ncce,
@@ -1129,7 +1173,7 @@ export function buildCoverageLedger(
     {
       provider: "student_transport_projects",
       label: "Chula transport collection",
-      state: "pilot_internal",
+      state: "import_validated",
       records: studentSnapshot?.records ?? facets.filters.ce_project,
       metadataOnly: 0,
       pageCitable: facets.filters.ce_project,
@@ -1152,7 +1196,9 @@ export function buildCoverageLedger(
     rows.push({
       provider,
       label,
-      state: "not_connected",
+      state: provider === "tci_citation" || provider === "tnrr" || provider === "thailis_tdc"
+        ? "partner_required"
+        : "planned",
       records: 0,
       metadataOnly: 0,
       pageCitable: 0,
@@ -1251,6 +1297,19 @@ async function fetchDocumentsByIds(documentIds: string[]): Promise<DocumentRow[]
   return rows;
 }
 
+async function fetchDocumentsBySources(sources: string[]): Promise<DocumentRow[]> {
+  const normalized = [...new Set(sources.map((source) => source.trim()).filter(Boolean))].slice(0, 100);
+  if (!normalized.length) return [];
+  const supabase = getSupabaseAdmin() as any;
+  const { data, error } = await supabase
+    .from("civil_documents_v2")
+    .select(DOCUMENT_SELECT)
+    .in("source", normalized)
+    .limit(normalized.length);
+  if (error) throw new Error(`Failed to read matched evidence manifests: ${error.message}`);
+  return (data ?? []) as DocumentRow[];
+}
+
 type CatalogFacetRow = {
   provider: string;
   records: number | string;
@@ -1313,6 +1372,9 @@ async function searchCatalog({
   provider = "",
   evidenceStatus,
   nativeFirst = false,
+  thailandContext = null,
+  thaiLanguage = null,
+  thaiAffiliated = null,
   limit,
   offset,
 }: {
@@ -1320,10 +1382,35 @@ async function searchCatalog({
   provider?: string;
   evidenceStatus?: CatalogRow["evidence_status"];
   nativeFirst?: boolean;
+  thailandContext?: boolean | null;
+  thaiLanguage?: boolean | null;
+  thaiAffiliated?: boolean | null;
   limit: number;
   offset: number;
 }): Promise<{ rows: CatalogRow[]; total: number }> {
   const supabase = getSupabaseAdmin() as any;
+  const v3 = await supabase.rpc("search_civil_source_catalog_public_v3", {
+    search_query: q,
+    filter_provider: provider || null,
+    filter_discipline: null,
+    filter_evidence_status: evidenceStatus ?? null,
+    filter_thailand_context: thailandContext,
+    filter_thai_language: thaiLanguage,
+    filter_thai_affiliated: thaiAffiliated,
+    native_first: nativeFirst,
+    match_count: limit,
+    match_offset: offset,
+  });
+  if (!v3.error) {
+    const rows = (v3.data ?? []) as Array<CatalogRow & { total_count?: number | string }>;
+    return { rows, total: Number(rows[0]?.total_count ?? 0) };
+  }
+  if (!rpcUnavailable(v3.error, "search_civil_source_catalog_public_v3")) {
+    throw new Error(`Failed to search source catalog: ${v3.error.message}`);
+  }
+  if (thailandContext != null || thaiLanguage != null || thaiAffiliated != null) {
+    throw new Error("Thai research facet filters are unavailable until the v3 catalog migration completes.");
+  }
   const v2 = await supabase.rpc("search_civil_source_catalog_public_v2", {
     search_query: q,
     filter_provider: provider || null,
@@ -1507,8 +1594,8 @@ type SearchContext = {
 };
 
 function searchContext(q: string): SearchContext {
-  const phrase = q.toLocaleLowerCase("en").replace(/[^\p{L}\p{N}\s-]/gu, " ").replace(/\s+/g, " ").trim();
-  const lexicalTerms = (phrase.match(/[\p{L}\p{N}]+/gu) ?? [])
+  const phrase = q.toLocaleLowerCase("en").replace(/[^\p{L}\p{M}\p{N}\s-]/gu, " ").replace(/\s+/g, " ").trim();
+  const lexicalTerms = (phrase.match(/[\p{L}\p{M}\p{N}]+/gu) ?? [])
     .filter((term) => term.length >= 2 && !QUERY_STOP_WORDS.has(term));
   const thaiFragments = SEARCH_THAI_FRAGMENTS.filter((term) => phrase.includes(term));
   const baseTerms = [...new Set([...lexicalTerms, ...thaiFragments])]
@@ -1538,6 +1625,15 @@ function searchContext(q: string): SearchContext {
   }
   if (/(?:^|\s)(?:elt|efl)(?:\s|$)|english language teaching|ภาษาอังกฤษ/.test(phrase)) {
     addConcept(["elt", "efl", "english", "language", "teaching", "ภาษาอังกฤษ"], "education");
+  }
+  if (/education|learning|teaching|teacher|student|literacy|classroom|university|school|การศึกษา|การเรียน|การสอน|ครู|นักเรียน/.test(phrase)) {
+    addConcept(["education", "learning", "teaching", "teacher", "student", "การศึกษา", "การเรียน", "การสอน"], "education");
+  }
+  if (/clinical|hospital|patient|health|disease|injur|stroke|birth|therapy|medical|melioidosis|โรงพยาบาล|ผู้ป่วย|สุขภาพ|โรค|การแพทย์/.test(phrase)) {
+    addConcept(["clinical", "hospital", "patient", "health", "medical", "โรงพยาบาล", "ผู้ป่วย", "สุขภาพ", "การแพทย์"], "medical_and_health_sciences");
+  }
+  if (/earthquake|seismic|แผ่นดินไหว/.test(phrase)) {
+    addConcept(["earthquake", "seismic", "แผ่นดินไหว"], "structural");
   }
 
   const baseSet = new Set(baseTerms);
@@ -1580,6 +1676,10 @@ async function matchingDocumentScores(q: string, collection: CollectionFilter): 
   // Explore stays metadata-fast; semantic full-text retrieval belongs to Chat/MCP.
   const sectionColumns = ["section_title", "source", "paper_code", "discipline"];
   const documentColumns = ["source", "source_pdf", "paper_code", "discipline"];
+  // Expanded bilingual concepts must not search `discipline`: a token such as
+  // "transport" would otherwise fill the bounded window with every transport
+  // paper before a Thai title containing ถนน/อุบัติเหตุ can be seen.
+  const expandedSectionColumns = ["section_title", "source", "paper_code"];
   const emptyResult = Promise.resolve({ data: [], error: null });
   const searchSections = (terms: string[]) => {
     if (!terms.length) return emptyResult;
@@ -1587,6 +1687,17 @@ async function matchingDocumentScores(q: string, collection: CollectionFilter): 
       .from("civil_sections_v2")
       .select("document_id,section_title,source,paper_code,discipline")
       .or(searchOrFilter(sectionColumns, terms))
+      .eq("is_stale", false)
+      .limit(MAX_QUERY_MATCHES);
+    if (collection) query = query.eq("collection", collection);
+    return query;
+  };
+  const searchExpandedSections = (terms: string[]) => {
+    if (!terms.length) return emptyResult;
+    let query = supabase
+      .from("civil_sections_v2")
+      .select("document_id,section_title,source,paper_code,discipline")
+      .or(searchOrFilter(expandedSectionColumns, terms))
       .eq("is_stale", false)
       .limit(MAX_QUERY_MATCHES);
     if (collection) query = query.eq("collection", collection);
@@ -1603,13 +1714,12 @@ async function matchingDocumentScores(q: string, collection: CollectionFilter): 
     return query;
   };
 
-  const [baseSections, baseDocuments, expandedSections, expandedDocuments] = await Promise.all([
+  const [baseSections, baseDocuments, expandedSections] = await Promise.all([
     searchSections(context.baseTerms),
     searchDocuments(context.baseTerms),
-    searchSections(context.expandedTerms),
-    searchDocuments(context.expandedTerms),
+    searchExpandedSections(context.expandedTerms),
   ]);
-  const results = [baseSections, baseDocuments, expandedSections, expandedDocuments];
+  const results = [baseSections, baseDocuments, expandedSections];
   for (const result of results) {
     if (result.error) throw new Error(`Failed to search feed: ${result.error.message}`);
   }
@@ -1629,11 +1739,11 @@ async function matchingDocumentScores(q: string, collection: CollectionFilter): 
   addRows((baseSections.data ?? []) as SearchMatchRow[], true);
   addRows((baseDocuments.data ?? []) as SearchMatchRow[], true);
   addRows((expandedSections.data ?? []) as SearchMatchRow[], false);
-  addRows((expandedDocuments.data ?? []) as SearchMatchRow[], false);
 
   return new Map(
     [...aggregates.entries()]
-      .filter(([, match]) => match.baseHits > 0 && match.fieldScore >= (context.baseTerms.length >= 4 ? 7 : 4))
+      .filter(([, match]) => (match.baseHits > 0 || match.expandedHits > 0)
+        && match.fieldScore >= (context.baseTerms.length >= 4 ? 7 : 4))
       .map(([id, match]) => [
         id,
         match.fieldScore + Math.min(match.baseHits, 10) * 0.9 + Math.min(match.expandedHits, 6) * 0.25,
@@ -1652,7 +1762,7 @@ function facetsFromCounts(
     hot: evidenceTotal,
     recent: Number(evidence.recent ?? 0),
     evidence: Number(evidence.evidence ?? 0),
-    thai: 0,
+    thai: evidenceTotal,
     tci: 0,
     ncce: Number(evidence.ncce ?? 0),
     ce_project: Number(evidence.ce_project ?? 0),
@@ -1708,6 +1818,25 @@ function emptyFacets(): ResearchFeedResponse["facets"] {
   return { ...base, coverage: buildCoverageLedger(base) };
 }
 
+async function currentFacets(): Promise<ResearchFeedResponse["facets"]> {
+  const now = Date.now();
+  if (facetCache && facetCache.expiresAt > now) return facetCache.value;
+  if (facetRequest) return facetRequest;
+  facetRequest = Promise.all([fetchEvidenceFacets(), fetchCatalogFacets(), fetchCoverageSnapshots(), getVisibilitySummary()])
+    .then(([evidenceFacets, catalogFacets, snapshots, visibility]) => addReaderPackFacets(
+      facetsFromCounts(evidenceFacets, catalogFacets, visibility),
+      snapshots,
+    ))
+    .then((value) => {
+      facetCache = { expiresAt: Date.now() + FACET_CACHE_TTL_MS, value };
+      return value;
+    })
+    .finally(() => {
+      facetRequest = null;
+    });
+  return facetRequest;
+}
+
 async function attachVisibilityReceipts(cards: ResearchFeedCard[]): Promise<ResearchFeedCard[]> {
   const sources = cards
     .filter((card) => card.provider === "tci_thaijo")
@@ -1717,6 +1846,73 @@ async function attachVisibilityReceipts(cards: ResearchFeedCard[]): Promise<Rese
   return cards.map((card) => card.provider === "tci_thaijo"
     ? { ...card, visibility: receipts[card.source] }
     : card);
+}
+
+async function searchLocalThaiEvidenceCards(
+  q: string,
+  collection: CollectionFilter,
+  filter: FeedFilter,
+  limit: number,
+): Promise<ResearchFeedCard[]> {
+  if (!q) return [];
+  const context = searchContext(q);
+  const localCivilDisciplines = new Set(["transport", "water_resources", "construction_mgmt", "structural"]);
+  if (context.disciplines.length && !context.disciplines.some((discipline) => localCivilDisciplines.has(discipline))) {
+    return [];
+  }
+  // The checked-in metadata manifests are the fastest trustworthy index for
+  // the current local evidence corpus and preserve bilingual titles that are
+  // not present on `civil_documents_v2`. Resolve a bounded source list first;
+  // use the database lexical path only for newly ingested records that have not
+  // reached the generated manifests yet.
+  const manifestSources = filterResearchCardsByRelevance(q, Object.entries(PAPER_TITLE_OVERRIDES).map(([source, title]) => ({
+    source,
+    title,
+    summary: PAPER_SUMMARY_OVERRIDES[source] ?? "",
+    tags: [],
+    authors: [],
+  }))).slice(0, Math.min(100, Math.max(limit, limit * 4))).map((card) => card.source);
+  if (manifestSources.length) {
+    const manifestOrder = new Map(manifestSources.map((source, index) => [source, index]));
+    const docs = (await fetchDocumentsBySources(manifestSources))
+      .sort((left, right) => (manifestOrder.get(left.source) ?? 1_000) - (manifestOrder.get(right.source) ?? 1_000));
+    const previews = await fetchDocumentPreviews(docs.map((doc) => doc.id));
+    return filterResearchCardsByRelevance(q, docs.map((doc) => cardFromDocument(
+      doc,
+      previews.sections.get(doc.id) ?? [],
+      previews.chunks.get(doc.id) ?? [],
+    ))).slice(0, limit);
+  }
+  const relevanceScores = await matchingDocumentScores(q, collection);
+  const candidateIds = [...relevanceScores.entries()]
+    .sort((left, right) => right[1] - left[1])
+    .slice(0, Math.min(MAX_QUERY_MATCHES, Math.max(limit, limit * 4)))
+    .map(([id]) => id);
+  const docs = await fetchDocumentsByIds(candidateIds);
+  const fallbackOrder = new Map(sortDocuments(docs, filter).map((doc, index) => [doc.id, index]));
+  const sorted = [...docs].sort((a, b) =>
+    (relevanceScores.get(b.id) ?? 0) - (relevanceScores.get(a.id) ?? 0)
+    || (fallbackOrder.get(a.id) ?? 0) - (fallbackOrder.get(b.id) ?? 0));
+  const previews = await fetchDocumentPreviews(sorted.map((doc) => doc.id));
+  return filterResearchCardsByRelevance(q, sorted.map((doc) => cardFromDocument(
+    doc,
+    previews.sections.get(doc.id) ?? [],
+    previews.chunks.get(doc.id) ?? [],
+  ))).slice(0, limit);
+}
+
+function uniqueCardsBySource(cards: ResearchFeedCard[]): ResearchFeedCard[] {
+  const seenSources = new Set<string>();
+  const seenWorks = new Set<string>();
+  return cards.filter((card) => {
+    const workKey = card.doi
+      ? `doi:${card.doi.trim().toLocaleLowerCase("en").replace(/^https?:\/\/(?:dx\.)?doi\.org\//, "")}`
+      : `title:${card.title.normalize("NFKC").toLocaleLowerCase("en").replace(/[^\p{L}\p{M}\p{N}]+/gu, " ").trim()}`;
+    if (seenSources.has(card.source) || seenWorks.has(workKey)) return false;
+    seenSources.add(card.source);
+    seenWorks.add(workKey);
+    return true;
+  });
 }
 
 export async function listResearchFeed(params: ListFeedParams): Promise<ResearchFeedResponse> {
@@ -1730,32 +1926,50 @@ export async function listResearchFeed(params: ListFeedParams): Promise<Research
 
   const facetsPromise = params.includeFacets === false
     ? Promise.resolve(emptyFacets())
-    : Promise.all([fetchEvidenceFacets(), fetchCatalogFacets(), fetchCoverageSnapshots(), getVisibilitySummary()])
-      .then(([evidenceFacets, catalogFacets, snapshots, visibility]) => addReaderPackFacets(
-        facetsFromCounts(evidenceFacets, catalogFacets, visibility),
-        snapshots,
-      ));
+    : currentFacets();
   const readerCards = rightsReviewedReaderCards(filter, collection, q)
     .filter((card) => !provider || card.provider === provider);
   if (filter === "thai" || filter === "tci") {
     const catalogProvider = provider || "tci_thaijo";
-    const catalogPagePromise = searchCatalog({ q, provider: catalogProvider, nativeFirst: true, limit, offset });
+    const catalogMatchLimit = q ? Math.min(30, Math.max(limit, limit * 4)) : limit;
+    // A Thai-published query is broader than ThaiJO. Search the bounded local
+    // evidence corpus in parallel so Thai conference and university deposits
+    // can win on relevance without admitting the PMC global-comparison cohort.
+    // Provider-specific and paginated calls retain their stable catalog page.
+    const localEvidenceCardsPromise = filter === "thai" && !provider && offset === 0
+      ? searchLocalThaiEvidenceCards(q, collection, filter, catalogMatchLimit)
+      : Promise.resolve([]);
+    const catalogPagePromise = searchCatalog({
+      q,
+      provider: catalogProvider,
+      nativeFirst: true,
+      thailandContext: params.thailandContext,
+      thaiLanguage: params.thaiLanguage,
+      thaiAffiliated: params.thaiAffiliated,
+      limit: catalogMatchLimit,
+      offset,
+    });
     // Start per-card receipts as soon as the bounded catalog page resolves.
     // This keeps the trust layer without adding a serial database round trip
     // after the slower aggregate facets have completed.
     const visibleCatalogCardsPromise = catalogPagePromise.then((page) =>
-      attachVisibilityReceipts(page.rows.map(cardFromCatalog)),
+      filterResearchCardsByRelevance(q, page.rows.map(cardFromCatalog)),
     );
-    const [facets, catalogPage, visibleCatalogCards] = await Promise.all([
+    const [facets, catalogPage, visibleCatalogCards, localEvidenceCards] = await Promise.all([
       facetsPromise,
       catalogPagePromise,
       visibleCatalogCardsPromise,
+      localEvidenceCardsPromise,
     ]);
     const hasAuthoritativeNative = facets.coverage.some((row) => row.nativeFullPaper > 0);
     if (hasAuthoritativeNative) {
-      const nextOffset = offset + visibleCatalogCards.length;
+      const nextOffset = offset + catalogPage.rows.length;
+      const cards = filterResearchCardsByRelevance(
+        q,
+        uniqueCardsBySource([...readerCards, ...localEvidenceCards, ...visibleCatalogCards]),
+      ).slice(0, limit);
       return {
-        cards: visibleCatalogCards,
+        cards: await attachVisibilityReceipts(cards),
         facets,
         nextCursor: nextOffset < catalogPage.total ? encodeCursor(nextOffset) : null,
         generatedAt: new Date().toISOString(),

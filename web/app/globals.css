@@ -6120,6 +6120,14 @@ body {
 .visibilityReceipt.candidate_match { border-color:#ddd1fa; background:#f6f1ff; color:#684eb0; }
 .visibilityReceipt.not_found_in_audit { border-color:#f0c6c6; background:#fff3f3; color:#a04b4b; }
 .visibilityReceipt.audit_unavailable { border-color:#dddfe4; background:#f3f4f6; color:#6c727c; }
+.visibilityCorrectionControl { width:max-content; max-width:100%; color:#626d78; font-size:.61rem; }
+.visibilityCorrectionControl summary { cursor:pointer; color:#586776; font-weight:740; }
+.visibilityCorrectionControl form { width:min(420px,100%); display:grid; gap:7px; margin-top:7px; border:1px solid #dce2e7; border-radius:9px; background:#fafcfd; padding:9px; }
+.visibilityCorrectionControl label { display:grid; gap:3px; }
+.visibilityCorrectionControl label span,.visibilityCorrectionControl p { margin:0; color:#727c87; font-size:.58rem; line-height:1.4; }
+.visibilityCorrectionControl input,.visibilityCorrectionControl textarea { width:100%; border:1px solid #d8dee4; border-radius:6px; background:#fff; color:#29313a; padding:6px 7px; font:inherit; resize:vertical; }
+.visibilityCorrectionControl button { justify-self:start; border:1px solid #c9d9d2; border-radius:7px; background:#eff8f4; color:#28634f; cursor:pointer; padding:6px 8px; font-size:.58rem; font-weight:780; }
+.visibilityCorrectionControl button:disabled { cursor:wait; opacity:.58; }
 
 @media (max-width:760px) {
   .visibilityAuditPanel>header { display:grid; }
@@ -6173,6 +6181,40 @@ body {
 .coverageLedger details { color:#69727e; font-size:.64rem; }
 .coverageLedger summary { cursor:pointer; font-weight:700; }
 .coverageLedger details p { padding-top:6px; }
+
+.researchCasePanel {
+  width:min(100%,980px);
+  display:grid;
+  gap:13px;
+  margin:0 auto 14px;
+  border:1px solid rgba(31,112,83,.22);
+  border-radius:14px;
+  background:linear-gradient(135deg,rgba(239,250,246,.96),rgba(247,250,255,.9));
+  padding:16px;
+  box-shadow:0 12px 30px rgba(31,75,64,.07);
+}
+.researchCasePanel>header,.researchCasePanel>footer { display:flex; align-items:flex-start; justify-content:space-between; gap:16px; }
+.researchCasePanel>header>div { display:grid; gap:3px; }
+.researchCasePanel h2 { margin:0; color:#1d2926; font-size:1rem; letter-spacing:-.018em; }
+.researchCasePanel header p,.researchCasePanel footer>span { margin:0; color:#65756f; font-size:.66rem; line-height:1.45; }
+.researchCasePanel>footer { align-items:center; }
+.researchCasePanel>footer>div { display:flex; flex-wrap:wrap; justify-content:flex-end; gap:7px; }
+.researchCasePanel.loading,.researchCasePanel.error { display:flex; align-items:center; color:#5f6e69; font-size:.72rem; }
+.researchCasePanel.error { border-color:#edc9c9; background:#fff7f7; color:#914b4b; }
+.researchCasePanel.error button { margin-left:auto; border:0; background:transparent; color:#914b4b; cursor:pointer; font-weight:760; }
+.caseSaveState { flex:0 0 auto; border:1px solid #bedfd3; border-radius:999px; background:#eaf8f2; color:#236c58; padding:4px 8px; font-size:.58rem; font-weight:800; text-transform:uppercase; letter-spacing:.045em; }
+.caseSaveState.saving { border-color:#d9d0f5; background:#f5f1ff; color:#6753aa; }
+.caseSaveState.error { border-color:#edc9c9; background:#fff1f1; color:#914b4b; }
+.researchCaseStages { display:grid; grid-template-columns:repeat(5,minmax(0,1fr)); gap:7px; margin:0; padding:0; list-style:none; }
+.researchCaseStages li { min-width:0; display:flex; align-items:center; gap:6px; border:1px solid #dce5e1; border-radius:8px; background:rgba(255,255,255,.72); color:#748079; padding:7px 8px; font-size:.61rem; font-weight:730; }
+.researchCaseStages li>span { width:20px; height:20px; display:grid; flex:0 0 auto; place-items:center; border-radius:999px; background:#edf1ef; color:#68736e; font-size:.58rem; }
+.researchCaseStages li.complete { border-color:#c1e3d7; color:#21664f; }
+.researchCaseStages li.complete>span { background:#dff3eb; color:#176a4f; }
+
+.caseExamples { width:min(100%,760px); display:flex; flex-wrap:wrap; justify-content:center; gap:6px; margin:9px auto 0; }
+.caseExamples>span { width:100%; color:#7a828e; font-size:.61rem; font-weight:720; text-align:center; }
+.caseExamples button { border:1px solid rgba(98,112,132,.16); border-radius:999px; background:rgba(255,255,255,.66); color:#596675; cursor:pointer; padding:6px 9px; font-size:.6rem; line-height:1.25; }
+.caseExamples button:hover,.caseExamples button:focus-visible { border-color:rgba(31,112,83,.32); background:#f3faf7; color:#246a55; }
 
 .pathPassportContinuity {
   display:flex;
@@ -6710,12 +6752,22 @@ body {
   display:grid;
 }
 
-.passportEvidenceList button {
+.passportEvidenceItem {
+  display:grid;
+  grid-template-columns:minmax(0,1fr) auto;
+  align-items:center;
+  gap:10px;
+  border-top:1px solid rgba(28,112,82,.13);
+}
+.passportEvidenceItem:last-child { border-bottom:1px solid rgba(28,112,82,.13); }
+.passportEvidenceItem.accepted { background:rgba(231,248,241,.52); }
+.passportEvidenceItem.rejected { background:rgba(255,241,241,.48); }
+
+.passportEvidenceList .passportEvidenceOpen {
   min-height:72px;
   display:grid;
   gap:4px;
   border:0;
-  border-top:1px solid rgba(28,112,82,.13);
   background:transparent;
   color:inherit;
   cursor:pointer;
@@ -6724,17 +6776,13 @@ body {
   transition:background .16s ease,transform .16s ease;
 }
 
-.passportEvidenceList button:last-child {
-  border-bottom:1px solid rgba(28,112,82,.13);
-}
-
-.passportEvidenceList button:hover,
-.passportEvidenceList button:focus-visible {
+.passportEvidenceList .passportEvidenceOpen:hover,
+.passportEvidenceList .passportEvidenceOpen:focus-visible {
   background:#f5fbf8;
   transform:translateX(2px);
 }
 
-.passportEvidenceList button:focus-visible,
+.passportEvidenceList .passportEvidenceOpen:focus-visible,
 .passportGlobalColumn li a:focus-visible,
 .passportGlobalSearch:focus-visible,
 .passportRun summary:focus-visible {
@@ -6743,7 +6791,7 @@ body {
   outline-offset:3px;
 }
 
-.passportEvidenceList button>span {
+.passportEvidenceList .passportEvidenceOpen>span {
   display:flex;
   align-items:center;
   justify-content:space-between;
@@ -6797,6 +6845,12 @@ body {
   letter-spacing:.035em;
   text-transform:uppercase;
 }
+
+.evidenceDecisionActions { display:flex; flex-direction:column; gap:5px; padding-right:2px; }
+.evidenceDecisionActions button { min-height:30px; display:inline-flex; align-items:center; justify-content:center; gap:4px; border:1px solid #d8e0dc; border-radius:7px; background:#fff; color:#59655f; cursor:pointer; padding:4px 8px; font-size:.59rem; font-weight:780; }
+.evidenceDecisionActions button:disabled { cursor:not-allowed; opacity:.44; }
+.evidenceDecisionActions button[aria-pressed="true"]:first-child { border-color:#9fd4c1; background:#e7f7f0; color:#17684e; }
+.evidenceDecisionActions button[aria-pressed="true"]:last-child { border-color:#e6bbbb; background:#fff0f0; color:#984545; }
 
 .passportInferenceColumn blockquote {
   margin:0;
@@ -7086,6 +7140,9 @@ body {
   .coverageLedger>header { display:grid; }
   .coverageRows dl { grid-template-columns:repeat(2,minmax(0,1fr)); }
   .coverageFoot { justify-content:flex-start; text-align:left; }
+  .researchCasePanel>header,.researchCasePanel>footer { display:grid; }
+  .researchCasePanel>footer>div { justify-content:flex-start; }
+  .researchCaseStages { grid-template-columns:1fr 1fr; }
 
   .globalDiscoveryHeader {
     align-items:stretch;
@@ -7160,7 +7217,7 @@ body {
     border-left:0;
   }
 
-  .passportEvidenceList button,
+  .passportEvidenceList .passportEvidenceOpen,
   .passportGlobalColumn li a {
     min-height:44px;
   }
@@ -7193,14 +7250,14 @@ body {
     transition:none;
   }
 
-  .passportEvidenceList button,
+  .passportEvidenceList .passportEvidenceOpen,
   .passportGlobalColumn li a,
   .passportRun summary svg:last-child {
     transition:none;
   }
 
-  .passportEvidenceList button:hover,
-  .passportEvidenceList button:focus-visible,
+  .passportEvidenceList .passportEvidenceOpen:hover,
+  .passportEvidenceList .passportEvidenceOpen:focus-visible,
   .passportGlobalColumn li a:hover,
   .passportGlobalColumn li a:focus-visible {
     transform:none;
@@ -8137,4 +8194,114 @@ body {
   .accountDangerManage {
     display: none !important;
   }
+}
+
+/*
+ * Performance contract: keep live backdrop sampling on one bounded focal
+ * surface and transient menus only. Repeated/feed surfaces stay static so
+ * scrolling never invalidates dozens of blurred layers at once.
+ */
+.appSidebar,
+.mobileBottomNav,
+.researchWorkspaceHeader,
+.workspaceToolbar,
+.pathBuilder,
+.accountCard,
+.authBenefitCard,
+.researchCard,
+.conversationCard,
+.historyCard,
+.shareCard,
+.missionArtifact,
+.prismaWorkspace,
+.workspaceToolbar > button,
+.workspaceProNotice,
+.glassButton,
+.modeSegment {
+  backdrop-filter: none !important;
+  -webkit-backdrop-filter: none !important;
+}
+
+.searchComposer {
+  position: relative;
+  isolation: isolate;
+  overflow: hidden;
+}
+
+@supports ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
+  .searchComposer {
+    transform: translateZ(0);
+    backdrop-filter: blur(18px) saturate(142%) !important;
+    -webkit-backdrop-filter: blur(18px) saturate(142%) !important;
+  }
+
+  .dropdownSurface {
+    backdrop-filter: blur(24px) saturate(150%) !important;
+    -webkit-backdrop-filter: blur(24px) saturate(150%) !important;
+  }
+}
+
+.searchComposer::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  pointer-events: none;
+  border-radius: inherit;
+  background:
+    radial-gradient(120% 85% at 8% 0%, rgba(255,255,255,.68), transparent 48%),
+    linear-gradient(112deg, transparent 30%, rgba(255,255,255,.26) 48%, transparent 66%);
+}
+
+.searchComposer > * {
+  position: relative;
+  z-index: 1;
+}
+
+.researchWorkspace.notebookFocused > .researchNotebook {
+  order: -1;
+  border-color: rgba(92, 118, 159, .24);
+  background:
+    radial-gradient(circle at 92% 0%, rgba(0, 122, 255, .09), transparent 32%),
+    rgba(255, 255, 255, .94);
+  box-shadow: 0 16px 42px rgba(31, 42, 64, .08), inset 0 1px 0 rgba(255, 255, 255, .96);
+}
+
+@media (max-width: 900px) {
+  .mobileBottomNav {
+    grid-template-columns: repeat(7, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 350px) {
+  .mobileBottomNav > button > span:last-child {
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .searchComposer,
+  .dropdownSurface {
+    backdrop-filter: none !important;
+    -webkit-backdrop-filter: none !important;
+  }
+}
+
+.appSidebar {
+  background: rgba(250, 252, 255, .96);
+}
+
+.searchComposer,
+.researchWorkspaceHeader,
+.workspaceToolbar,
+.pathBuilder,
+.accountCard,
+.authBenefitCard,
+.researchCard,
+.conversationCard,
+.historyCard,
+.shareCard,
+.missionArtifact {
+  background-color: rgba(255, 255, 255, .94);
 }

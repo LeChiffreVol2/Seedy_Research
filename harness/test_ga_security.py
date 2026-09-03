@@ -345,6 +345,7 @@ class GASecurityContracts(unittest.TestCase):
         e2e = source("web/tests/e2e/webmcp.spec.ts")
 
         for tool in (
+            "start_research_case",
             "discover_research",
             "audit_global_visibility",
             "inspect_paper_evidence",
@@ -395,7 +396,8 @@ class GASecurityContracts(unittest.TestCase):
             self.assertNotIn(private_state, passport_handler)
 
         self.assertIn("artifact.openedEvidenceIds.includes(item.id)", page)
-        self.assertIn("artifact.stale || !allEvidenceOpened", page)
+        self.assertIn('artifact.reviewDecisions[item.id]?.decision === "accepted"', page)
+        self.assertIn("allEvidenceDecided", page)
         self.assertIn("Review the current Research Passport before exporting it.", page)
         self.assertIn('disabled={!reviewed || artifact.stale}', page)
         self.assertIn("global records used as evidence: 0", page)
@@ -403,7 +405,8 @@ class GASecurityContracts(unittest.TestCase):
         self.assertIn("visible in the active paper", e2e)
         self.assertIn("expect(passport.globalLeads?.[0]?.citable).toBe(false)", e2e)
         self.assertIn("expect(exportPassport).toBeDisabled()", e2e)
-        self.assertIn('getByRole("button", { name: "Mark pages reviewed" })', e2e)
+        self.assertIn('getByRole("button", { name: "Accept", exact: true })', e2e)
+        self.assertIn('getByRole("button", { name: "Complete evidence review" })', e2e)
         self.assertIn("expect(exportPassport).toBeEnabled()", e2e)
 
     def test_public_read_errors_are_redacted_and_cacheable(self) -> None:
@@ -498,7 +501,9 @@ class GASecurityContracts(unittest.TestCase):
         self.assertIn('existing.owner_id !== input.ownerId', workspace_store)
         self.assertIn('.eq("workspace_id", workspaceId).eq("owner_id", input.ownerId)', workspace_store)
         self.assertIn('.eq("owner_id", ownerId)', workspace_store)
-        self.assertIn('aria-label="Open Access Research Workspace"', workspace_ui)
+        self.assertIn('"Open Access Research Workspace"', workspace_ui)
+        self.assertIn('"Research Notebook Workspace"', workspace_ui)
+        self.assertIn('focus === "notebook"', workspace_ui)
         self.assertIn('<strong>Open review tools.</strong>', workspace_ui)
         self.assertIn('Research Notebook asks require sign-in so generated answers remain bound to one owner-scoped Workspace.', workspace_ui)
         self.assertIn('Notebook answers and private sources require sign-in for owner isolation.', workspace_ui)
@@ -521,9 +526,10 @@ class GASecurityContracts(unittest.TestCase):
         self.assertIn('.eq("owner_id", ownerId)', workspace_store)
         self.assertIn('.eq("workspace_id", workspaceId.trim().slice(0, 96))', workspace_store)
         self.assertIn('aria-label="Research Notebook"', workspace_ui)
-        self.assertIn('OpenRAG-compatible · Seedy evidence authority', workspace_ui)
+        self.assertIn('Seedy bounded retrieval active · OpenRAG adapter staged', workspace_ui)
         self.assertIn('answer text is not persisted in Workspace state', workspace_ui)
         self.assertIn('label: "Workspace"', page)
+        self.assertIn('label: "Notebook"', page)
         self.assertIn('label: "Automated Research"', page)
 
     def test_public_mcp_units_are_dormant_in_open_access_and_legacy_ledger_stays_atomic(self) -> None:

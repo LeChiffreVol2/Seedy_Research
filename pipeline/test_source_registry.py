@@ -72,7 +72,7 @@ class SourceRegistryTests(unittest.TestCase):
         )
         reader = registry["local_reader_candidate"]
         self.assertEqual(reader["state"], "deployed_and_database_applied")
-        self.assertEqual(reader["webmcp"]["registered_site_tools"], 7)
+        self.assertEqual(reader["webmcp"]["registered_site_tools"], 8)
         self.assertEqual(reader["verification_status"], "production_verified")
         self.assertEqual(reader["papers"], 1000)
         self.assertEqual(reader["page_addressable_pages"], 14485)

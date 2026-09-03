@@ -106,10 +106,11 @@ from an ignored, reproducible local pack and PDF binaries are not committed; see
 
 ## WebMCP: research with a shared human-agent view
 
-Seedy Research exposes seven browser-native SeedyMCP site tools from the top-level page with `document.modelContext.registerTool(...)`. The tools reuse the same application APIs, signed-in session, validation, evidence boundary, and visible UI that a person uses:
+Seedy Research exposes eight browser-native SeedyMCP site tools from the top-level page with `document.modelContext.registerTool(...)`. The tools reuse the same application APIs, signed-in session, validation, evidence boundary, and visible UI that a person uses:
 
 | Site tool | Shared result |
 | --- | --- |
+| `start_research_case` | Starts or resumes one persistent case from a real question, runs bounded Thai-published discovery, preserves sparse results, and selects the first inspectable source without approving it. |
 | `discover_research` | Searches Thai-local records by default; optional OpenAlex topical metadata appears only as a secondary comparison layer. |
 | `audit_global_visibility` | Returns the latest dated visibility receipt without converting candidates, unavailable checks, or not-yet-audited work into a missing claim. |
 | `inspect_paper_evidence` | Opens the paper drawer and highlights bounded evidence with its original page for human verification. For a rights-verified reader paper it also reports the lawful access mode and a reopenable verified page anchor, but never returns full page text through WebMCP. |
@@ -122,17 +123,17 @@ This is complementary to the remote MCP service: remote MCP works without an ope
 
 ### Challenge hero flow: Thai Visibility → Research Action
 
-The repeatable Challenge flow begins with a rights-reviewed Thai paper, not a
-generated summary. The Site tools menu exposes all seven capabilities, while
+The repeatable Challenge flow begins with a real research question, not a
+generated summary. The Site tools menu exposes all eight capabilities, while
 the proof makes the visibility and evidence boundary observable:
 
-1. `discover_research` finds the rights-reviewed Thai-local paper;
+1. `start_research_case` persists the question and selects a relevant Thai-published source without unrelated filler;
 2. `audit_global_visibility` reads its dated OpenAlex comparison receipt;
 3. `inspect_paper_evidence` opens its exact page and lawful reader state;
 4. `trace_research_connections` may connect an exact-DOI control paper;
 5. `draft_research_passport` carries only inspected pages and verified
    relationship nodes, never generic topical search results; and
-6. the person reopens the pages, acknowledges review, and continues into a
+6. the person reopens the pages, accepts or rejects each evidence claim, and continues into a
    Research Path whose incomplete export is visibly watermarked as a draft.
 
 The recommended demo uses a dated no-exact-match or under-indexed Thai-local
@@ -146,10 +147,10 @@ three deliberately separate layers:
 3. one candidate validation gap labelled as inference, with novelty and
    transferability explicitly not established.
 
-Export stays disabled until the person reopens every selected exact-page anchor
-and acknowledges the page review. That acknowledgment does not validate the
-candidate inference. The exported Markdown preserves the same evidence,
-metadata, and inference boundaries. The Passport audits provenance and frames
+Export stays disabled until the person reopens every selected exact-page anchor,
+accepts or rejects every evidence claim, and accepts at least one. Those decisions do not validate the
+candidate inference. The exported Markdown preserves only accepted evidence plus the same
+metadata and inference boundaries. The Passport audits provenance and frames
 a next verification step; it does not prove scientific correctness, novelty,
 global transferability, or a comprehensive literature gap.
 
@@ -181,7 +182,7 @@ The brief is stored in the existing chat history/share transcript and exports as
 
 Explore remains the feed-first discovery surface: search, filter, inspect a paper, open its evidence, and continue into chat. Its dated Coverage Ledger separates searchable metadata, page-citable evidence, rights-reviewed native pages, source-hosted links, and providers that are not yet connected; a provider filter never turns catalog presence into evidence. It learns a lightweight `For you` ranking from saved papers and syncs a personal library with notes, labels/folders, BibTeX, RIS/Zotero export, and related Thai evidence. Users can explicitly expand a query to bounded OpenAlex metadata, inspect a citation neighborhood, and save the query as a Living Review that reports what changed on the next check. OpenAlex records never become CivilMCP evidence implicitly. By default, indexable `/papers/{source}` pages expose rights-safe metadata, page ranges, and outlines without publishing raw full text. The 103 production reader papers are the bounded exception because each asset has an explicit reviewed native-display decision.
 
-`Research Workspace` is a separate Verified Review Project rather than a chat mode. Papers are rows and bounded AI instructions are columns. Its Research Notebook can answer against only the explicitly selected saved sources, returns allow-listed exact-page locators, keeps private-source answers non-shareable, and can promote a public finding into a review-gated Passport or continue it into a Research Path. Notebook answers are intentionally not persisted in the workspace record. OpenRAG is only an optional, disabled adapter behind this boundary; it cannot become the identity, rights, or evidence authority until its Thai retrieval, page fidelity, isolation, latency, and cost pass the documented release gates. Open Access unlocks batch extraction and every model without answer credits or a plan gate; authentication is required so every run has a durable owner. A project accepts up to 50 CivilMCP or account-private sources and processes six papers per server request, saving account-scoped progress after every completed batch. The Scientific Evidence Snapshot template extracts study design, context, method, results, limitations, and Thai applicability with allow-listed page evidence and human-review state. The PRISMA-ScR guided template captures protocol, search strategy, screening decisions, exclusion reasons, extraction matrix, provenance, and review state in a reproducible Markdown pack. PDF uploads stay account-private; DOI and BibTeX/RIS (including Zotero exports) remain metadata-only until page text is available. The current browser orchestrator supports stop-after-batch and durable saved progress, but is not an unattended background job.
+`Research Workspace` is a separate Verified Review Project rather than a chat mode. Papers are rows and bounded AI instructions are columns. `Research Notebook` is also a first-class sidebar surface, but intentionally reuses the same owner-scoped Workspace aggregate so source selection, review state, Passport promotion, and Research Path continuation cannot drift. It answers against only explicitly selected saved sources, returns allow-listed exact-page locators, keeps private-source answers non-shareable, and can promote a public finding into a review-gated Passport or continue it into a Research Path. Notebook answers are intentionally not persisted in the workspace record. The active runtime is labeled `Seedy bounded retrieval`; OpenRAG remains an optional, staged adapter behind this boundary and cannot become the identity, rights, or evidence authority until its Thai retrieval, page fidelity, isolation, latency, and cost pass the documented release gates. Open Access unlocks batch extraction and every model without answer credits or a plan gate; authentication is required so every run has a durable owner. A project accepts up to 50 CivilMCP or account-private sources and processes six papers per server request, saving account-scoped progress after every completed batch. The Scientific Evidence Snapshot template extracts study design, context, method, results, limitations, and Thai applicability with allow-listed page evidence and human-review state. The PRISMA-ScR guided template captures protocol, search strategy, screening decisions, exclusion reasons, extraction matrix, provenance, and review state in a reproducible Markdown pack. PDF uploads stay account-private; DOI and BibTeX/RIS (including Zotero exports) remain metadata-only until page text is available. The current browser orchestrator supports stop-after-batch and durable saved progress, but is not an unattended background job.
 
 `Research Path` is the primary end-to-end research loop. A reviewed Passport can continue into the path with its Passport ID, public source, exact evidence IDs, gap lens, and selected global leads intact; the server revalidates those locators against the current citable paper before planning. GPT-5.6 Luna builds each stage from allow-listed retrieved papers and bounded page-linked excerpts, while a deterministic retrieval plan remains available if the provider is unavailable. The stages map the Thai field and coverage limit, inspect methods against exact pages or rights-cleared full text, connect selected OpenAlex relations as non-citable comparison leads, and frame one explicitly provisional gap as a Next-Study Protocol with a bounded question, context, data, method, validation step, and falsification condition. Luna evaluates learner reasoning only against allow-listed page packets and links feedback back to the source pages. Adaptive rebuilds preserve mastered work and selected global leads; sparse topics expose limited coverage without unrelated filler.
 

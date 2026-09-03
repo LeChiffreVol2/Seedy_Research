@@ -1,6 +1,5 @@
 "use client";
 
-import LiquidGlass from "liquid-glass-react";
 import type { LucideIcon } from "lucide-react";
 import { Check, ChevronDown } from "lucide-react";
 import { useEffect, useId, useRef, useState } from "react";
@@ -11,30 +10,6 @@ export type GlassMenuOption<T extends string> = {
   description?: string;
   badge?: string;
 };
-
-function MenuLiquidLayer({ prominent = false }: { prominent?: boolean }) {
-  const [mounted, setMounted] = useState(false);
-
-  useEffect(() => setMounted(true), []);
-  if (!mounted) return null;
-
-  return (
-    <LiquidGlass
-      className={`liquidEffect ${prominent ? "liquidPanelEffect" : ""}`}
-      mode={prominent ? "prominent" : "standard"}
-      cornerRadius={prominent ? 16 : 12}
-      displacementScale={prominent ? 32 : 24}
-      blurAmount={0.05}
-      saturation={prominent ? 138 : 126}
-      aberrationIntensity={prominent ? 1.1 : 0.8}
-      elasticity={0.12}
-      padding="0"
-      style={{ position: "absolute", top: "50%", left: "50%", width: "100%", height: "100%" }}
-    >
-      <span className="liquidGhost" aria-hidden />
-    </LiquidGlass>
-  );
-}
 
 export function GlassMenuSelect<T extends string>({
   label,
@@ -81,7 +56,6 @@ export function GlassMenuSelect<T extends string>({
   return (
     <div className={`glassMenuSelect ${className}`} data-dropdown-root>
       <span className="glassWrap glassSelectWrap">
-        <MenuLiquidLayer />
         <button
           ref={triggerRef}
           type="button"
@@ -114,7 +88,6 @@ export function GlassMenuSelect<T extends string>({
         <>
           <div className="dropdownDismissLayer" aria-hidden onPointerDown={() => closeMenu(false)} />
           <div className={`glassDropdown glassSelectDropdown ${align === "right" ? "right" : ""}`}>
-            <MenuLiquidLayer prominent />
             <div className="dropdownSurface">
               <div className="menuTitle">{label}</div>
               <div
