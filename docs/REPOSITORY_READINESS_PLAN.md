@@ -1,6 +1,6 @@
 # Repository readiness plan
 
-Status: Q1–Q9 approved and shared understanding confirmed; implementation in progress.
+Status: Q1–Q9 implemented; dated local evidence below and commit-specific results in GitHub Actions.
 
 ## Objective
 
@@ -77,4 +77,7 @@ repository or live application afterward.
   27 web unit, and 21 Chromium fixture checks, plus the production build.
 - Reader UI tests now use a committed paper shell; previously they depended
   on a production-only NCCE record before browser mocks could run.
-- GitHub checks on the published cleanup revision remain the completion gate.
+- CI and the release source-gate both enforce the credential-free contracts.
+  [GitHub Actions](https://github.com/LeChiffreVol2/Seedy_Research/actions)
+  is authoritative for the published revision's result; this plan is not a
+  substitute for its status or a production deployment receipt.

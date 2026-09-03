@@ -106,6 +106,15 @@ jobs:
           python -m py_compile $(find harness mcp-server pipeline supabase eval -name '*.py' -type f | sort)
           python harness/check_invariants.py
           python harness/test_ga_security.py
+      - name: Install fixture dependencies
+        run: |
+          python -m pip install 'beautifulsoup4>=4.12,<5' 'requests>=2.32,<3'
+          npm ci --prefix web
+          cd web && npx playwright install --with-deps chromium
+      - name: Credential-free release contracts
+        run: |
+          make fixture-check PYTHON=python
+          make fixture-browser PYTHON=python
       - name: Seedy Research web build
         working-directory: web
         env:
@@ -117,7 +126,7 @@ jobs:
           MCP_SERVER_API_KEY: build-placeholder
           GUEST_SESSION_HMAC_KEY: build-placeholder
           MCP_URL: http://localhost:8000
-        run: npm ci && npm run build
+        run: npm run build
 
   migrate-preview:
     if: >-

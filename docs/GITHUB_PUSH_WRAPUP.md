@@ -1,4 +1,4 @@
-# CivilMCP GitHub Push Wrap-Up
+# Seedy Research GitHub Publication
 
 ## Repository Scope
 This repo should contain source code, schemas, harnesses, and docs. Generated reports, source PDFs/markdown, root ZIP archives, secrets, and runtime build artifacts stay out of Git.
@@ -21,26 +21,20 @@ Do not commit local runtime data:
 ## Latest Validation
 Do not reuse an old readiness score. Reports are valid for at most 24 hours and must match the exact source/deployment provenance.
 
-## First Push Flow
-Create a new empty GitHub repo, then run:
+## Repository identity
 
-```bash
-git remote add origin git@github.com:<owner>/<repo>.git
-git push -u origin main
-```
-
-If using HTTPS:
-
-```bash
-git remote add origin https://github.com/<owner>/<repo>.git
-git push -u origin main
-```
+Keep the existing public repository and history:
+[LeChiffreVol2/Seedy_Research](https://github.com/LeChiffreVol2/Seedy_Research).
+Verify `git remote -v` before pushing; do not create a replacement repository.
+CityMCP recovery and retained identifiers are documented in
+[Compatibility](LEGACY_COMPATIBILITY.md).
 
 ## Update Flow
-Before future pushes:
+For documentation and test-only updates, run `make fixture-check`, verify the
+credential-free browser gate in a clean checkout, and inspect the diff. For
+runtime releases, also run the live release gates in [Operations](OPERATIONS.md).
 
 ```bash
-make release-gate
 git status -sb
 git add <changed-files>
 git commit -m "<short update>"
@@ -61,7 +55,7 @@ Keep these in Vercel/Supabase/GitHub secrets only, never in source:
 - `SUPABASE_DB_URL`
 
 ## GitHub Preview And Promotion
-Set these after the private repo exists:
+Configure these in the existing repository's protected environments:
 - Repository variable `PRODUCTION_MCP_URL=https://civil-mcp-server.vercel.app`
 - Repository variable `PRODUCTION_WEB_URL=https://seedresearch.vercel.app`
 - Repository variable `CORPUS_FINGERPRINT`
@@ -70,4 +64,10 @@ Set these after the private repo exists:
 - Repository secrets `SUPABASE_PREVIEW_DB_URL` and `SUPABASE_DB_URL` for additive migration steps
 - Protect the GitHub `production` environment with required reviewers
 
-Pushes and pull requests create Preview deployments only. Use manual `workflow_dispatch` with `promote=true` after preview QA; the protected job creates staged Production deployments, tests them, and promotes those exact deployments without another rebuild.
+Pushes and pull requests run source/fixture gates. Preview deployment also
+requires `PREVIEW_RELEASE_ENABLED=true` and the configured environment secrets;
+a skipped deployment is not deployment evidence. Use manual
+`workflow_dispatch` with `promote=true` after preview QA. The protected job
+creates staged Production deployments, tests them, and promotes those exact
+deployments without rebuilding. Documentation-only changes do not require
+redeploying the application.
