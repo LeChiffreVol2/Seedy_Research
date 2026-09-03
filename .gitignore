@@ -45,3 +45,5 @@ output/
 /*.zip
 
 eval/feedback_eval_seed.jsonl
+/.vercel/
+/.env.local
