@@ -1,4 +1,10 @@
 # Spec-Driven Development (SDD) — v4 Zero-Cost Production
+
+> Historical prototype specification, not current setup or deployment instructions.
+> Model names, embedding dimensions, hosting and cost assumptions below are
+> preserved as history. Use [current architecture](../ARCHITECTURE.md) and
+> [Operations](../OPERATIONS.md) for the supported system.
+
 # Civil Engineering RAG · MCP Server Prototype
 **Baseline vs MCP · Deploy on Vercel + Render.com · Model: gpt-5-mini-2025-08-07**
 

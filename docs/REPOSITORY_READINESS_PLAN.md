@@ -81,3 +81,23 @@ repository or live application afterward.
   [GitHub Actions](https://github.com/LeChiffreVol2/Seedy_Research/actions)
   is authoritative for the published revision's result; this plan is not a
   substitute for its status or a production deployment receipt.
+
+## Whole-Markdown follow-up — September 4, 2026
+
+Scope: all 43 tracked Markdown files, with current documentation distinguished
+from accepted target contracts, dated research/measurements, and archived work.
+The product remains a whole-Thai, end-to-end research platform; the cleanup
+does not remove Workspace, Notebook, manuscript support, or expansion targets.
+
+Corrections cover retired CityMCP recovery paths, preview opt-in prerequisites,
+the eight-tool inventory, Python/root-relative commands, checksum/admission
+contracts, implemented roadmap items, and the Research Case/Notebook vocabulary.
+Historical measurements are dated rather than promoted into current proof.
+The documentation gate now discovers all tracked Markdown files. It checks
+links and selected drift contracts, not the truth of every sentence.
+
+Notebook Studio's citation bug is repaired in code, not hidden by weakening
+the evidence promise. Route-level regression tests reproduce invalid inline
+markers, missing side-list IDs, and zero-resolvable-citation output before the
+fix; the same cases pass after shared Chat/Studio validation. Model and storage
+boundaries are mocked, so these tests are not a live generation-quality result.

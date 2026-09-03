@@ -4,6 +4,14 @@
 **Scope:** product, data, WebMCP, performance, and proof. Submission media is out
 of scope.
 
+**Status after implementation:** this decision record preserves the diagnosis
+at the date above. Research Case entry/orchestration, relevance-first discovery,
+and completion instrumentation are implemented; its pilot, retrieval-quality,
+latency, and impact targets still require revision-specific verification.
+Action wording below is the original plan, not an inventory of missing features.
+Use [Architecture](../ARCHITECTURE.md) for current behavior and
+[Verification](../HARNESS.md) for evidence scopes.
+
 ## Cold-start verdict
 
 Seedy Research has a strong, non-trivial WebMCP implementation but is not yet a

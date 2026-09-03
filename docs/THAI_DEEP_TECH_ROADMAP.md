@@ -1,8 +1,14 @@
 # Thai Deep-Tech Expansion: Eight-Week Roadmap
 
+This is an expansion plan, not a schedule-based readiness claim. The August 31
+snapshot is historical. Research Case orchestration, the separate Notebook
+Light Mode, and `verified_research_outcome` instrumentation are now implemented;
+partner access, institutional pilots, and impact targets still require their own
+verification. See [the product thesis](PRODUCT_THESIS.md) for the current map.
+
 ## Outcome and operating constraints
 
-In eight weeks, prove that CivilMCP can extend from a civil-engineering evidence
+Across an eight-week pilot, prove that Seedy Research can extend from a civil-engineering evidence
 product into a Thai-first deep-tech learning and research platform without
 weakening citation, rights, security, or rollback guarantees.
 
@@ -75,7 +81,7 @@ request paths.
 | **2 — Unified discovery** | Add a provider-aware unified search presentation over current evidence and bounded ThaiJO metadata. Show provider, language, rights/evidence status, and why a record is or is not citable. Refresh only an approved ThaiJO allowlist. | [Data], [Backend], [Frontend] | Metadata-only records cannot enter chat evidence or receive an `[E#]`; existing paper deep links still reopen the same packet/page; zero-result and provider/language slices are measurable; build and smoke pass. |
 | **3 — Ontology and global bridge** | Create a versioned Thai-English ontology pack for civil engineering plus the selected adjacent domain. Enrich discovery with normalized DOI and conservative OpenAlex/Crossref links; retain merge confidence and review ambiguous identities. | [Data], [Research/QA] | Every expansion term has a domain, language, source/reviewer, and version; no low-confidence author/institution merge is silently accepted; global metadata is labelled non-citable; existing retrieval eval does not regress. |
 | **4 — Learn** | Evolve Research Path into a diagnostic-to-checkpoint pilot: prerequisite level, four bounded stages, evidence opens, checkpoint completion, and one paper-to-project exercise. Keep progress local-first unless an additive, owner-scoped record is approved. | [Product], [Frontend], [Backend], [Research/QA] | A user can complete one full path with at least one exact-page verification; sparse goals fail recoverably instead of receiving generic papers; accessibility/mobile checks and deterministic fixtures pass; completion telemetry contains no raw query. |
-| **5 — Research** | Add one domain-specific Research Workspace template and a living-review update contract. Preserve per-paper evidence allowlists, human review, coverage limitations, and current six-paper/six-column bounds. | [Product], [Backend], [Frontend], [Research/QA] | Every supported cell resolves to an allow-listed exact-page packet; unsupported cells are marked for review; exports retain sources and review state; the PRISMA-ScR claim stays limited to the selected candidate set. |
+| **5 — Research** | Add one domain-specific Research Workspace template and a living-review update contract. Preserve per-paper evidence allowlists, human review, coverage limitations, and up-to-50-paper Workspace capacity with six papers and six columns per server request. | [Product], [Backend], [Frontend], [Research/QA] | Every supported cell resolves to an allow-listed exact-page packet; unsupported cells are marked for review; exports retain sources and review state; the PRISMA-ScR claim stays limited to the selected candidate set. |
 | **6 — Translate and rights pilot** | Produce a research-to-project brief containing problem, evidence, proposed method, capability needed, uncertainty, and next experiment. Run one partner-source rights review; ingest full text only if written permission or license covers the intended processing and display. | [Product], [Rights/Partnerships], [Data], [Research/QA] | Briefs distinguish reported findings from inference and do not invent TRL/IP/commercial claims; rights decision and permitted actions are recorded; promoted content passes page, OCR, dedupe, embedding, retrieval, and citation gates—or remains metadata-only. |
 | **7 — Pilot readiness** | Run internal red-team and 5-user rehearsal across Thai/English prompts, weak coverage, identity ambiguity, provider outage, takedown, and mobile. Prepare facilitator script, consent/privacy notice, support owner, dashboard, and rollback drill. | [Research/QA], [Operations], [Rights/Partnerships], [Product] | Quality score is at least 90 with no failed gate; citation correctness is 100%; strict data quality has zero missing pages/embeddings, unknown disciplines, or weak titles for indexed evidence; rollback and quarantine drills succeed. |
 | **8 — Limited university pilot** | Release to 10–20 students/researchers, review the funnel and qualitative outcomes daily, resolve evidence/rights incidents, and make a written expand/iterate/stop decision for the adjacent domain. | [Product], [Operations], [Research/QA], [Rights/Partnerships] | Launch-readiness gates pass against one source state; no confirmed fabricated citation or unresolved rights incident; pilot metrics and user evidence support the decision; the next domain is not promoted by schedule alone. |
@@ -88,9 +94,10 @@ request paths.
   translation artifact with at least one exact-page evidence verification.
 - Week 1 establishes the baseline. For the pilot, use **40% of activated users
   completing a WVRO** as an initial decision target, not as a market claim.
-- Until dedicated completion events ship, report the proxy separately: users
-  with `evidence_open` plus `paper_save`, `research_path_created`,
-  `session_export`, or `evidence_export` in the same bounded journey.
+- Use the implemented `verified_research_outcome` event for qualifying outcomes.
+  Keep proxy events (`evidence_open`, `paper_save`, `research_path_created`,
+  `session_export`, `evidence_export`) separate; neither instrumentation nor
+  a fixture event proves that a real pilot achieved the target.
 
 ### Product and trust guardrails
 

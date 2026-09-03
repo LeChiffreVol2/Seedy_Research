@@ -2,7 +2,12 @@
 
 ## Indexed corpus
 
-CivilMCP indexes 1,297 documents from two locally curated collections:
+Counts in this document record the September 2, 2026 corpus snapshot, not a
+fresh database audit. [Corpus status](docs/CORPUS_STATUS.md) separates local,
+comparison, metadata, and native-reader denominators. Rights and promotion
+requirements below remain operational rules independent of those counts.
+
+Seedy Research's legacy evidence index contains 1,297 documents from two locally curated collections:
 
 | Collection | Source material | Indexed scope |
 | --- | --- | ---: |

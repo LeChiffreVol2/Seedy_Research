@@ -49,15 +49,16 @@ It now also has a durable paper object and reader that moves from a search resul
 to the best lawful full-text manifestation without weakening the existing
 evidence boundary.
 
-### Production native-reader slice
+### Native-reader snapshot — 2 September 2026
 
 Production contains a bounded proof of that layer: exactly **1,000 native full
 papers and 14,485 page-addressable pages**. The Thai-local slice is 103
 ThaiJO-hosted papers: three deterministic LEARN fixtures plus 100 BSCM
 Original/Review Articles from a current TCI Group 1 journal. The separate
 Thai-affiliated global OA slice is 897 version-of-record PMC papers with an
-explicit Thailand author affiliation and exact item-level CC BY. Every asset has
-source MD5 evidence, a Seedy SHA-256, matching PDF/page count, non-empty page
+explicit Thailand author affiliation and exact item-level CC BY. The PMC cohort
+also verifies NLM source MD5 values. Across both cohorts, assets have a Seedy
+SHA-256, matching PDF/page count, non-empty page
 extraction, per-page checksum, and no explicit third-party permission-language
 signal. Source PDF binaries and generated DB-first page packs remain outside Git.
 
@@ -142,7 +143,9 @@ discover
   -> export, share, submit, or publish an auditable artifact
 ```
 
-The paper remains the shared state across the loop. A browser agent may navigate,
+The Research Case is the shared lifecycle state across the loop; each paper
+retains its durable evidence identity within the Case. Workspace sends reviewed
+findings into the Case's separate Notebook, as defined in ADR 0007 and ADR 0008. A browser agent may navigate,
 open a page, or organize annotations, but it may not turn a metadata record into
 evidence, infer rights from availability, or cite a passage the user cannot
 reopen.

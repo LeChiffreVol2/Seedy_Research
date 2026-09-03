@@ -1,11 +1,13 @@
-# Pipeline
+# Seedy Research Pipeline
+
+Run the commands below from the repository root after activating `.venv310`.
+Ingestion writes and paid embedding calls require an explicitly configured development or reviewed production environment; fixture verification does not run these commands.
 
 แปลง PDF เป็น Markdown แล้ว index เข้า Supabase pgvector v2 ด้วย `text-embedding-3-small` + `dimensions=768`.
 
 ## Install
 
 ```bash
-cd Civil_MCP
 python3.10 -m venv .venv310
 source .venv310/bin/activate
 pip install -r pipeline/requirements.txt
@@ -265,17 +267,17 @@ page parity, non-empty page text, per-page hash, PDF licence notice และ
 third-party permission-language scan ก่อนเข้า pack.
 
 ```bash
-pipeline/.venv/bin/python pipeline/build_pmc_thai_reader_pack.py \
+python3.10 pipeline/build_pmc_thai_reader_pack.py \
   --output-dir pipeline/data/reader-packs/pmc-thai-897 \
   --target-papers 897 \
   --candidate-limit 1500 \
   --workers 6 \
   --existing-dois-file /path/to/current-native-dois.txt
 
-pipeline/.venv/bin/python -m unittest \
+python3.10 -m unittest \
   pipeline.test_pmc_thai_reader_pack pipeline.test_reader_pack
 
-pipeline/.venv/bin/python pipeline/ingest_reader_pack.py \
+python3.10 pipeline/ingest_reader_pack.py \
   --pack-dir pipeline/data/reader-packs/pmc-thai-897 \
   --start-paper 0 --max-papers 250 --batch-size 200 --page-batch-size 50
 ```
@@ -294,7 +296,7 @@ global OA ไม่ใช่ Thai-local หรือนับความคร�
 (cd web && npx playwright test tests/e2e/webmcp.spec.ts)
 ```
 
-ชุด WebMCP ต้องคงจำนวน site tools ที่หกตัว และ
+ชุด WebMCP ต้องคงจำนวน site tools ที่แปดตัวตาม `web/lib/webmcp.ts` และ
 `inspect_paper_evidence` ส่งเพียง access mode, สถานะการอ่าน และ stable reader
 anchor ที่ตรวจแล้ว โดยไม่ส่ง full page text กลับใน tool result.
 
@@ -307,38 +309,38 @@ anchor ที่ตรวจแล้ว โดยไม่ส่ง full page t
 Default mode มาจาก `INDEXING_MODE=batch`:
 
 ```bash
-python3.10 index.py
+python3.10 pipeline/index.py
 ```
 
 ระบุชัดเจน:
 
 ```bash
-python3.10 index.py --mode batch
+python3.10 pipeline/index.py --mode batch
 ```
 
 Debug/seed corpus เล็ก:
 
 ```bash
-python3.10 index.py --mode sync
+python3.10 pipeline/index.py --mode sync
 ```
 
 Controlled re-index สำหรับ production cleanup/backfill:
 
 ```bash
-python3.10 index.py --mode sync --collection ce_project --max-embedding-jobs 4000 --embed-batch-size 50 --sleep-seconds 2
+python3.10 pipeline/index.py --mode sync --collection ce_project --max-embedding-jobs 4000 --embed-batch-size 50 --sleep-seconds 2
 ```
 
 Dry-run ก่อนเสียค่า embedding หรือเขียน Supabase:
 
 ```bash
-python3.10 index.py --collection ce_project --dry-run
-python3.10 index.py --collection ncce --source-glob 'NCCE29_*' --dry-run
+python3.10 pipeline/index.py --collection ce_project --dry-run
+python3.10 pipeline/index.py --collection ncce --source-glob 'NCCE29_*' --dry-run
 ```
 
 Resume OpenAI Batch ที่ submit ไปแล้ว:
 
 ```bash
-python3.10 index.py --mode batch --resume-batch-id batch_xxx --resume-batch-part 1
+python3.10 pipeline/index.py --mode batch --resume-batch-id batch_xxx --resume-batch-part 1
 ```
 
 Indexer เป็น incremental:
@@ -388,7 +390,7 @@ BATCH_POLL_SECONDS=10
 ตัวอย่างลด batch size เมื่อองค์กรมี enqueued token limit ต่ำ:
 
 ```bash
-python3.10 index.py --mode batch --max-batch-estimated-tokens 750000
+python3.10 pipeline/index.py --mode batch --max-batch-estimated-tokens 750000
 ```
 
 ## Reindex Vector Indexes

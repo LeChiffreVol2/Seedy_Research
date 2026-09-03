@@ -140,7 +140,7 @@ A candidate becomes `native_verified` only when all gates pass:
   Thailand; a keyword about Thailand is not sufficient;
 - JATS `article/@article-type` is an accepted scholarly type such as
   `research-article` or `review-article`;
-- S3 `license_code` is exactly `CC BY` or `CC0` and agrees with JATS
+- S3 `license_code` is exactly `CC BY` and agrees with JATS
   `ali:license_ref` and the PDF's licence statement;
 - `is_pmc_openaccess=true`, `is_manuscript=false`, `is_retracted=false`, and
   the JATS preprint property is false;

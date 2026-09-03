@@ -97,7 +97,7 @@ user question
 
 `experience=mission|learn|research|automated` reuses the same bounded retrieval loop and produces a `civilmcp_mission` message annotation. The artifact contains an evidence verdict, linked matrix rows, transfer checks, learning checkpoints, trust metrics, and an inspectable stage summary. `research` adds a conservative multi-paper analyst prompt. `automated` additionally decomposes the goal into subquestions, records a bounded execution program, and publishes an audit-ready dossier. Open Access enables both modes without credit reservation. Evidence IDs are allow-listed against retrieved packets before publication; invalid model-proposed IDs are removed and weak/failed structured output falls back to a conservative deterministic brief and automation plan.
 
-The artifact is transcript data, so the existing history and share paths persist it without a new table. The browser can export it as Markdown. `experience=answer` keeps the existing streaming response path. The legacy `automated` transcript shape remains readable for compatibility, but new automated batch work starts from Research Workspace instead of the Chat experience picker. No private chain of thought, raw MCP payload, API key, or similarity score is exposed.
+The artifact is transcript data, so the existing history and share paths persist it without a new table. The browser can export it as Markdown. `experience=answer` keeps the existing streaming response path. Chat also exposes `Automated Research` for a bounded evidence program. Research Workspace is the separate multi-paper extraction/review matrix; the two entry points do not imply unattended background jobs. No private chain of thought, raw MCP payload, API key, or similarity score is exposed.
 
 ## Evidence Audit and exact-packet links
 
@@ -118,7 +118,7 @@ sources through the citable paper boundary and private sources through
 owner-scoped library reads, ranks at most twelve exact-page packets, then calls
 the selected OpenAI or DeepSeek model. Recent thread messages provide question
 context but never enter the evidence allow list. Returned `N#` citations are
-filtered against the exact packets supplied to the model.
+filtered against the exact packets supplied to the model before persistence. Chat and Studio share the inline-marker validation; Studio refuses to save an artifact when no citation resolves. This verifies citation identity, not whether a source scientifically supports every claim.
 
 Notebook is a Sources–Chat–Studio surface rather than a reordered Workspace.
 Workspace remains the Paradigm-inspired spreadsheet and PRISMA review surface;

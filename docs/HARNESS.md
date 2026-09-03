@@ -162,7 +162,11 @@ site tools.
 20 answerable cases across engineering, education, and health, plus 10 sparse or
 negative controls. It reports top-three source relevance, page-citable evidence,
 honest sparse-result behavior, visibility receipts, and request p95; the release
-target is p95 at or below five seconds. `harness/lighthouse_research_cases.json`
+targets remain at least 90% top-three relevance, page-citable evidence for at
+least 80% of answerable questions, zero false `not_found_in_audit` claims, and
+discovery p95 at or below five seconds. The separate user-journey target is a
+useful first Research Case within fifteen seconds; measure it in the browser,
+not by substituting the feed request duration. `harness/lighthouse_research_cases.json`
 pins the three cross-discipline cases used to verify that one question can move
 through discovery, visibility, evidence review, candidate-gap framing, and the
 Next-Study Protocol without changing its evidence boundary.
@@ -229,9 +233,11 @@ Quality scoring rejects reports older than `HARNESS_MAX_REPORT_AGE_HOURS` (defau
 - `--strict` and `--fail-on-warn` are aliases. They preserve the report's `warn` status for diagnosis but exit non-zero when any check warns.
 
 ## CI And Deploy Readiness
-`.github/workflows/ci.yml` runs CivilMCP source checks only. `.github/workflows/preview-release.yml` builds the CivilMCP MCP and web Vercel Preview deployments from the same commit, runs strict cross-service smoke, and stores harness reports as workflow artifacts. Protected projects may use separate `MCP_VERCEL_AUTOMATION_BYPASS_SECRET` and `WEB_VERCEL_AUTOMATION_BYPASS_SECRET` values; the shared secret remains a fallback.
+`.github/workflows/ci.yml` runs Seedy source, unit, and credential-free browser checks. `.github/workflows/preview-release.yml` builds the CivilMCP MCP and web Vercel Preview deployments from the same commit, runs strict cross-service smoke, and stores harness reports as workflow artifacts. Protected projects may use separate `MCP_VERCEL_AUTOMATION_BYPASS_SECRET` and `WEB_VERCEL_AUTOMATION_BYPASS_SECRET` values; the shared secret remains a fallback.
 
-The workflow first applies the additive CivilMCP migrations, including the
+Deployment jobs require `PREVIEW_RELEASE_ENABLED=true` and a trusted same-repository pull request or release event. Without that opt-in, green source checks do not imply a deployed preview.
+
+The enabled deployment workflow first applies the additive compatibility migrations, including the
 native-reader scale migration, to `SUPABASE_PREVIEW_DB_URL` from the protected
 GitHub `preview` environment. Production release is manual through
 `workflow_dispatch` with `promote=true`, `GA_PROMOTION_ENABLED=true` in the

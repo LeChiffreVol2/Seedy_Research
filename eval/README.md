@@ -6,12 +6,11 @@ Harness smoke uses `harness_questions.json` for 15 fixed CE/NCCE/cross-collectio
 ## Run
 
 ```bash
-cd Civil_MCP
-cp .env.example .env  # ทำครั้งเดียวทั้งโปรเจกต์
-
+python3.10 -m venv .venv310
+source .venv310/bin/activate
+python -m pip install -r eval/requirements.txt
+# Configure root .env for the intended development target before live eval.
 cd eval
-python3.12 -m venv .venv && source .venv/bin/activate
-pip install -r requirements.txt
 python3.10 baseline.py
 MCP_URL=http://localhost:8000 python3.10 mcp_eval.py
 WEB_URL=http://localhost:3000 python3.10 agentic_context_eval.py
@@ -23,7 +22,7 @@ python3.10 compare.py
 Harness eval:
 
 ```bash
-cd Civil_MCP
+cd .. # return to the repository root after the commands above
 WEB_URL=http://localhost:3000 python3.10 harness/run_eval.py --mode smoke
 # Lower-cost retrieval-only validation:
 WEB_URL=http://localhost:3000 python3.10 harness/run_eval.py --mode smoke --context-only

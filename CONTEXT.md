@@ -126,7 +126,7 @@ _Avoid_: OpenRAG Light, lower-quality ungrounded chat, duplicated vector stores,
 ## Evidence boundaries
 
 **TCI-Ranked Thai Journal Corpus**:
-The current TCI Group 1 and Group 2 journal-paper cohort that anchors Seedy Research's Thai-journal discovery scope, with Group 1 available as the default high-assurance filter.
+The target Thai-journal cohort organized by verified TCI Group 1 and Group 2 membership, with Group 1 as the intended default rank filter. This term defines the ranking objective, not proof that a deployed filter or complete ranking metadata exists.
 _Avoid_: Whole Thai Research, all Thai research, a full-text rights grant
 
 **Page-Linked Evidence**:
@@ -142,7 +142,7 @@ A dated comparison of a bounded Thai-provider cohort against a named global inde
 _Avoid_: OpenAlex sync, national missingness claim, permanent proof of absence
 
 **Global Visibility State**:
-The record-level outcome of a Thai–Global Visibility Audit: globally indexed by exact identity, under-indexed, candidate match requiring review, not found in the dated audit, or audit unavailable. A candidate or unavailable lookup is never counted as not found.
+The record-level outcome of a Thai–Global Visibility Audit: globally indexed by exact identity, under-indexed, candidate match requiring review, not found in the dated audit, not yet audited, or audit unavailable. A candidate or unavailable lookup is never counted as not found.
 _Avoid_: matched/unmatched boolean, missing from the world
 
 **Global Research Bridge**:
@@ -201,16 +201,8 @@ _Avoid_: publicly reachable PDF count, metadata records with outbound full-text 
 A fixed, denominator-complete set of paper versions promoted together only when every included asset passes rights, integrity, page-mapping, and reader gates.
 _Avoid_: a cherry-picked PDF sample, a raw download count, a national-coverage claim
 
-The current production cohort contains 1,000 rights-verified native full papers
-and 14,485 verified pages: 103 Thai-published/ThaiJO papers (100 BSCM plus three
-LEARN fixtures) and 897 Thai-affiliated global OA papers from PMC. This is a
-bounded release proof, not a Thai-published or national coverage denominator.
-
 **5,000-Paper Native Capacity Envelope**:
-The tested storage, bounded-read, and resumable-ingest shape for a future 5,000
-rights-verified native-paper corpus. At the current observed mean it projects
-about 72,425 page rows and
-requires approved publisher/institution delivery for every asset cohort.
+The bounded-read and resumable-ingest contract for a future 5,000-paper native corpus, distinct from live holdings and concurrent-user capacity. Every asset cohort still requires approved delivery and rights verification.
 _Avoid_: 5,000 live papers, 5,000 simultaneous users, or a claim that screening
 records and OAI metadata are native full text.
 
@@ -235,7 +227,7 @@ A public scenario that another person can replay from missed or under-indexed Th
 _Avoid_: an unconsented pilot testimonial, a private result presented as public validation
 
 **Challenge Research Benchmark**:
-A 30-question Thai/English evaluation spanning at least three disciplines: 20 answerable questions and 10 sparse or negative controls. Its release bar is at least 90% top-three relevance, page-citable evidence for at least 80% of answerable questions, zero false `not_found_in_audit` claims, discovery p95 at or below five seconds, and a useful first Research Case state within fifteen seconds.
+A reproducible Thai/English evaluation of relevant discovery, exact-page evidence, honest sparse results, and time to a useful Research Case. Its question set, thresholds, and release-specific results belong to the verification contract rather than this glossary.
 _Avoid_: exact-title prompts as most of the benchmark, excluding empty results, reporting latency from a different release
 
 **Lighthouse Research Case**:

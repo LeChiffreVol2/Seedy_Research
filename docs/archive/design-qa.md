@@ -1,5 +1,10 @@
 # Founder Pro sign-in design QA
 
+> Historical visual review. The absolute/local paths below are provenance notes,
+> not publicly reproducible attachments or current UI proof. The current product
+> image is linked from the [root README](../../README.md).
+
+
 - Source visual truth: `/var/folders/p7/zm_9jr1d1kq_9whrvkw8ckcc0000gn/T/codex-clipboard-0f1f4787-374e-412b-af15-0114a03bb734.png`
 - Implementation screenshot: `/Users/lechiffre/Desktop/Civil_MCP/.artifacts/design-qa/pro-signin-desktop.jpg`
 - Full comparison: `/Users/lechiffre/Desktop/Civil_MCP/.artifacts/design-qa/pro-signin-comparison.jpg`

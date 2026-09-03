@@ -1,26 +1,56 @@
 """Public entry points must resolve and describe the current browser contract."""
 
 import re
+import subprocess
 import unittest
 from pathlib import Path
+from urllib.parse import unquote, urlsplit
 
 ROOT = Path(__file__).resolve().parents[1]
-ENTRY_DOCS = (
-    "README.md", "AGENTS.md", "BUILD_WEEK.md", "web/README.md",
-    "docs/WEBMCP_CHALLENGE_SUBMISSION.md", "docs/CORPUS_STATUS.md",
-    "docs/LEGACY_COMPATIBILITY.md", "docs/HARNESS.md", "docs/OPERATIONS.md",
-)
+def markdown_files():
+    # Git scopes the audit to published sources, not dependencies or local papers.
+    result = subprocess.run(["git", "ls-files", "-z", "--cached", "--others", "--exclude-standard"],
+                            cwd=ROOT, capture_output=True, text=True)
+    if result.returncode == 0:
+        return sorted({ROOT / name for name in result.stdout.split("\0")
+                       if name.lower().endswith((".md", ".mdx")) and (ROOT / name).is_file()})
+    # Source archives have no .git; cover the same published documentation roots.
+    return sorted({*ROOT.glob("*.md"), *(ROOT / "docs").rglob("*.md"),
+                   *(path for directory in ("web", "pipeline", "mcp-server", "eval")
+                     for path in (ROOT / directory).glob("*.md"))})
+
+
+def prose(text):
+    return re.sub(r"```[\s\S]*?```", "", text)
 
 
 class RepositoryDocsTests(unittest.TestCase):
-    def test_entry_document_local_links_resolve(self):
-        for name in ENTRY_DOCS:
-            path = ROOT / name
-            for target in re.findall(r"\]\(([^\s)]+)\)", path.read_text()):
-                if "://" in target or target.startswith(("#", "mailto:")):
+    def test_all_markdown_local_links_resolve(self):
+        files = markdown_files()
+        self.assertGreaterEqual(len(files), 43)
+        for path in files:
+            for target in re.findall(r"\]\(([^\s)]+)\)", prose(path.read_text())):
+                parsed = urlsplit(target.strip("<>"))
+                if parsed.scheme or parsed.netloc or not parsed.path:
                     continue
-                with self.subTest(document=name, target=target):
-                    self.assertTrue((path.parent / target.split("#")[0]).exists())
+                with self.subTest(document=str(path.relative_to(ROOT)), target=target):
+                    self.assertTrue((path.parent / unquote(parsed.path)).exists())
+
+    def test_current_docs_do_not_restore_retired_paths_or_tool_counts(self):
+        for path in markdown_files():
+            if "archive" in path.parts or path.name == "LEGACY_COMPATIBILITY.md":
+                continue
+            text = path.read_text()
+            if re.search(r"historical|superseded|original plan", text[:1800], re.I):
+                continue
+            with self.subTest(document=str(path.relative_to(ROOT))):
+                self.assertNotIn("`citymcp/README.md`", text)
+                self.assertNotRegex(text, r"(?i)(?:six|seven) (?:top-level |browser-native )?site tools")
+                self.assertNotRegex(text, r"site tools ที่(?:หก|เจ็ด)ตัว")
+
+    def test_visibility_glossary_includes_unaudited_state(self):
+        glossary = (ROOT / "CONTEXT.md").read_text().split("**Global Visibility State**:", 1)[1].split("_Avoid_", 1)[0]
+        self.assertIn("not yet audited", glossary)
 
     def test_public_tool_tables_match_runtime(self):
         runtime = (ROOT / "web/lib/webmcp.ts").read_text()

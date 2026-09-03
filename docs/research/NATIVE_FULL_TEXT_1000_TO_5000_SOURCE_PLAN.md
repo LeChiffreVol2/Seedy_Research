@@ -8,6 +8,11 @@ research paper. This is an operational rights review, not legal advice.
 
 ## Decision
 
+This is the Thai-published acquisition track from the 103-paper local baseline.
+Its first-1,000 target excludes the 897 PMC global comparison works that brought
+the mixed native reader to 1,000. Source screening and delivery plans below are
+not additional live paper counts or evidence of signed partnerships.
+
 Seedy can reach **1,000 native papers without changing the product architecture**,
 but it should not turn a journal's public archive count into a native-paper count.
 The fastest lawful path is:

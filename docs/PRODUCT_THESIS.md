@@ -46,6 +46,17 @@ All five layers use one evidence contract. Global metadata can broaden discovery
 but only rights-reviewed, page-linked Seedy Research packets can support a
 Seedy Research citation.
 
+### Notebook connects the research work
+
+The Research Case carries the question and source/review state across features.
+Workspace is the specialist literature-review and PRISMA-guided matrix; it sends
+reviewed findings to the separate Sources–Chat–Studio Notebook. Notebook Light
+Mode provides persistent source-grounded conversation and versioned artifacts,
+from synthesis and candidate gaps to next-study protocols and manuscript support.
+This expands the researcher's working surface without claiming that Seedy has
+executed experiments, validated novelty, or secured publication. The heavier
+OpenRAG runtime remains an optional integration, not the active engine.
+
 ## The database is the product advantage
 
 The defensible asset is not a model or chat interface. It is a governed research

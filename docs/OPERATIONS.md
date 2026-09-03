@@ -68,7 +68,7 @@ make release-gate
 ```
 
 ## CI Deploy Gate
-Use `.github/workflows/preview-release.yml` for releases. Pull requests get Preview-environment deployments and smoke tests. Keep `SUPABASE_PREVIEW_DB_URL` in the protected GitHub `preview` environment. A manual, protected release then creates staged Production deployments with `--prod --skip-domain`, tests those exact URLs, and promotes them without rebuilding. Set `GA_PROMOTION_ENABLED=true` in the protected `production` environment; the workflow validates it only after environment approval.
+Use `.github/workflows/preview-release.yml` for releases. Same-repository pull requests get Preview deployments and smoke tests only when `PREVIEW_RELEASE_ENABLED=true`; otherwise only source/fixture gates run. Keep `SUPABASE_PREVIEW_DB_URL` in the protected GitHub `preview` environment. A manual, protected release then creates staged Production deployments with `--prod --skip-domain`, tests those exact URLs, and promotes them without rebuilding. Set `GA_PROMOTION_ENABLED=true` in the protected `production` environment; the workflow validates it only after environment approval.
 
 Required GitHub secrets:
 - `VERCEL_TOKEN`, `VERCEL_ORG_ID`
@@ -77,6 +77,7 @@ Required GitHub secrets:
 - `MCP_HARNESS_API_KEY`; for protected candidates use `MCP_VERCEL_AUTOMATION_BYPASS_SECRET` and `WEB_VERCEL_AUTOMATION_BYPASS_SECRET` (the shared `VERCEL_AUTOMATION_BYPASS_SECRET` remains a fallback)
 
 Required variables:
+- `PREVIEW_RELEASE_ENABLED=true` to enable preview migration/deployment jobs
 - `CORPUS_FINGERPRINT`
 - `PRODUCTION_MCP_URL`, `PRODUCTION_WEB_URL`
 - `GA_PROMOTION_ENABLED=true` only after GA data-quality gates pass
@@ -216,7 +217,7 @@ Private-source responses must be `Cache-Control: no-store`, `shareable: false`,
 and excluded from Passport promotion. Keep `OPENRAG_ADAPTER_ENABLED=false`;
 no OpenSearch/Langflow/Docling service is required by this release.
 
-The current OpenAI `429 credit_balance_exhausted` response is billing/quota
+If OpenAI returns `429 credit_balance_exhausted`, investigate billing/quota
 exhaustion, not ordinary request pacing. Restore the API balance in
 `https://platform.openai.com/settings/organization/billing/`; inspect spend
 limits at `https://platform.openai.com/settings/organization/limits`.
@@ -355,9 +356,11 @@ Private PDF extraction is capped before persistence. Investigate unusual
 privacy incident. Living Reviews run only on an explicit create/check request;
 there is no background crawler or email delivery to monitor in this release.
 
-The production dependency audit currently has no high or critical finding.
-Five low AI SDK advisories require a breaking SDK major migration and are
-deferred; the affected file-upload whitelist is not used for the private PDF
+The historical dependency audit reported no high or critical finding; this is
+not a current advisory check. Run `npm audit --omit=dev` in `web/` for each
+release and record the date, revision, and result before relying on that status.
+That historical audit recorded five low AI SDK advisories whose upgrade was
+deferred pending a breaking major migration; the affected file-upload whitelist is not used for the private PDF
 route, which parses and validates uploads independently with `pdfjs-dist`.
 
 Research Workspace batch runs are open access and credit reservation is a no-op. Each request remains capped at six papers by six columns and uses the separate `research_workspace_run` abuse limit. Check `/api/research-workspaces` for `429` or `503` responses when diagnosing rate or provider failures. Legacy credit restoration fields remain for backward compatibility when Open Access is deliberately disabled.
@@ -375,7 +378,6 @@ Rollback billing without affecting the free preview by removing the Stripe varia
 - Share links expire after 30 days and can be revoked with `DELETE /api/share?sessionId=<uuid>`.
 - User feedback is stored in `civil_chat_feedback` and can be exported with `python3.10 harness/export_feedback_eval.py` to seed future eval cases.
 
-CityMCP is archived in maintenance-only mode. Its retained operational and
-recovery procedures live in `citymcp/README.md`; ingest, CI, and release
-workflows require explicit manual dispatch and do not participate in Seedy
-Research release operations.
+CityMCP application code and workflows are no longer in the active tree.
+Use [the published archive tag and recovery instructions](LEGACY_COMPATIBILITY.md).
+Applied database history and existing MCP contracts remain intact.
