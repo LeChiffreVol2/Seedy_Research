@@ -277,7 +277,7 @@ def check_webmcp_contract() -> Check:
     return Check(
         "webmcp_contract",
         "pass",
-        "Eight bounded WebMCP tools are wired to a persistent Research Case with dated visibility audit, fail-closed connection matching, exact-page Passport evidence, claim-level review gating, annotations, cleanup, and browser execution coverage.",
+        "Twelve bounded WebMCP tools are wired to a persistent Research Case with dated visibility audit, fail-closed connection matching, exact-page Passport evidence, review-gated Workspace-to-Notebook handoff, annotations, cleanup, and browser execution coverage.",
     )
 
 

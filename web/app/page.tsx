@@ -2631,6 +2631,12 @@ function AppSidebar({
               </button>
             );
           })}
+          <a className="sidebarNavItem sidebarDeveloperLink" href="/developers">
+            <span className="navItemIcon">
+              <Terminal size={21} strokeWidth={2.1} aria-hidden />
+            </span>
+            <span>Developer / MCP</span>
+          </a>
         </nav>
       </div>
 
@@ -5657,6 +5663,7 @@ function AccountPanel({
       </div>
       {signedIn ? <McpAccessCard /> : null}
       <nav className="accountLegalLinks" aria-label="Legal and support">
+        <a href="/developers">Developer / MCP</a>
         <a href="/privacy">Privacy</a>
         <a href="/terms">Terms</a>
         <a href="/support">Support &amp; takedowns</a>

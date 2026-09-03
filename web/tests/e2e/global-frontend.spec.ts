@@ -54,6 +54,16 @@ async function expectNoInteractiveOverlap(page: Page) {
   expect(overlaps).toEqual([]);
 }
 
+test("Developer MCP entry is public from the desktop navigation", async ({ page }) => {
+  await page.setViewportSize({ width: 1280, height: 900 });
+  await page.goto("/");
+  const developerLink = page.getByLabel("SEEDY navigation").getByRole("link", { name: "Developer / MCP" });
+  await expect(developerLink).toHaveAttribute("href", "/developers");
+  await developerLink.click();
+  await expect(page).toHaveURL(/\/developers$/);
+  await expect(page.getByRole("navigation", { name: "Developer page sections" })).toBeVisible();
+});
+
 test("desktop feed keeps the approved research hierarchy", async ({ page }) => {
   test.setTimeout(60_000);
   await page.setViewportSize({ width: 1440, height: 1000 });
@@ -305,7 +315,20 @@ test("developer setup and OAuth consent stay clear on desktop and mobile", async
   await expect(page.getByRole("link", { name: "Open the SeedyMCP research surface" })).toHaveAttribute("href", "/?view=explore");
   await expect(page.getByText("https://civil-mcp-server.vercel.app/v2/mcp").first()).toBeVisible();
   await expect(page.getByRole("heading", { name: "One endpoint, two secure paths." })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Twelve tools for one shared research case." })).toBeVisible();
   await expect(page.getByText("Evidence and metadata never blur together.")).toBeVisible();
+  const developerNav = page.getByRole("navigation", { name: "Developer page sections" });
+  await expect(developerNav.getByRole("link", { name: "Overview" })).toHaveAttribute("href", "#overview");
+  await expect(developerNav.getByRole("link", { name: "Browser tools" })).toHaveAttribute("href", "#webmcp-tools");
+  await expect(developerNav.getByRole("link", { name: "Evidence boundary" })).toHaveAttribute("href", "#evidence-boundary");
+  await expectNoPageOverflow(page);
+  await expectNoInteractiveOverlap(page);
+
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.goto("/developers#webmcp-tools");
+  await expect(page.getByRole("navigation", { name: "Developer page sections" })).toBeVisible();
+  await expect(page.getByRole("link", { name: "Browser tools" })).toHaveAttribute("aria-current", "location");
+  await expect(page.getByRole("heading", { name: "Twelve tools for one shared research case." })).toBeVisible();
   await expectNoPageOverflow(page);
   await expectNoInteractiveOverlap(page);
 
@@ -313,7 +336,6 @@ test("developer setup and OAuth consent stay clear on desktop and mobile", async
   await expect(page.getByText("This authorization request is invalid or has expired.")).toBeVisible();
   await expect(page.getByRole("link", { name: "Return to API setup" })).toHaveAttribute("href", "/developers");
 
-  await page.setViewportSize({ width: 390, height: 844 });
   await expectNoPageOverflow(page);
   await expectNoInteractiveOverlap(page);
 });
@@ -491,7 +513,12 @@ test("navigation resets rail scroll and account explains open access without ren
   await expect(page.getByLabel("Name")).toBeVisible();
   await expect(page.getByLabel("Confirm password")).toBeVisible();
   await expect(page.getByLabel("Account and chat history login").getByRole("button", { name: "Sign in", exact: true })).toBeVisible();
+  const developerLink = page.getByRole("navigation", { name: "Legal and support" }).getByRole("link", { name: "Developer / MCP" });
+  await expect(developerLink).toHaveAttribute("href", "/developers");
   await expectNoPageOverflow(page);
+  await developerLink.click();
+  await expect(page).toHaveURL(/\/developers$/);
+  await expect(page.getByRole("navigation", { name: "Developer page sections" })).toBeVisible();
 });
 
 test("OpenAI-first model menu exposes every model without a plan boundary", async ({ page }) => {
