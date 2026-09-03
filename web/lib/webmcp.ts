@@ -48,6 +48,11 @@ export type DraftResearchPassportInput = {
   gapLens: WebMcpGapLens;
 };
 
+export const NOTEBOOK_STUDIO_KINDS = ["source_guide", "evidence_brief", "evidence_matrix", "literature_synthesis", "candidate_gap", "next_study_protocol", "manuscript_package"] as const;
+export type NotebookToolSources = { sources: string[] };
+export type AskResearchNotebookInput = NotebookToolSources & { question: string };
+export type DraftNotebookArtifactInput = NotebookToolSources & { kind: typeof NOTEBOOK_STUDIO_KINDS[number] };
+
 export type SeedResearchWebMcpHandlers = {
   startResearchCase: (input: StartResearchCaseInput, signal: AbortSignal) => Promise<unknown>;
   discoverResearch: (input: DiscoverResearchInput, signal: AbortSignal) => Promise<unknown>;
@@ -57,6 +62,10 @@ export type SeedResearchWebMcpHandlers = {
   draftResearchPassport: (input: DraftResearchPassportInput, signal: AbortSignal) => Promise<unknown>;
   buildResearchPath: (input: BuildResearchPathInput, signal: AbortSignal) => Promise<unknown>;
   inspectLearningProgress: (signal: AbortSignal) => Promise<unknown>;
+  openResearchNotebook: (signal: AbortSignal) => Promise<unknown>;
+  sendReviewedToNotebook: (signal: AbortSignal) => Promise<unknown>;
+  askResearchNotebook: (input: AskResearchNotebookInput, signal: AbortSignal) => Promise<unknown>;
+  draftNotebookArtifact: (input: DraftNotebookArtifactInput, signal: AbortSignal) => Promise<unknown>;
 };
 
 type JsonSchema = Record<string, unknown>;
@@ -99,7 +108,37 @@ export const SEED_RESEARCH_WEBMCP_TOOL_NAMES = [
   "draft_research_passport",
   "build_research_path",
   "inspect_learning_progress",
+  "open_research_notebook",
+  "send_reviewed_to_notebook",
+  "ask_research_notebook",
+  "draft_notebook_artifact",
 ] as const;
+
+function notebookSources(record: Record<string, unknown>): string[] {
+  const sources = record.sources;
+  if (!Array.isArray(sources) || sources.length < 1 || sources.length > 12) throw new Error("Select one to twelve public Case Sources from open_research_notebook.");
+  if (sources.some((source) => typeof source !== "string" || !source.trim() || source.length > 320 || source.startsWith("private:"))) throw new Error("Notebook site tools accept public Case Sources only; private sources stay in the human interface.");
+  const normalized = sources.map((source) => source.trim());
+  if (normalized.some((source) => source.startsWith("private:")) || new Set(normalized).size !== normalized.length) throw new Error("Case Sources must be unique and public.");
+  return normalized;
+}
+
+// Lazy panels stay out of the initial bundle. Wait only for their React bridge,
+// never scrape/click the DOM or keep a hidden copy of research state.
+export async function waitForResearchSurface<T>(read: () => T | null, signal: AbortSignal): Promise<T> {
+  const deadline = Date.now() + 10_000;
+  while (true) {
+    signal.throwIfAborted();
+    const surface = read();
+    if (surface) return surface;
+    if (Date.now() >= deadline) throw new Error("The research surface is still loading. Check the visible page before retrying.");
+    await new Promise<void>((resolve, reject) => {
+      const abort = () => { clearTimeout(timer); reject(new DOMException("Research action cancelled.", "AbortError")); };
+      const timer = setTimeout(() => { signal.removeEventListener("abort", abort); resolve(); }, 50);
+      signal.addEventListener("abort", abort, { once: true });
+    });
+  }
+}
 
 function inputRecord(input: unknown): Record<string, unknown> {
   if (!input || typeof input !== "object" || Array.isArray(input)) {
@@ -278,6 +317,45 @@ export async function registerSeedResearchWebMcpTools(
   const controller = new AbortController();
   const signalFor = (options?: WebMcpExecutionOptions) => options?.signal ?? controller.signal;
   const tools: WebMcpTool[] = [
+    {
+      name: "open_research_notebook",
+      title: "Open the active Research Case Notebook",
+      description: "Open or initialize the signed-in researcher's visible Notebook. Return public Case Source IDs, selected sources and output counts, never private sources, notes, or earlier conversations. Use before asking or drafting. The Light Retrieval engine is active, not an OpenRAG server.",
+      inputSchema: { type: "object", properties: {}, additionalProperties: false },
+      annotations: { readOnlyHint: false, untrustedContentHint: true },
+      execute: async (input, options) => { assertAllowedKeys(inputRecord(input), []); return handlers.openResearchNotebook(signalFor(options)); },
+    },
+    {
+      name: "send_reviewed_to_notebook",
+      title: "Continue reviewed Workspace evidence in Notebook",
+      description: "Save the currently visible Workspace and send its already human-verified exact-page cells to the active Case Notebook as a versioned Evidence Pack. Requires sign-in, an active Case and visible Workspace. Never verifies cells or accepts claims for the person. Private workspaces remain human-only. Then use open_research_notebook for admitted source IDs.",
+      inputSchema: { type: "object", properties: {}, additionalProperties: false },
+      annotations: { readOnlyHint: false, untrustedContentHint: true },
+      execute: async (input, options) => { assertAllowedKeys(inputRecord(input), []); return handlers.sendReviewedToNotebook(signalFor(options)); },
+    },
+    {
+      name: "ask_research_notebook",
+      title: "Ask the selected public Case Sources",
+      description: "Create a visible, persisted Notebook answer using one to twelve explicit public Case Sources and the model selected by the person. Uses bounded exact-page retrieval, not private thread history. Returns the new answer and public citation locators only. Claims still require human review; this does not approve or export a Passport.",
+      inputSchema: { type: "object", properties: { question: { type: "string", minLength: 8, maxLength: 800 }, sources: { type: "array", minItems: 1, maxItems: 12, uniqueItems: true, items: { type: "string", minLength: 1, maxLength: 320 } } }, required: ["question", "sources"], additionalProperties: false },
+      annotations: { readOnlyHint: false, untrustedContentHint: true },
+      execute: async (input, options) => {
+        const record = inputRecord(input); assertAllowedKeys(record, ["question", "sources"]);
+        return handlers.askResearchNotebook({ question: requiredText(record, "question", 8, 800), sources: notebookSources(record) }, signalFor(options));
+      },
+    },
+    {
+      name: "draft_notebook_artifact",
+      title: "Draft a cited Notebook Studio artifact",
+      description: "Generate one visible, versioned Studio draft from explicit public Case Sources using the person's selected model. Supports source guide, evidence brief/matrix, literature synthesis, candidate gap, next-study protocol or manuscript outline. Returns a bounded excerpt and exact-page locators. Drafting is not proof of novelty, completed experiments, publication, human approval or export.",
+      inputSchema: { type: "object", properties: { kind: { type: "string", enum: [...NOTEBOOK_STUDIO_KINDS] }, sources: { type: "array", minItems: 1, maxItems: 12, uniqueItems: true, items: { type: "string", minLength: 1, maxLength: 320 } } }, required: ["kind", "sources"], additionalProperties: false },
+      annotations: { readOnlyHint: false, untrustedContentHint: true },
+      execute: async (input, options) => {
+        const record = inputRecord(input); assertAllowedKeys(record, ["kind", "sources"]);
+        if (!NOTEBOOK_STUDIO_KINDS.includes(record.kind as typeof NOTEBOOK_STUDIO_KINDS[number])) throw new Error("Select a supported Notebook Studio kind.");
+        return handlers.draftNotebookArtifact({ kind: record.kind as DraftNotebookArtifactInput["kind"], sources: notebookSources(record) }, signalFor(options));
+      },
+    },
     {
       name: "start_research_case",
       title: "Start a Thai-to-global Research Case",

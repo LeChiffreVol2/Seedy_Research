@@ -115,7 +115,7 @@ tie-breaker for equally relevant results.
 ## Research Case and Thai-published facets
 
 Apply `20260902221100_research_cases_and_thai_published_facets.sql` after the
-visibility/relevance migrations and before deploying the eight-tool web client.
+visibility/relevance migrations and before deploying the WebMCP web client.
 The migration is additive: it adds independent publication/context/language/
 affiliation facets, service-only Research Case and claim-review tables, the
 internal visibility-correction queue, and the bounded catalog search v3 RPC.

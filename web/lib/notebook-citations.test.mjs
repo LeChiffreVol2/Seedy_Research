@@ -12,11 +12,12 @@ const kinds = ["source_guide", "evidence_brief", "evidence_matrix", "literature_
 
 // Exercise the real POST -> retrieval -> generation -> persistence handoff.
 // Only identity, storage and the model boundary are fixtures, never the guard.
-function routeFixture(generated) {
+function routeFixture(generated, options = {}) {
   let saved;
+  let modelPrompt;
   const source = "thaijo:fixture:1";
   const mocks = {
-    "ai": { generateObject: async () => ({ object: generated }) },
+    "ai": { generateObject: async (input) => { modelPrompt = input.prompt; options.onGenerate?.(); return { object: generated }; } },
     "@/lib/chat-auth": {
       resolveChatIdentity: async () => ({ identity: { userId: "owner", isAuthenticated: true, user: {} } }),
       featureAccessDeniedResponse: () => null,
@@ -26,7 +27,7 @@ function routeFixture(generated) {
     "@/lib/chat-models": { DEFAULT_CHAT_MODEL: "gpt-5.6-luna", isOpenAIChatModel: () => true, isDeepSeekChatModel: () => false },
     "@/lib/openrag-adapter": { getOpenRagAdapterStatus: () => ({ active: false }) },
     "@/lib/private-library": {},
-    "@/lib/research-cases": { getResearchCase: async () => ({ caseId: "case_fixture01", selectedSources: [source] }) },
+    "@/lib/research-cases": { getResearchCase: async () => ({ caseId: "case_fixture01", selectedSources: [source, "private:owned-source"] }) },
     "@/lib/research-feed": { getPaperDetail: async () => ({
       document: { source, citable: true, discoveryLayer: "evidence" },
       evidence: [{ id: "page-one", pageStart: 1, pageEnd: 1, snippet: "Evidence from a Thai paper." }],
@@ -34,7 +35,7 @@ function routeFixture(generated) {
     "@/lib/research-notebooks": {
       NOTEBOOK_ARTIFACT_KINDS: kinds,
       ensureResearchNotebook: async () => ({ notebook_id: "notebook" }),
-      getResearchNotebookSnapshot: async () => ({ messages: [], workspacePacks: [] }),
+      getResearchNotebookSnapshot: async () => ({ messages: [{ role: "user", content: "PRIVATE_THREAD_SENTINEL" }], workspacePacks: [] }),
       saveNotebookArtifact: async (input) => { saved = input; return input; },
       appendNotebookExchange: async (input) => { saved = input; return { message: input }; },
     },
@@ -57,14 +58,15 @@ function routeFixture(generated) {
   }, module, module.exports);
   return {
     saved: () => saved,
-    async post(action, kind = "evidence_brief") {
+    modelPrompt: () => modelPrompt,
+    async post(action, kind = "evidence_brief", extra = {}, signal) {
       const previous = process.env.OPENAI_API_KEY;
       process.env.OPENAI_API_KEY = "fixture-no-network";
       try {
         return await module.exports.POST(new Request("http://localhost/api/research-notebooks", {
-          method: "POST", headers: { "Content-Type": "application/json" },
+          method: "POST", signal, headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ action, caseId: "case_fixture01", sources: [source], kind,
-            question: "What does this paper support?", threadId: "11111111-1111-4111-8111-111111111111" }),
+            question: "What does this paper support?", threadId: "11111111-1111-4111-8111-111111111111", ...extra }),
         }));
       } finally {
         if (previous === undefined) delete process.env.OPENAI_API_KEY; else process.env.OPENAI_API_KEY = previous;
@@ -79,6 +81,8 @@ test("every Studio kind removes off-packet inline citations before persistence",
     assert.equal((await fixture.post("artifact", kind)).status, 200);
     assert.equal(fixture.saved().content, "Supported [N1]. Invalid [citation removed] [citation removed].");
     assert.deepEqual(fixture.saved().provenance.citations.map((item) => item.id), ["N1"]);
+    assert.equal(fixture.saved().provenance.citations[0].shareable, true);
+    assert.equal(fixture.saved().provenance.citations[0].snippet, "Evidence from a Thai paper.");
   }
 });
 
@@ -99,4 +103,32 @@ test("Notebook Chat retains valid provenance while removing unknown inline marke
   assert.equal((await fixture.post("ask")).status, 200);
   assert.equal(fixture.saved().answer, "Supported [N1]. Invalid [citation removed].");
   assert.deepEqual(fixture.saved().citations.map((item) => item.id), ["N1"]);
+});
+
+test("public site-tool asks omit private history while human chat retains continuity", async () => {
+  const fixture = routeFixture({ answer: "Supported [N1].", citationIds: ["N1"], insufficient: false });
+  assert.equal((await fixture.post("ask", undefined, { publicSourcesOnly: true })).status, 200);
+  assert.doesNotMatch(fixture.modelPrompt(), /PRIVATE_THREAD_SENTINEL/);
+  assert.equal((await fixture.post("ask")).status, 200);
+  assert.match(fixture.modelPrompt(), /PRIVATE_THREAD_SENTINEL/);
+});
+
+test("site tools reject private or off-Case sources before model generation", async () => {
+  for (const action of ["ask", "artifact"]) {
+    for (const source of ["private:owned-source", "thaijo:not-admitted"]) {
+      const fixture = routeFixture({});
+      assert.ok((await fixture.post(action, undefined, { sources: [source], publicSourcesOnly: true })).status >= 400);
+      assert.equal(fixture.modelPrompt(), undefined);
+      assert.equal(fixture.saved(), undefined);
+    }
+  }
+});
+
+test("a cancelled generation cannot persist an answer or Studio artifact", async () => {
+  for (const action of ["ask", "artifact"]) {
+    const controller = new AbortController();
+    const fixture = routeFixture({ title: "Draft", content: "Supported [N1].", answer: "Supported [N1].", citationIds: ["N1"], insufficient: false }, { onGenerate: () => controller.abort() });
+    assert.ok((await fixture.post(action, undefined, {}, controller.signal)).status >= 400);
+    assert.equal(fixture.saved(), undefined);
+  }
 });

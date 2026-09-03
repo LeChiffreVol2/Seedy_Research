@@ -18,18 +18,19 @@ only after an explicit language or paper action.
 
 ## System Shape
 Seedy Research has three production surfaces. Existing CivilMCP identifiers remain as compatibility contracts through the Challenge release:
-- `web/`: Next.js 15 app with a persistent Research Case, research feed, chat UI, bounded Agentic Context Engine orchestration in `/api/chat`, adaptive Thai-to-global path assembly in `/api/research-path`, a bounded Verified Review matrix in `/api/research-workspaces`, and eight browser-native SeedyMCP tools registered from the top-level page.
+- `web/`: Next.js 15 app with a persistent Research Case, research feed, chat UI, bounded Agentic Context Engine orchestration in `/api/chat`, adaptive Thai-to-global path assembly in `/api/research-path`, a bounded Verified Review matrix in `/api/research-workspaces`, and twelve browser-native SeedyMCP tools registered from the top-level page.
 - `mcp-server/`: Python FastAPI service exposing the public stateless MCP v2 endpoint at `/v2/mcp`, OAuth protected-resource metadata, and the existing `/tools/list`, `/tools/call`, and legacy MCP transport used by first-party consumers.
 - `pipeline/` + `supabase/`: provider registry, metadata harvesting, page-preserving PDF/OCR extraction, markdown/preview generation, v2 section/chunk embedding, and Supabase pgvector readiness checks.
 
 ## Browser-native WebMCP surface
 
-`web/lib/webmcp.ts` registers eight tools through the imperative
+`web/lib/webmcp.ts` registers twelve tools through the imperative
 `document.modelContext.registerTool(...)` API after the page session is ready:
 `start_research_case`, `discover_research`, `audit_global_visibility`,
 `inspect_paper_evidence`, `trace_research_connections`,
-`draft_research_passport`, `build_research_path`, and
-`inspect_learning_progress`. This SeedyMCP surface is distinct from the remote
+`draft_research_passport`, `build_research_path`, `inspect_learning_progress`,
+`open_research_notebook`, `send_reviewed_to_notebook`,
+`ask_research_notebook`, and `draft_notebook_artifact`. This SeedyMCP surface is distinct from the remote
 MCP server: remote MCP can operate independently of an open webpage, while
 SeedyMCP lets an agent and person share the live page, identity, and UI state.
 
@@ -128,6 +129,17 @@ admits the pack's works to the Research Case. Source-set changes mark dependent
 notes and Studio artifacts stale instead of rewriting history. A public answer
 may be promoted only by reopening and revalidating its exact evidence IDs as a
 Research Passport draft; it still requires human page review before export.
+
+The four Notebook workflow site tools reuse these interfaces. They navigate to
+the visible lazy-loaded surface and wait for its React bridge instead of
+scraping or clicking the DOM. `send_reviewed_to_notebook` can only package
+cells a person already marked verified; it cannot set review state.
+`open_research_notebook` returns public Case Source IDs and counts but omits
+private sources, messages, and notes. Agent-initiated Chat and Studio requests
+must name public Case Sources explicitly, do not inherit private thread
+history, validate citations before persistence, and stop before persistence
+when cancelled. Generated answers and drafts remain subject to exact-page
+human review and cannot approve or export a Passport.
 
 `web/lib/openrag-adapter.ts` is a dormant adapter port, not a production runtime
 dependency. `OPENRAG_ADAPTER_ENABLED=false` is the production default and the UI

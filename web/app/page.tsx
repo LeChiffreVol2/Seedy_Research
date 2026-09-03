@@ -66,11 +66,13 @@ import {
   type ChatModel,
 } from "@/lib/chat-models";
 import { CIVILMCP_FEATURE_ACCESS, CIVILMCP_OPEN_ACCESS, CIVILMCP_OPEN_ACCESS_LABEL, type CivilMcpFeature } from "@/lib/product-access";
-import type { ResearchNotebookFinding } from "@/components/research-notebook";
+import type { ResearchNotebookFinding, NotebookToolBridge } from "@/components/research-notebook";
 import type { ResearchWorkspacePaper, ResearchWorkspaceEvidenceTarget } from "@/components/research-workspace";
 import { GlassMenuSelect, type GlassMenuOption } from "@/components/glass-menu-select";
 import {
   registerSeedResearchWebMcpTools,
+  waitForResearchSurface,
+  SEED_RESEARCH_WEBMCP_TOOL_NAMES,
   type SeedResearchWebMcpHandlers,
   type WebMcpGapLens,
 } from "@/lib/webmcp";
@@ -3342,7 +3344,7 @@ function ResearchPassportPanel({
               ? `${acceptedEvidenceCount} evidence claims accepted · inference remains candidate`
               : artifact
                 ? allEvidenceDecided ? "Ready to complete claim review" : allEvidenceOpened ? "Accept or reject each evidence claim" : `Open exact pages · ${artifact.openedEvidenceIds.length}/${artifact.evidence.length}`
-                : "8 site tools ready"}
+                : `${SEED_RESEARCH_WEBMCP_TOOL_NAMES.length} site tools ready`}
         </span>
       </header>
 
@@ -5838,6 +5840,11 @@ export default function Home() {
   const pendingHumanAnswerRef = useRef(false);
   const activationReportedRef = useRef(false);
   const webMcpHandlersRef = useRef<SeedResearchWebMcpHandlers | null>(null);
+  const notebookToolBridgeRef = useRef<NotebookToolBridge | null>(null);
+  const workspaceToolBridgeRef = useRef<{ caseId: string | null; send: (signal: AbortSignal) => Promise<{ version: number; sourceSnapshot: string[] }> } | null>(null);
+  const researchToolContextRef = useRef({ caseId: "", authenticated: false });
+  const receiveNotebookToolBridge = useCallback((bridge: NotebookToolBridge | null) => { notebookToolBridgeRef.current = bridge; }, []);
+  const receiveWorkspaceToolBridge = useCallback((bridge: typeof workspaceToolBridgeRef.current) => { workspaceToolBridgeRef.current = bridge; }, []);
 
   const setAppView = useCallback((item: MobileNavItem) => {
     setActiveMobileNav(item);
@@ -8289,7 +8296,48 @@ export default function Home() {
   };
 
   useEffect(() => {
+    researchToolContextRef.current = { caseId: activeResearchCase?.caseId ?? "", authenticated: isAuthenticated };
+    const notebookBridge = async (signal: AbortSignal) => {
+      signal.throwIfAborted();
+      if (!isAuthenticated || !activeResearchCase) throw new Error("Sign in and start or resume a Research Case before using Notebook site tools.");
+      if (!CIVILMCP_FEATURE_ACCESS.notebook.enabled) throw new Error("Notebook is not enabled in this environment.");
+      const caseId = activeResearchCase.caseId;
+      setAppView("notebook");
+      return waitForResearchSurface(() => {
+        if (!researchToolContextRef.current.authenticated || researchToolContextRef.current.caseId !== caseId) throw new Error("Research identity or Case changed. Reopen the current Notebook.");
+        const bridge = notebookToolBridgeRef.current;
+        return bridge?.caseId === caseId && bridge.ready ? bridge : null;
+      }, signal);
+    };
     webMcpHandlersRef.current = {
+      openResearchNotebook: async (signal) => {
+        const result = await (await notebookBridge(signal)).openResearchNotebook(signal);
+        recordWebMcpActivity("open_research_notebook", "Public Case Sources visible · private history omitted");
+        setStatusText("Notebook opened for human-agent research. Private sources and prior conversations are not returned to site tools.");
+        return result;
+      },
+      sendReviewedToNotebook: async (signal) => {
+        signal.throwIfAborted();
+        const bridge = workspaceToolBridgeRef.current;
+        if (!isAuthenticated || !activeResearchCase || activeMobileNav !== "workspace" || !bridge || bridge.caseId !== activeResearchCase.caseId) throw new Error("Open the active Case's Workspace and review exact-page cells before continuing to Notebook.");
+        const pack = await bridge.send(signal);
+        const result = await (await notebookBridge(signal)).openResearchNotebook(signal);
+        recordWebMcpActivity("send_reviewed_to_notebook", `Reviewed Evidence Pack v${pack.version} · ${pack.sourceSnapshot.length} sources`);
+        setStatusText(`Workspace Evidence Pack v${pack.version} is now visible in Notebook. Human review decisions were preserved.`);
+        return { ...(result as Record<string, unknown>), packVersion: pack.version, reviewedSources: pack.sourceSnapshot, humanReviewPerformedByAgent: false };
+      },
+      askResearchNotebook: async (input, signal) => {
+        const result = await (await notebookBridge(signal)).askResearchNotebook(input, signal);
+        recordWebMcpActivity("ask_research_notebook", `${input.sources.length} public sources · cited answer needs human review`);
+        setStatusText("Agent answer saved in the visible Notebook. Inspect citations before promoting a finding.");
+        return result;
+      },
+      draftNotebookArtifact: async (input, signal) => {
+        const result = await (await notebookBridge(signal)).draftNotebookArtifact(input, signal);
+        recordWebMcpActivity("draft_notebook_artifact", `${input.kind} · ${input.sources.length} public sources · unapproved draft`);
+        setStatusText("Studio draft created. Novelty, scientific correctness and publication readiness are not established.");
+        return result;
+      },
       startResearchCase: async (input, signal) => {
         const discoveryHandler = webMcpHandlersRef.current?.discoverResearch;
         if (!discoveryHandler) throw new Error("Research discovery is still preparing.");
@@ -9022,6 +9070,22 @@ export default function Home() {
     let registration: AbortController | null = null;
     setWebMcpStatus("checking");
     const proxy: SeedResearchWebMcpHandlers = {
+      openResearchNotebook: (signal) => {
+        if (!webMcpHandlersRef.current) throw new Error("Notebook tools are still preparing.");
+        return webMcpHandlersRef.current.openResearchNotebook(signal);
+      },
+      sendReviewedToNotebook: (signal) => {
+        if (!webMcpHandlersRef.current) throw new Error("Notebook tools are still preparing.");
+        return webMcpHandlersRef.current.sendReviewedToNotebook(signal);
+      },
+      askResearchNotebook: (input, signal) => {
+        if (!webMcpHandlersRef.current) throw new Error("Notebook tools are still preparing.");
+        return webMcpHandlersRef.current.askResearchNotebook(input, signal);
+      },
+      draftNotebookArtifact: (input, signal) => {
+        if (!webMcpHandlersRef.current) throw new Error("Notebook tools are still preparing.");
+        return webMcpHandlersRef.current.draftNotebookArtifact(input, signal);
+      },
       startResearchCase: (input, signal) => {
         if (!webMcpHandlersRef.current) throw new Error("Seedy Research is still preparing its site tools.");
         return webMcpHandlersRef.current.startResearchCase(input, signal);
@@ -9163,7 +9227,7 @@ export default function Home() {
                 {webMcpStatus === "ready" ? (
                   <p className="webMcpStatus" role="status" aria-label="WebMCP site tools ready">
                     <span aria-hidden />
-                    SeedyMCP active · 8 site tools · shared human-agent case
+                    SeedyMCP active · {SEED_RESEARCH_WEBMCP_TOOL_NAMES.length} site tools · shared human-agent case
                   </p>
                 ) : null}
               </>
@@ -9258,6 +9322,8 @@ export default function Home() {
 
         {activeMobileNav === "workspace" ? (
           <ResearchWorkspacePanel
+            key={`workspace-${userProfile?.userId ?? "guest"}`}
+            onToolBridge={receiveWorkspaceToolBridge}
             papers={workspacePapers}
             seedSources={workspaceSeedSources}
             caseId={activeResearchCase?.caseId ?? null}
@@ -9279,6 +9345,8 @@ export default function Home() {
           />
         ) : activeMobileNav === "notebook" ? (
           <ResearchNotebookPanel
+            key={`notebook-${userProfile?.userId ?? "guest"}-${activeResearchCase?.caseId ?? "none"}`}
+            onToolBridge={receiveNotebookToolBridge}
             researchCase={activeResearchCase}
             papers={workspacePapers}
             authenticated={isAuthenticated}

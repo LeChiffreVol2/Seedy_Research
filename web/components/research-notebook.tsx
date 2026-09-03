@@ -19,13 +19,16 @@ import {
   TableProperties,
   TriangleAlert,
 } from "lucide-react";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 
 import type { ResearchWorkspaceEvidenceTarget, ResearchWorkspacePaper } from "@/components/research-workspace";
 import { CHAT_MODELS, DEFAULT_CHAT_MODEL, type ChatModel } from "@/lib/chat-models";
 import { GlassMenuSelect, type GlassMenuOption } from "@/components/glass-menu-select";
+import type { AskResearchNotebookInput, DraftNotebookArtifactInput, SeedResearchWebMcpHandlers } from "@/lib/webmcp";
+
+export type NotebookToolBridge = Pick<SeedResearchWebMcpHandlers, "openResearchNotebook" | "askResearchNotebook" | "draftNotebookArtifact"> & { caseId: string; ready: boolean };
 
 type NotebookCitation = {
   id: string;
@@ -77,6 +80,7 @@ type NotebookArtifact = {
   stale: boolean;
   version: number;
   createdAt: string;
+  provenance?: { citations?: NotebookCitation[] };
 };
 
 type WorkspaceEvidencePack = {
@@ -165,6 +169,7 @@ export function ResearchNotebookPanel({
   onOpenPaper,
   onPromoteFinding,
   onContinuePath,
+  onToolBridge,
 }: {
   researchCase: ResearchNotebookCase | null;
   papers: ResearchWorkspacePaper[];
@@ -176,6 +181,7 @@ export function ResearchNotebookPanel({
   onOpenPaper: (source: string, evidenceTarget?: ResearchWorkspaceEvidenceTarget) => void;
   onPromoteFinding: (finding: ResearchNotebookFinding) => void;
   onContinuePath: (finding: ResearchNotebookFinding) => void;
+  onToolBridge?: (bridge: NotebookToolBridge | null) => void;
 }) {
   const [notebook, setNotebook] = useState<ResearchNotebookSnapshot | null>(null);
   const [status, setStatus] = useState<"idle" | "loading" | "ready" | "error">("idle");
@@ -189,6 +195,9 @@ export function ResearchNotebookPanel({
   const [noteContent, setNoteContent] = useState("");
   const [noteBusy, setNoteBusy] = useState(false);
   const [expandedArtifact, setExpandedArtifact] = useState<string>("");
+  const generationRef = useRef<AbortController | null>(null);
+
+  useEffect(() => () => { generationRef.current?.abort(); }, [researchCase?.caseId]);
 
   const paperMap = useMemo(() => new Map(papers.map((paper) => [paper.source, paper])), [papers]);
 
@@ -254,28 +263,45 @@ export function ResearchNotebookPanel({
     }
   };
 
-  const ask = async () => {
-    const prompt = question.trim();
-    if (!researchCase || !notebook?.activeThreadId || prompt.length < 8 || !selectedSources.length || busy) return;
+  const ask = async (input?: AskResearchNotebookInput, signal?: AbortSignal) => {
+    const prompt = input?.question ?? question.trim();
+    const sources = input?.sources ?? selectedSources;
+    if (!researchCase || !notebook?.activeThreadId || prompt.length < 8 || !sources.length) throw new Error("Open a Notebook and select its Case Sources first.");
+    if (generationRef.current || busy || studioBusy) throw new Error("Notebook is busy. Wait for the current action.");
+    if (input && sources.some((source) => source.startsWith("private:") || !notebook.caseSources.includes(source))) throw new Error("Select public sources admitted to this Research Case.");
+    signal?.throwIfAborted();
+    const controller = new AbortController();
+    const abort = () => controller.abort();
+    signal?.addEventListener("abort", abort, { once: true });
+    generationRef.current = controller;
+    setSelectedSources(sources);
+    setQuestion(prompt);
     setBusy(true);
     setError("");
     try {
       const payload = await fetchNotebookJson<{ userMessage: NotebookMessage; message: NotebookMessage }>("/api/research-notebooks", {
         method: "POST",
+        signal: controller.signal,
         body: JSON.stringify({
           action: "ask",
           caseId: researchCase.caseId,
           threadId: notebook.activeThreadId,
           question: prompt,
           model,
-          sources: selectedSources,
+          sources,
+          publicSourcesOnly: Boolean(input),
         }),
       });
+      controller.signal.throwIfAborted();
       setNotebook((current) => current ? { ...current, messages: [...current.messages, payload.userMessage, payload.message] } : current);
       setQuestion("");
+      return payload.message;
     } catch (reason) {
       setError(reason instanceof Error ? reason.message : "Research Notebook could not answer.");
+      throw reason;
     } finally {
+      signal?.removeEventListener("abort", abort);
+      if (generationRef.current === controller) generationRef.current = null;
       setBusy(false);
     }
   };
@@ -309,23 +335,69 @@ export function ResearchNotebookPanel({
     }
   };
 
-  const generateArtifact = async (kind: NotebookArtifactKind) => {
-    if (!researchCase || !selectedSources.length || studioBusy) return;
+  const generateArtifact = async (kind: NotebookArtifactKind, input?: DraftNotebookArtifactInput, signal?: AbortSignal) => {
+    const sources = input?.sources ?? selectedSources;
+    if (!researchCase || !notebook || !sources.length) throw new Error("Open a Notebook and select its Case Sources first.");
+    if (generationRef.current || busy || studioBusy) throw new Error("Notebook is busy. Wait for the current action.");
+    if (input && sources.some((source) => source.startsWith("private:") || !notebook.caseSources.includes(source))) throw new Error("Select public sources admitted to this Research Case.");
+    signal?.throwIfAborted();
+    const controller = new AbortController();
+    const abort = () => controller.abort();
+    signal?.addEventListener("abort", abort, { once: true });
+    generationRef.current = controller;
+    setSelectedSources(sources);
     setStudioBusy(kind);
     setError("");
     try {
       const payload = await fetchNotebookJson<{ artifact: NotebookArtifact }>("/api/research-notebooks", {
         method: "POST",
-        body: JSON.stringify({ action: "artifact", caseId: researchCase.caseId, kind, model, sources: selectedSources }),
+        signal: controller.signal,
+        body: JSON.stringify({ action: "artifact", caseId: researchCase.caseId, kind, model, sources, publicSourcesOnly: Boolean(input) }),
       });
+      controller.signal.throwIfAborted();
       setNotebook((current) => current ? { ...current, artifacts: [payload.artifact, ...current.artifacts] } : current);
       setExpandedArtifact(payload.artifact.artifactId);
+      return payload.artifact;
     } catch (reason) {
       setError(reason instanceof Error ? reason.message : "Studio artifact could not be generated.");
+      throw reason;
     } finally {
+      signal?.removeEventListener("abort", abort);
+      if (generationRef.current === controller) generationRef.current = null;
       setStudioBusy("");
     }
   };
+
+  useEffect(() => {
+    onToolBridge?.(researchCase && authenticated && accessEnabled ? {
+      caseId: researchCase.caseId,
+      ready: status === "ready" || status === "error",
+      openResearchNotebook: async (signal) => {
+        signal.throwIfAborted();
+        if (!notebook || status !== "ready") throw new Error(error || "Notebook is still synchronizing.");
+        return {
+          ok: true, visibleView: "notebook", caseId: notebook.caseId, model,
+          sources: notebook.caseSources.filter((source) => !source.startsWith("private:")).slice(0, 50),
+          selectedSources: selectedSources.filter((source) => !source.startsWith("private:")),
+          reviewedPackCount: notebook.workspacePacks.length, artifactCount: notebook.artifacts.length,
+          privacy: "Private sources, prior conversations and notes are omitted. Only explicitly selected public sources are available to site tools.",
+          nextHumanStep: "Inspect exact-page citations before accepting claims. Studio outputs remain drafts.",
+        };
+      },
+      askResearchNotebook: async (input, signal) => {
+        const message = await ask(input, signal);
+        const publicOnly = message.citations.every((citation) => citation.shareable && !citation.source.startsWith("private:"));
+        return { ok: true, visibleView: "notebook", messageId: message.messageId, answer: publicOnly ? message.content.slice(0, 3600) : "Answer kept in the owner-scoped Notebook because it contains private evidence.", citations: publicOnly ? message.citations.map(({ snippet: _snippet, ...locator }) => locator) : [], insufficient: message.insufficient, requiresHumanReview: true };
+      },
+      draftNotebookArtifact: async (input, signal) => {
+        const artifact = await generateArtifact(input.kind, input, signal);
+        const citations = artifact.provenance?.citations ?? [];
+        const publicOnly = citations.length > 0 && citations.every((citation) => citation.shareable && !citation.source.startsWith("private:"));
+        return { ok: true, visibleView: "notebook", artifactId: artifact.artifactId, kind: artifact.kind, version: artifact.version, excerpt: publicOnly ? artifact.content.slice(0, 2400) : "Inspect the draft in the owner-scoped Notebook.", citations: publicOnly ? citations.map(({ snippet: _snippet, ...locator }) => locator) : [], requiresHumanReview: true, noveltyEstablished: false, exported: false };
+      },
+    } : null);
+    return () => onToolBridge?.(null);
+  });
 
   const toggleSource = (source: string) => {
     setSelectedSources((current) => current.includes(source)
@@ -399,7 +471,7 @@ export function ResearchNotebookPanel({
           <div className="notebookSourceList">
             {notebook.caseSources.map((source) => (
               <label key={source}>
-                <input type="checkbox" checked={selectedSources.includes(source)} onChange={() => toggleSource(source)} />
+                <input type="checkbox" checked={selectedSources.includes(source)} disabled={busy || Boolean(studioBusy)} onChange={() => toggleSource(source)} />
                 <span><strong>{sourceLabel(source, paperMap)}</strong><small>{source.startsWith("private:") ? "Private · non-shareable" : paperMap.get(source)?.pageLabel || "Case source"}</small></span>
               </label>
             ))}
@@ -424,10 +496,10 @@ export function ResearchNotebookPanel({
           <header className="notebookThreadBar">
             <div role="tablist" aria-label="Notebook threads">
               {notebook.threads.map((thread) => (
-                <button key={thread.threadId} type="button" role="tab" aria-selected={thread.threadId === notebook.activeThreadId} onClick={() => void switchThread(thread.threadId)}>{thread.title}</button>
+                <button key={thread.threadId} type="button" role="tab" disabled={busy || Boolean(studioBusy)} aria-selected={thread.threadId === notebook.activeThreadId} onClick={() => void switchThread(thread.threadId)}>{thread.title}</button>
               ))}
             </div>
-            <button type="button" aria-label="New Notebook thread" onClick={() => void newThread()} disabled={busy || notebook.threads.length >= 8}><MessageSquarePlus size={15} aria-hidden /></button>
+            <button type="button" aria-label="New Notebook thread" onClick={() => void newThread()} disabled={busy || Boolean(studioBusy) || notebook.threads.length >= 8}><MessageSquarePlus size={15} aria-hidden /></button>
           </header>
 
           <div className="notebookMessages" aria-live="polite">
@@ -458,7 +530,7 @@ export function ResearchNotebookPanel({
 
           <div className="notebookComposer">
             <textarea value={question} onChange={(event) => setQuestion(event.target.value)} maxLength={800} rows={3} aria-label="Ask Research Notebook" placeholder="What do these sources agree on, where do they conflict, and what should be validated next?" />
-            <div><span>{selectedSources.length} sources · exact-page grounding</span><button type="button" onClick={() => void ask()} disabled={busy || question.trim().length < 8 || !selectedSources.length}>{busy ? <LoaderCircle className="workspaceSpinner" size={15} aria-hidden /> : <Sparkles size={15} aria-hidden />}{busy ? "Reading…" : "Ask sources"}</button></div>
+            <div><span>{selectedSources.length} sources · exact-page grounding</span><button type="button" onClick={() => void ask().catch(() => undefined)} disabled={busy || Boolean(studioBusy) || question.trim().length < 8 || !selectedSources.length}>{busy ? <LoaderCircle className="workspaceSpinner" size={15} aria-hidden /> : <Sparkles size={15} aria-hidden />}{busy ? "Reading…" : "Ask sources"}</button></div>
           </div>
           {latestFinding && !latestFinding.insufficient && latestFinding.citations.length ? (
             <footer className="notebookContinuityActions">
@@ -473,7 +545,7 @@ export function ResearchNotebookPanel({
           <div className="notebookArtifactActions">
             {ARTIFACTS.map((item) => {
               const Icon = item.icon;
-              return <button key={item.kind} type="button" onClick={() => void generateArtifact(item.kind)} disabled={Boolean(studioBusy) || !selectedSources.length}><Icon size={15} aria-hidden /><span><strong>{item.label}</strong><small>{studioBusy === item.kind ? "Generating…" : item.description}</small></span>{studioBusy === item.kind ? <LoaderCircle className="workspaceSpinner" size={14} aria-hidden /> : <Plus size={14} aria-hidden />}</button>;
+              return <button key={item.kind} type="button" onClick={() => void generateArtifact(item.kind).catch(() => undefined)} disabled={busy || Boolean(studioBusy) || !selectedSources.length}><Icon size={15} aria-hidden /><span><strong>{item.label}</strong><small>{studioBusy === item.kind ? "Generating…" : item.description}</small></span>{studioBusy === item.kind ? <LoaderCircle className="workspaceSpinner" size={14} aria-hidden /> : <Plus size={14} aria-hidden />}</button>;
             })}
           </div>
 

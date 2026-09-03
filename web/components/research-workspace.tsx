@@ -279,6 +279,7 @@ export function ResearchWorkspacePanel({
   accessEnabled,
   onUpgrade,
   onOpenPaper,
+  onToolBridge,
 }: {
   papers: ResearchWorkspacePaper[];
   seedSources?: string[];
@@ -287,6 +288,7 @@ export function ResearchWorkspacePanel({
   accessEnabled: boolean;
   onUpgrade: (message: string) => void;
   onOpenPaper: (source: string, evidenceTarget?: ResearchWorkspaceEvidenceTarget) => void;
+  onToolBridge?: (bridge: { caseId: string | null; send: (signal: AbortSignal) => Promise<{ version: number; sourceSnapshot: string[] }> } | null) => void;
 }) {
   const defaultColumns = TEMPLATE_COLUMNS.literature_matrix;
   const [workspaceId, setWorkspaceId] = useState("workspace-local");
@@ -316,6 +318,8 @@ export function ResearchWorkspacePanel({
   const [notebookPackBusy, setNotebookPackBusy] = useState(false);
   const appliedSeedRef = useRef("");
   const stopRunRef = useRef(false);
+  const notebookTransferRef = useRef<AbortController | null>(null);
+  useEffect(() => () => notebookTransferRef.current?.abort(), [caseId]);
 
   useEffect(() => {
     try {
@@ -653,7 +657,7 @@ export function ResearchWorkspacePanel({
     }
   };
 
-  const saveWorkspace = async (): Promise<boolean> => {
+  const saveWorkspace = async (signal?: AbortSignal): Promise<boolean> => {
     if (!authenticated) {
       setStatus("saved");
       setStatusText("Workspace saved locally · sign in only for cross-device sync");
@@ -677,6 +681,7 @@ export function ResearchWorkspacePanel({
     try {
       await fetchWorkspaceJson("/api/research-workspaces", {
         method: "POST",
+        signal,
         body: JSON.stringify({
           action: "save",
           workspaceId,
@@ -794,35 +799,53 @@ export function ResearchWorkspacePanel({
   const reviewedPapers = rows.filter((row) => row.cells.length > 0 && row.cells.every((cell) => cell.review === "verified")).length;
   const verifiedEvidenceCells = rows.flatMap((row) => row.cells).filter((cell) => cell.review === "verified" && cell.evidence.some((item) => item.pageStart != null)).length;
 
-  const sendReviewedToNotebook = async () => {
+  const sendReviewedToNotebook = async (signal?: AbortSignal) => {
     if (!authenticated) {
       onUpgrade("Sign in to send reviewed Workspace evidence to Notebook.");
-      return;
+      throw new Error("Sign in to send reviewed Workspace evidence to Notebook.");
     }
     if (!caseId) {
       setStatusText("Start or resume a Research Case before sending reviewed evidence to Notebook.");
-      return;
+      throw new Error("Start or resume a Research Case first.");
     }
-    if (!verifiedEvidenceCells || notebookPackBusy) return;
+    if (!verifiedEvidenceCells) throw new Error("A person must verify at least one exact-page cell in Workspace first.");
+    if (notebookTransferRef.current || notebookPackBusy || status === "running") throw new Error("Workspace is busy. Wait for its current action.");
+    if (signal && rows.some((row) => row.source.startsWith("private:"))) throw new Error("Private workspaces remain in the human interface; site tools cannot transfer them.");
+    signal?.throwIfAborted();
+    const controller = new AbortController();
+    const abort = () => controller.abort();
+    signal?.addEventListener("abort", abort, { once: true });
+    notebookTransferRef.current = controller;
     setNotebookPackBusy(true);
     setStatus("saving");
     setStatusText("Preparing reviewed evidence for Notebook…");
     try {
-      const saved = await saveWorkspace();
-      if (!saved) return;
+      const saved = await saveWorkspace(controller.signal);
+      if (!saved) throw new Error("Workspace could not be saved. No evidence pack was sent.");
+      controller.signal.throwIfAborted();
       const payload = await fetchWorkspaceJson<{ pack: { version: number; sourceSnapshot: string[] } }>("/api/research-notebooks", {
         method: "POST",
+        signal: controller.signal,
         body: JSON.stringify({ action: "workspace_pack", caseId, workspaceId }),
       });
+      controller.signal.throwIfAborted();
       setStatus("saved");
       setStatusText(`Workspace Evidence Pack v${payload.pack.version} sent to Notebook · ${payload.pack.sourceSnapshot.length} reviewed sources`);
+      return payload.pack;
     } catch (error) {
       setStatus("error");
       setStatusText(error instanceof Error ? error.message : "Reviewed evidence could not be sent to Notebook.");
+      throw error;
     } finally {
+      signal?.removeEventListener("abort", abort);
+      if (notebookTransferRef.current === controller) notebookTransferRef.current = null;
       setNotebookPackBusy(false);
     }
   };
+  useEffect(() => {
+    onToolBridge?.(ready && authenticated && accessEnabled ? { caseId, send: sendReviewedToNotebook } : null);
+    return () => onToolBridge?.(null);
+  });
   const workflowStages = [
     { label: "Scope", complete: protocolReady },
     { label: "Find", complete: rows.length > 0 },
@@ -889,7 +912,7 @@ export function ResearchWorkspacePanel({
             <Save size={16} aria-hidden />
             <span>Save</span>
           </button>
-          <button type="button" onClick={() => void sendReviewedToNotebook()} disabled={notebookPackBusy || !verifiedEvidenceCells} title={!caseId ? "Start a Research Case first" : "Send only human-verified exact-page cells"}>
+          <button type="button" onClick={() => void sendReviewedToNotebook().catch(() => undefined)} disabled={notebookPackBusy || !verifiedEvidenceCells} title={!caseId ? "Start a Research Case first" : "Send only human-verified exact-page cells"}>
             {notebookPackBusy ? <LoaderCircle size={16} className="workspaceSpinner" aria-hidden /> : <NotebookTabs size={16} aria-hidden />}
             <span>{notebookPackBusy ? "Sending…" : "Send reviewed to Notebook"}</span>
             {verifiedEvidenceCells ? <strong>{verifiedEvidenceCells}</strong> : null}

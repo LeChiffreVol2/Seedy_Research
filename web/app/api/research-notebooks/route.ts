@@ -51,6 +51,7 @@ const askSchema = z.object({
   question: z.string().trim().min(8).max(800),
   model: modelSchema.default(DEFAULT_CHAT_MODEL),
   sources: selectedSourcesSchema,
+  publicSourcesOnly: z.boolean().default(false),
 });
 const noteSchema = z.object({
   action: z.literal("note"),
@@ -66,6 +67,7 @@ const artifactSchema = z.object({
   kind: z.enum(NOTEBOOK_ARTIFACT_KINDS),
   model: modelSchema.default(DEFAULT_CHAT_MODEL),
   sources: selectedSourcesSchema,
+  publicSourcesOnly: z.boolean().default(false),
 });
 const workspacePackSchema = z.object({
   action: z.literal("workspace_pack"),
@@ -263,7 +265,7 @@ function providerOptions(model: z.infer<typeof modelSchema>) {
   return isOpenAIChatModel(model) ? { providerOptions: { openai: { reasoningEffort: "low" as const } } } : {};
 }
 
-async function generateNotebookAnswer(input: z.infer<typeof askSchema>, ownerId: string, history: Array<{ role: string; content: string }>, packs: WorkspaceEvidencePack[]) {
+async function generateNotebookAnswer(input: z.infer<typeof askSchema>, ownerId: string, history: Array<{ role: string; content: string }>, packs: WorkspaceEvidencePack[], signal: AbortSignal) {
   const packets = await buildRetrievedContext(ownerId, input.question, input.sources, packs);
   if (!packets.length) {
     return {
@@ -275,7 +277,7 @@ async function generateNotebookAnswer(input: z.infer<typeof askSchema>, ownerId:
   }
   const generated = await generateObject({
     model: modelFor(input.model),
-    abortSignal: AbortSignal.timeout(GENERATION_TIMEOUT_MS),
+    abortSignal: AbortSignal.any([signal, AbortSignal.timeout(GENERATION_TIMEOUT_MS)]),
     schema: z.object({
       answer: z.string().trim().min(1).max(3_600),
       citationIds: z.array(z.string().regex(/^N(?:[1-9]|1[0-6])$/)).max(8),
@@ -334,13 +336,13 @@ const ARTIFACT_INSTRUCTIONS: Record<NotebookArtifactKind, { title: string; instr
   manuscript_package: { title: "Manuscript Package", instruction: "Prepare an evidence-grounded manuscript outline, reference anchors, missing user results, validation checks, and submission checklist. Do not fabricate study results." },
 };
 
-async function generateStudioArtifact(input: z.infer<typeof artifactSchema>, ownerId: string, packs: WorkspaceEvidencePack[]) {
+async function generateStudioArtifact(input: z.infer<typeof artifactSchema>, ownerId: string, packs: WorkspaceEvidencePack[], signal: AbortSignal) {
   const specification = ARTIFACT_INSTRUCTIONS[input.kind];
   const packets = await buildRetrievedContext(ownerId, specification.instruction, input.sources, packs);
   if (!packets.length) throw new Error("No exact-page evidence is available for this Studio artifact.");
   const generated = await generateObject({
     model: modelFor(input.model),
-    abortSignal: AbortSignal.timeout(GENERATION_TIMEOUT_MS),
+    abortSignal: AbortSignal.any([signal, AbortSignal.timeout(GENERATION_TIMEOUT_MS)]),
     schema: z.object({
       title: z.string().trim().min(1).max(160),
       content: z.string().trim().min(1).max(12_000),
@@ -364,9 +366,18 @@ async function generateStudioArtifact(input: z.infer<typeof artifactSchema>, own
   const byId = new Map(packets.map((packet) => [packet.id, packet]));
   const { content, ids } = validateNotebookCitations(cleanBlock(generated.object.content, 12_000), generated.object.citationIds, byId, 12);
   if (!ids.length) throw new Error("No verifiable citations are available for this Studio artifact. Refine the sources and try again.");
-  const citations = ids.map((id) => {
+  const citations = ids.map((id): NotebookCitation => {
     const packet = byId.get(id)!;
-    return { id, evidenceId: packet.evidenceId, source: packet.source, pageStart: packet.pageStart, pageEnd: packet.pageEnd, sectionTitle: packet.sectionTitle };
+    return {
+      id,
+      evidenceId: packet.evidenceId,
+      source: packet.source,
+      pageStart: packet.pageStart,
+      pageEnd: packet.pageEnd,
+      sectionTitle: packet.sectionTitle,
+      snippet: cleanInline(packet.snippet, 260),
+      shareable: packet.shareable,
+    };
   });
   return {
     title: cleanInline(generated.object.title, 160) || specification.title,
@@ -545,6 +556,9 @@ export async function POST(request: NextRequest) {
 
     const allowed = new Set(researchCase.selectedSources);
     if (parsed.data.sources.some((source) => !allowed.has(source))) throw new Error("A selected source is not part of this Research Case.");
+    if (parsed.data.publicSourcesOnly && parsed.data.sources.some((source) => source.startsWith("private:"))) {
+      return finalize(NextResponse.json({ error: "Notebook site tools accept public Case Sources only." }, { status: 400 }));
+    }
     const rate = await rateLimit(request, identity.userId);
     if (!rate.allowed) return finalize(NextResponse.json({ error: "Research Notebook generation limit reached. Retry shortly." }, { status: 429, headers: rateLimitHeaders(rate) }));
     if (activeGenerations >= MAX_ACTIVE_GENERATIONS) {
@@ -559,7 +573,9 @@ export async function POST(request: NextRequest) {
         notebookRow,
       );
       if (parsed.data.action === "ask") {
-        const generated = await generateNotebookAnswer(parsed.data, identity.userId, before.messages, before.workspacePacks);
+        // Site-tool questions never inherit the person's private thread history.
+        const generated = await generateNotebookAnswer(parsed.data, identity.userId, parsed.data.publicSourcesOnly ? [] : before.messages, before.workspacePacks, request.signal);
+        request.signal.throwIfAborted();
         const { userMessage, message } = await appendNotebookExchange({
           ownerId: identity.userId,
           notebookId: notebookRow.notebook_id,
@@ -578,7 +594,8 @@ export async function POST(request: NextRequest) {
         }, { headers: { ...rateLimitHeaders(rate), "Cache-Control": "private, no-store" } }));
       }
 
-      const generated = await generateStudioArtifact(parsed.data, identity.userId, before.workspacePacks);
+      const generated = await generateStudioArtifact(parsed.data, identity.userId, before.workspacePacks, request.signal);
+      request.signal.throwIfAborted();
       const artifact = await saveNotebookArtifact({
         ownerId: identity.userId,
         notebookId: notebookRow.notebook_id,

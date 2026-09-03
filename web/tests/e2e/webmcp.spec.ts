@@ -484,12 +484,16 @@ test("registers non-trivial WebMCP tools and keeps agent actions visible to the 
     return [...tools.values()].map((tool) => ({ name: tool.name, annotations: tool.annotations, inputSchema: tool.inputSchema }));
   });
   expect(definitions.map((tool) => tool.name).sort()).toEqual([
+    "ask_research_notebook",
     "audit_global_visibility",
     "build_research_path",
     "discover_research",
+    "draft_notebook_artifact",
     "draft_research_passport",
     "inspect_learning_progress",
     "inspect_paper_evidence",
+    "open_research_notebook",
+    "send_reviewed_to_notebook",
     "start_research_case",
     "trace_research_connections",
   ]);
@@ -1009,12 +1013,16 @@ test("keeps source-hosted full text outside the bounded WebMCP evidence result",
   };
 
   expect(result.names).toEqual([
+    "ask_research_notebook",
     "audit_global_visibility",
     "build_research_path",
     "discover_research",
+    "draft_notebook_artifact",
     "draft_research_passport",
     "inspect_learning_progress",
     "inspect_paper_evidence",
+    "open_research_notebook",
+    "send_reviewed_to_notebook",
     "start_research_case",
     "trace_research_connections",
   ]);

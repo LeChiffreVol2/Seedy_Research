@@ -87,7 +87,7 @@ Use the root `Makefile` for normal release work. The direct harness commands rem
 
 ## WebMCP browser contract
 
-`web/tests/e2e/webmcp.spec.ts` installs a deterministic browser-side `document.modelContext` host before application hydration. It requires the exact eight-tool contract, checks read-only and untrusted-content annotations, then executes persistent Research Case start/resume, Thai discovery, dated visibility audit, exact-page evidence opening, fail-closed OpenAlex connection tracing, Research Passport drafting/review/export, Thai-to-global Research Path creation, and progress inspection. The test must verify the corresponding visible UI state; a source-string assertion alone is not sufficient.
+`web/tests/e2e/webmcp.spec.ts` installs a deterministic browser-side `document.modelContext` host before application hydration. It requires the exact twelve-tool contract, checks read-only and untrusted-content annotations, then executes persistent Research Case start/resume, Thai discovery, dated visibility audit, exact-page evidence opening, fail-closed OpenAlex connection tracing, Research Passport drafting/review/export, Thai-to-global Research Path creation, and progress inspection. The broader frontend regression executes the four authenticated Workspace/Notebook tools against visible state, including refusal before human review, versioned Evidence Pack transfer, public-source Notebook answer, cited Studio draft, and reload persistence. The test must verify the corresponding visible UI state; a source-string assertion alone is not sufficient.
 
 The same suite has a focused Challenge regression that uses the committed
 `thaijo:learn:291631` rights-reviewed reader route rather than the synthetic
@@ -115,14 +115,14 @@ Sources–Chat–Studio Research Notebook, including persistent threads,
 Workspace-to-Notebook reviewed evidence handoff, exact-page citations, private
 non-shareability, and public promotion.
 `pipeline.test_source_registry` pins the deployed provider, record, reader, and
-eight-tool counts so submission copy cannot drift from the machine-readable
+twelve-tool counts so submission copy cannot drift from the machine-readable
 registry. `harness.test_ga_security` pins the Notebook owner/membership, bounded
 durable state, citation allow-list, and private-source boundaries.
 
 Before a challenge release, also run one manual pass in ChatGPT's built-in
 browser with Site tools visibly available and one pass in Chrome with native
 WebMCP testing enabled. Record the deployed URL, candidate SHA, exact host
-build/account/model configuration, eight-tool inventory, prompt, calls, timings,
+build/account/model configuration, twelve-tool inventory, prompt, calls, timings,
 result, and every confirmation shown. The deterministic E2E proves application
 behavior; the manual pass proves compatibility with the actual challenge host.
 
@@ -153,7 +153,7 @@ Thai-affiliated global OA PMC papers; it is not a national-completeness count.
 For later releases, rerun the focused
 suites against the frozen candidate and manually
 confirm that `inspect_paper_evidence` reports the lawful access state and verified reader anchor without
-including full page text and that the page still registers exactly eight WebMCP
+including full page text and that the page still registers exactly twelve WebMCP
 site tools.
 
 ## Challenge Research Case contract

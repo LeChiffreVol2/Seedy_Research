@@ -87,6 +87,10 @@ EXPECTED_WEBMCP_TOOLS = {
     "draft_research_passport",
     "build_research_path",
     "inspect_learning_progress",
+    "open_research_notebook",
+    "send_reviewed_to_notebook",
+    "ask_research_notebook",
+    "draft_notebook_artifact",
 }
 
 
@@ -192,7 +196,7 @@ def check_webmcp_contract() -> Check:
         "exact_tool_count": len(declared) == len(EXPECTED_WEBMCP_TOOLS),
         "strict_schemas": bridge.count("additionalProperties: false") >= len(EXPECTED_WEBMCP_TOOLS),
         "read_and_untrusted_hints": "readOnlyHint" in bridge and bridge.count("untrustedContentHint: true") >= len(EXPECTED_WEBMCP_TOOLS),
-        "wired_to_page": "registerSeedResearchWebMcpTools(proxy)" in page and "SeedyMCP active · 8 site tools" in page,
+        "wired_to_page": "registerSeedResearchWebMcpTools(proxy)" in page and "SEED_RESEARCH_WEBMCP_TOOL_NAMES.length" in page,
         "fail_closed_connection_trace": all(
             marker in page
             for marker in (

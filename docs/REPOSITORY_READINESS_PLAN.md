@@ -90,7 +90,7 @@ The product remains a whole-Thai, end-to-end research platform; the cleanup
 does not remove Workspace, Notebook, manuscript support, or expansion targets.
 
 Corrections cover retired CityMCP recovery paths, preview opt-in prerequisites,
-the eight-tool inventory, Python/root-relative commands, checksum/admission
+the then-current browser tool inventory, Python/root-relative commands, checksum/admission
 contracts, implemented roadmap items, and the Research Case/Notebook vocabulary.
 Historical measurements are dated rather than promoted into current proof.
 The documentation gate now discovers all tracked Markdown files. It checks

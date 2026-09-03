@@ -48,10 +48,11 @@ institutional repositories remain separately measured rollout tracks.
   19-tool first-party compatibility contract. OAuth and revocable owner-scoped
   personal keys share the same permission and distributed-quota boundary.
   Metadata-only records are never returned as citable evidence.
-- WebMCP: eight top-level browser site tools for persistent Research Case
+- WebMCP: twelve top-level browser site tools for persistent Research Case
   start/resume, Thai discovery, dated global visibility audit, exact-page
   evidence, evidence-bounded Research Passport drafting, Research Path
-  creation/adaptation, and privacy-bounded progress inspection. Tool calls
+  creation/adaptation, privacy-bounded progress inspection, and a
+  review-gated Workspace-to-Notebook continuation. Tool calls
   must update the same visible page the person is reviewing.
 - Research Passport: one to three visible exact-page Thai anchors, at most four
   OpenAlex metadata-only leads, an optional bounded English rendering that
@@ -87,7 +88,7 @@ All of the following must pass against the same source state:
     initialize/list/call pass authenticated isolation tests;
 12. `npm audit --omit=dev` has no high or critical production advisory, and any
     deferred low advisory has an owner and migration plan.
-13. the focused WebMCP browser test executes all eight tools and verifies visible
+13. the WebMCP browser tests execute all twelve tools and verify visible
     Explore, evidence-drawer, Research Passport, Research Path, and progress
     state; Passport claim decisions remain locked until the selected exact-page
     anchors are reopened, export remains locked until every claim is decided and

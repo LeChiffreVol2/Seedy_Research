@@ -52,7 +52,7 @@ show the transition explicitly: reading the control does not validate a claim
 about an inaccessible paper. The committed LEARN reader source
 `thaijo:learn:291631` is a lawful reader control, not proof of global absence.
 
-## Eight site tools
+## Twelve site tools
 
 | Tool | Observable result |
 | --- | --- |
@@ -64,6 +64,10 @@ about an inaccessible paper. The committed LEARN reader source
 | `draft_research_passport` | An evidence-bounded draft with human review controls |
 | `build_research_path` | A visible study path, candidate gap, and next-study framework |
 | `inspect_learning_progress` | Checkpoint status without private free-text answers |
+| `open_research_notebook` | Open the visible Case Notebook and expose only public Case Source IDs |
+| `send_reviewed_to_notebook` | Transfer already human-reviewed Workspace cells as a versioned Evidence Pack |
+| `ask_research_notebook` | Persist a cited answer from explicit public Case Sources without private thread history |
+| `draft_notebook_artifact` | Persist a cited Studio draft without claiming novelty, approval, or export |
 
 The implementation lives in [web/lib/webmcp.ts](../web/lib/webmcp.ts).
 Tool calls reuse the signed-in session and same-origin APIs. They are bounded,

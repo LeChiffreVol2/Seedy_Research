@@ -45,7 +45,8 @@ class RepositoryDocsTests(unittest.TestCase):
                 continue
             with self.subTest(document=str(path.relative_to(ROOT))):
                 self.assertNotIn("`citymcp/README.md`", text)
-                self.assertNotRegex(text, r"(?i)(?:six|seven) (?:top-level |browser-native )?site tools")
+                self.assertNotRegex(text, r"(?i)(?:six|seven|eight) (?:top-level |browser-native )?site tools")
+                self.assertNotRegex(text, r"(?i)eight-tool (?:inventory|counts?|contract|web client)")
                 self.assertNotRegex(text, r"site tools ที่(?:หก|เจ็ด)ตัว")
 
     def test_visibility_glossary_includes_unaudited_state(self):
@@ -55,7 +56,7 @@ class RepositoryDocsTests(unittest.TestCase):
     def test_public_tool_tables_match_runtime(self):
         runtime = (ROOT / "web/lib/webmcp.ts").read_text()
         expected = set(re.findall(r'name: "([a-z_]+)"', runtime))
-        self.assertEqual(len(expected), 8)
+        self.assertEqual(len(expected), 12)
         for name in ("README.md", "docs/WEBMCP_CHALLENGE_SUBMISSION.md"):
             with self.subTest(document=name):
                 documented = set(re.findall(r"^\| `([a-z_]+)` \|", (ROOT / name).read_text(), re.M))

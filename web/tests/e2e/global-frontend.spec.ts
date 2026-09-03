@@ -713,7 +713,22 @@ test("live glass is bounded away from the scrolling paper feed", async ({ page }
   expect(materialContract.card).toBe("none");
 });
 
-test("Open Access can batch-run, inspect, review, and export workspace cells", async ({ page }) => {
+for (const actor of ["human", "agent"] as const) {
+test(`Open Access can batch-run, inspect, review, and export workspace cells · ${actor}`, async ({ page }) => {
+  if (actor === "agent") await page.addInitScript(() => {
+    const tools = new Map();
+    Object.defineProperty(window, "__notebookTools", { value: tools });
+    Object.defineProperty(Document.prototype, "modelContext", { configurable: true, value: {
+      registerTool: async (tool: { name: string }, options?: { signal?: AbortSignal }) => {
+        tools.set(tool.name, tool);
+        options?.signal?.addEventListener("abort", () => tools.delete(tool.name), { once: true });
+      },
+    } });
+  });
+  const callTool = (name: string, input: unknown = {}) => page.evaluate(async ({ name, input }) => {
+    const tools = (window as unknown as { __notebookTools: Map<string, { execute: (input: unknown) => Promise<unknown> }> }).__notebookTools;
+    try { return await tools.get(name)!.execute(input); } catch (error) { return { error: String(error) }; }
+  }, { name, input }) as Promise<Record<string, any>>;
   const sessionId = "00000000-0000-4000-8000-000000000099";
   const user = { userId: "user-workspace", displayName: "Workspace Researcher", email: "researcher@example.com", isGuest: false };
   const cards = [1, 2].map((index) => ({
@@ -750,6 +765,7 @@ test("Open Access can batch-run, inspect, review, and export workspace cells", a
   const notebookThreadId = "00000000-0000-4000-8000-000000000123";
   const notebookMessages: Array<Record<string, unknown>> = [];
   const workspacePacks: Array<Record<string, unknown>> = [];
+  const studioArtifacts: Array<Record<string, unknown>> = [];
   const notebookSnapshot = () => ({
     notebookId: "notebook_workspace01",
     caseId: researchCase.caseId,
@@ -761,7 +777,7 @@ test("Open Access can batch-run, inspect, review, and export workspace cells", a
     activeThreadId: notebookThreadId,
     messages: notebookMessages,
     notes: [],
-    artifacts: [],
+    artifacts: studioArtifacts,
     workspacePacks,
     updatedAt: researchCase.updatedAt,
   });
@@ -805,7 +821,7 @@ test("Open Access can batch-run, inspect, review, and export workspace cells", a
       await route.fulfill({ json: { notebook: notebookSnapshot(), adapter: { active: false } } });
       return;
     }
-    const request = route.request().postDataJSON() as { action: string; question?: string; sources?: string[]; workspaceId?: string };
+    const request = route.request().postDataJSON() as { action: string; question?: string; sources?: string[]; workspaceId?: string; kind?: string; publicSourcesOnly?: boolean };
     if (request.action === "workspace_pack") {
       const pack = { packId: "pack-workspace-1", workspaceId: request.workspaceId, version: 1, sourceSnapshot: cards.map((card) => card.source), payload: { workspaceTitle: "Thai research evidence matrix", rows: [] }, createdAt: new Date().toISOString() };
       workspacePacks.unshift(pack);
@@ -813,6 +829,7 @@ test("Open Access can batch-run, inspect, review, and export workspace cells", a
       return;
     }
     if (request.action === "ask") {
+      expect(request.publicSourcesOnly).toBe(actor === "agent");
       const now = new Date().toISOString();
       const userMessage = { messageId: "00000000-0000-4000-8000-000000000201", threadId: notebookThreadId, role: "user", content: request.question, citations: [], sourceSnapshot: request.sources, insufficient: false, createdAt: now };
       const message = {
@@ -827,6 +844,13 @@ test("Open Access can batch-run, inspect, review, and export workspace cells", a
       };
       notebookMessages.push(userMessage, message);
       await route.fulfill({ json: { userMessage, message, shareable: true, adapter: { active: false } } });
+      return;
+    }
+    if (request.action === "artifact") {
+      expect(request.publicSourcesOnly).toBe(true);
+      const artifact = { artifactId: "artifact-1", kind: request.kind, title: "Next-Study Protocol draft", content: "Validate the road-safety finding in a new context [N1]. Novelty is not established.", version: 1, stale: false, createdAt: new Date().toISOString(), provenance: { citations: [{ id: "N1", evidenceId: "evidence-1", source: cards[0].source, pageStart: 3, pageEnd: 3, sectionTitle: "Results", shareable: true }] } };
+      studioArtifacts.push(artifact);
+      await route.fulfill({ json: { artifact, adapter: { active: false } } });
       return;
     }
     await route.fulfill({ json: { notebook: notebookSnapshot(), adapter: { active: false } } });
@@ -930,10 +954,24 @@ test("Open Access can batch-run, inspect, review, and export workspace cells", a
   const inspector = page.getByLabel("Cell evidence inspector");
   await expect(inspector).toContainText("method finding for paper 1");
   await expect(inspector).toContainText("p.3");
+  if (actor === "agent") {
+    const refused = await callTool("send_reviewed_to_notebook");
+    expect(refused.error).toMatch(/verify at least one exact-page cell/);
+    expect(workspacePacks).toHaveLength(0);
+  }
   await inspector.getByRole("button", { name: /Verified/ }).click();
   await expect(inspector.getByText("Review · verified")).toBeVisible();
-  await workspace.getByRole("button", { name: /Send reviewed to Notebook/ }).click();
-  await expect(workspace.getByText(/Workspace Evidence Pack v1 sent to Notebook/)).toBeVisible();
+  if (actor === "agent") {
+    const transferred = await callTool("send_reviewed_to_notebook");
+    expect(transferred.error).toBeUndefined();
+    expect(transferred.packVersion).toBe(1);
+    expect(transferred.humanReviewPerformedByAgent).toBe(false);
+    await expect(page.getByRole("region", { name: "Research Notebook", exact: true })).toBeVisible();
+    await page.getByRole("navigation", { name: "Primary" }).getByRole("button", { name: "Workspace" }).click();
+  } else {
+    await workspace.getByRole("button", { name: /Send reviewed to Notebook/ }).click();
+    await expect(workspace.getByText(/Workspace Evidence Pack v1 sent to Notebook/)).toBeVisible();
+  }
   const download = page.waitForEvent("download");
   await workspace.getByRole("button", { name: "Export CSV" }).click();
   await expect((await download).suggestedFilename()).toMatch(/^seed-research-workspace-\d+\.csv$/);
@@ -942,12 +980,33 @@ test("Open Access can batch-run, inspect, review, and export workspace cells", a
   const notebook = page.getByRole("region", { name: "Research Notebook", exact: true });
   await expect(notebook).toContainText("Seedy Light Retrieval active");
   await expect(notebook.getByLabel("Notebook sources")).toContainText("Thai road safety evidence 1");
-  await notebook.getByLabel("Ask Research Notebook").fill("What road-safety finding should be validated next?");
-  await notebook.getByRole("button", { name: "Ask sources" }).click();
+  if (actor === "agent") {
+    const opened = await callTool("open_research_notebook");
+    expect(opened.sources).toEqual(cards.map((card) => card.source));
+    expect(opened.messages).toBeUndefined();
+    expect(opened.notes).toBeUndefined();
+    const rejected = await callTool("ask_research_notebook", { question: "Read this unrelated source", sources: ["off-case-source"] });
+    expect(rejected.error).toMatch(/admitted to this Research Case/);
+    const answer = await callTool("ask_research_notebook", { question: "What road-safety finding should be validated next?", sources: opened.sources });
+    expect(answer.error).toBeUndefined();
+    expect(answer.citations).toHaveLength(2);
+    expect(answer.requiresHumanReview).toBe(true);
+  } else {
+    await notebook.getByLabel("Ask Research Notebook").fill("What road-safety finding should be validated next?");
+    await notebook.getByRole("button", { name: "Ask sources" }).click();
+  }
   await expect(notebook).toContainText("Both selected studies report a page-linked road-safety finding");
   await expect(notebook.getByLabel("Notebook exact-page citations").getByRole("button")).toHaveCount(2);
   await expect(notebook.getByRole("button", { name: "Promote to Passport" })).toBeEnabled();
   await expect(notebook.getByRole("button", { name: /Continue to Research Path/ })).toBeEnabled();
+  if (actor === "agent") {
+    const drafted = await callTool("draft_notebook_artifact", { kind: "next_study_protocol", sources: cards.map((card) => card.source) });
+    expect(drafted).toMatchObject({ artifactId: "artifact-1", version: 1, requiresHumanReview: true, noveltyEstablished: false, exported: false });
+    await expect(notebook.getByText("Validate the road-safety finding in a new context [N1]. Novelty is not established.")).toBeVisible();
+    await page.reload();
+    await page.getByRole("navigation", { name: "Primary" }).getByRole("button", { name: "Notebook" }).click();
+    await expect(notebook.getByText("Next-Study Protocol draft")).toBeVisible();
+  }
 
   await page.getByRole("navigation", { name: "Primary" }).getByRole("button", { name: "Workspace" }).click();
   await workspace.getByRole("button", { name: "Template" }).click();
@@ -968,6 +1027,7 @@ test("Open Access can batch-run, inspect, review, and export workspace cells", a
   await expect((await prismaDownload).suggestedFilename()).toMatch(/^seed-research-prisma-scoping-review-\d+\.md$/);
   await expectNoPageOverflow(page);
 });
+}
 
 test("model menu supports keyboard navigation and focus return", async ({ page }) => {
   await page.setViewportSize({ width: 390, height: 844 });

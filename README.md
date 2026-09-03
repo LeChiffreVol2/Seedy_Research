@@ -54,8 +54,9 @@ not proven novelty.
 
 ## WebMCP: the agent and researcher share the page
 
-Eight browser-native tools reuse the application's APIs and update the same
-visible case, evidence drawer, connection map, Passport, and Research Path.
+Twelve browser-native tools reuse the application's APIs and update the same
+visible Case, evidence drawer, connection map, Passport, Research Path,
+Workspace, and Notebook.
 
 | Tool | Purpose |
 | --- | --- |
@@ -67,9 +68,14 @@ visible case, evidence drawer, connection map, Passport, and Research Path.
 | `draft_research_passport` | Draft from inspected anchors, preserving the review gate |
 | `build_research_path` | Create or adapt an evidence-grounded study path |
 | `inspect_learning_progress` | Inspect checkpoints without exposing private answers |
+| `open_research_notebook` | Open the visible Case Notebook and list public Case Sources |
+| `send_reviewed_to_notebook` | Continue human-reviewed Workspace evidence as a versioned pack |
+| `ask_research_notebook` | Create a cited answer from explicit public Case Sources |
+| `draft_notebook_artifact` | Draft a cited, versioned Studio artifact for human review |
 
 Tools validate inputs and honor cancellation. Source text is untrusted input.
-Browser agents cannot turn metadata into evidence or bypass Passport review.
+Browser agents cannot turn metadata into evidence, read private Notebook
+history, verify Workspace cells for a person, or bypass Passport review.
 The separate remote MCP service supports clients without an open browser page.
 
 ## Data and verification
