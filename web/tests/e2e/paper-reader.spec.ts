@@ -1,6 +1,9 @@
 import { expect, test, type Page } from "@playwright/test";
 
-const PAPER_SOURCE = "NCCE31_CEM-06.md";
+// The page shell is server-rendered before browser route mocks run. Use a
+// committed paper so this UI contract never depends on a production database.
+// Reader payloads below remain explicit synthetic fixtures.
+const PAPER_SOURCE = "thaijo:learn:291631";
 const OFFICIAL_SOURCE_URL = "https://example.org/thai-paper";
 const STABLE_ANCHOR_1 = "asset:reader-verified:page:1";
 const STABLE_ANCHOR_2 = "asset:reader-verified:page:2";

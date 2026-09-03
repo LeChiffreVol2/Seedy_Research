@@ -106,7 +106,7 @@ jobs:
           python -m py_compile $(find harness mcp-server pipeline supabase eval -name '*.py' -type f | sort)
           python harness/check_invariants.py
           python harness/test_ga_security.py
-      - name: CivilMCP web build
+      - name: Seedy Research web build
         working-directory: web
         env:
           OPENAI_API_KEY: build-placeholder
@@ -133,7 +133,7 @@ jobs:
           persist-credentials: false
       - name: Pin release commit
         run: test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
-      - name: Apply CivilMCP migrations to preview database
+      - name: Apply Seedy compatibility migrations to preview database
         env:
           SUPABASE_PREVIEW_DB_URL: ${{ secrets.SUPABASE_PREVIEW_DB_URL }}
         run: |
@@ -314,7 +314,7 @@ jobs:
           test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
           test "${{ vars.GA_PROMOTION_ENABLED }}" = "true"
       - run: npm install --global vercel@${VERCEL_CLI_VERSION}
-      - name: Apply CivilMCP migrations to production database
+      - name: Apply Seedy compatibility migrations to production database
         env:
           SUPABASE_DB_URL: ${{ secrets.SUPABASE_DB_URL }}
         run: |
@@ -381,7 +381,7 @@ jobs:
           id=$(curl -fsS -H "Authorization: Bearer $VERCEL_TOKEN" "https://api.vercel.com/v13/deployments/$host?teamId=$VERCEL_ORG_ID" | python3 -c 'import json,sys; print(json.load(sys.stdin)["id"])')
           echo "url=$url" >> "$GITHUB_OUTPUT"
           echo "id=$id" >> "$GITHUB_OUTPUT"
-      - name: Stage CivilMCP web production deployment
+      - name: Stage Seedy Research web production deployment
         id: stage_web
         working-directory: web
         env:
@@ -448,7 +448,7 @@ jobs:
         env:
           VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
         run: vercel promote "${{ needs.stage-production.outputs.mcp_url }}" --timeout=5m --yes --token="$VERCEL_TOKEN"
-      - name: Promote CivilMCP web
+      - name: Promote Seedy Research web
         env:
           VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
         run: vercel promote "${{ needs.stage-production.outputs.web_url }}" --timeout=5m --yes --token="$VERCEL_TOKEN"

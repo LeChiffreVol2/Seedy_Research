@@ -41,6 +41,7 @@ jobs:
         run: |
           python harness/check_invariants.py
           python harness/test_ga_security.py
+          python -m unittest harness.test_repository_docs
 
       - name: Data quality contracts
         run: python -m unittest harness.test_data_quality_integrity pipeline.test_audit_openalex_visibility
@@ -57,6 +58,21 @@ jobs:
       - name: Web unit contracts
         working-directory: web
         run: node --test lib/*.test.mjs
+
+      - name: Install fixture browser
+        working-directory: web
+        run: npx playwright install --with-deps chromium
+
+      - name: Credential-free browser contracts
+        run: make fixture-browser PYTHON=python
+
+      - name: Upload fixture failure traces
+        if: failure()
+        uses: actions/upload-artifact@v7
+        with:
+          name: fixture-browser-traces
+          path: web/test-results/
+          retention-days: 7
 
       - name: Build web
         working-directory: web
