@@ -501,7 +501,9 @@ class GASecurityContracts(unittest.TestCase):
         self.assertIn('existing.owner_id !== input.ownerId', workspace_store)
         self.assertIn('.eq("workspace_id", workspaceId).eq("owner_id", input.ownerId)', workspace_store)
         self.assertIn('.eq("owner_id", ownerId)', workspace_store)
-        self.assertIn('aria-label="Open Access Research Workspace"', workspace_ui)
+        self.assertIn('"Open Access Research Workspace"', workspace_ui)
+        self.assertIn('"Research Notebook Workspace"', workspace_ui)
+        self.assertIn('focus === "notebook"', workspace_ui)
         self.assertIn('<strong>Open review tools.</strong>', workspace_ui)
         self.assertIn('Research Notebook asks require sign-in so generated answers remain bound to one owner-scoped Workspace.', workspace_ui)
         self.assertIn('Notebook answers and private sources require sign-in for owner isolation.', workspace_ui)
@@ -524,9 +526,10 @@ class GASecurityContracts(unittest.TestCase):
         self.assertIn('.eq("owner_id", ownerId)', workspace_store)
         self.assertIn('.eq("workspace_id", workspaceId.trim().slice(0, 96))', workspace_store)
         self.assertIn('aria-label="Research Notebook"', workspace_ui)
-        self.assertIn('OpenRAG-compatible · Seedy evidence authority', workspace_ui)
+        self.assertIn('Seedy bounded retrieval active · OpenRAG adapter staged', workspace_ui)
         self.assertIn('answer text is not persisted in Workspace state', workspace_ui)
         self.assertIn('label: "Workspace"', page)
+        self.assertIn('label: "Notebook"', page)
         self.assertIn('label: "Automated Research"', page)
 
     def test_public_mcp_units_are_dormant_in_open_access_and_legacy_ledger_stays_atomic(self) -> None:
