@@ -1,12 +1,21 @@
-/*
-!/web/
-!/web/**
-
-/web/.next/
-/web/.next-build/
-/web/.vercel/
-/web/node_modules/
-/web/playwright-report/
-/web/test-results/
-/web/.env*
-/web/tsconfig.tsbuildinfo
+.git/
+.vercel/
+.venv310/
+.artifacts/
+.playwright-cli/
+CE Project Database/
+NCCE Project Database/
+citymcp/
+harness/
+mcp-server/
+output/
+pipeline/
+tmp/
+**/.next/
+**/.next-build/
+**/.vercel/
+**/node_modules/
+**/playwright-report/
+**/test-results/
+**/.env*
+**/tsconfig.tsbuildinfo
